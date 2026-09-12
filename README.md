@@ -2,7 +2,7 @@
 
 `matrix_extended` — компактная кастомная интеграция Home Assistant для Matrix с E2EE, rich media и двусторонним управлением.
 
-Версия `0.4.1` ориентирована на Home Assistant 2026.9+ и использует `matrix-nio[e2e]==0.26.0`.
+Версия `0.4.2` ориентирована на Home Assistant 2026.9+ и использует `matrix-nio==0.26.0` с явно закреплёнными E2EE-зависимостями (`atomicwrites`, `cachetools`, `peewee`, `vodozemac`). Релиз проверяется на реальном Home Assistant 2026.9.2 + Synapse 1.160.0 перед merge/publish.
 
 ## Что есть в v0.4.x
 
@@ -30,6 +30,7 @@
 - Именованные routing profiles (`security`, `system`, `family` и т. п.).
 - `notification_key`: первое сообщение создаётся, последующие с тем же ключом редактируют исходный Matrix event (`m.replace`) вместо спама.
 - Соответствия `notification_key -> room -> event_id` сохраняются в `.storage` и переживают перезапуск HA.
+- Автоматическое восстановление live sync после недоступности homeserver; диагностика переключается `off/on` вместе с фактическим соединением.
 
 ## E2EE
 
@@ -42,6 +43,8 @@ Crypto-store:
 ```
 
 Updateable notification mappings хранятся отдельно через Home Assistant Store (`matrix_extended.notification_keys_<config_entry_id>`). В файле нет Matrix access token или media content — только notification key, room ID и event ID.
+
+В `0.4.2` E2EE runtime-зависимости объявлены явно, чтобы встроенная Matrix-интеграция Home Assistant с уже установленным базовым `matrix-nio` не могла оставить кастомную интеграцию без crypto-зависимостей. Загрузка persistent crypto-store также вынесена из event loop Home Assistant.
 
 `matrix-nio 0.26.0` пока не поддерживает cross-signing. Также в этой версии upstream есть проблема SAS verification с Element. Поэтому содержимое E2EE защищено от homeserver, но строгая политика «ключи только вручную verified devices» пока не реализована.
 
@@ -61,7 +64,7 @@ custom_components/matrix_extended
 /config/custom_components/matrix_extended
 ```
 
-Перезапустите HA. При обновлении с v0.2/v0.3 config entry, access token и crypto-store сохраняются. Новые routing/notification настройки имеют безопасные значения по умолчанию.
+Перезапустите HA. При обновлении с v0.2/v0.3/v0.4.1 config entry, access token и crypto-store сохраняются. Новые routing/notification настройки имеют безопасные значения по умолчанию.
 
 ## Входящие: настройка безопасности
 
@@ -298,6 +301,10 @@ data:
   media:
     - entity_id: camera.front_door
 ```
+
+## Тестирование
+
+Перед merge/release обязательны два CI-gate: быстрые regression-тесты и реальный стек Home Assistant + Synapse. Подробности — в `docs/TESTING.md`.
 
 ## Что сознательно не делается
 

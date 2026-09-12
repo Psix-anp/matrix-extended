@@ -2,6 +2,8 @@ name: Matrix Extended tests
 
 on:
   push:
+    branches:
+      - main
   pull_request:
     branches:
       - main

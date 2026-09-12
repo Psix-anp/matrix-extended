@@ -1,7 +1,7 @@
 {
   "domain": "matrix_extended",
   "name": "Matrix Extended",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "config_flow": true,
   "integration_type": "service",
   "iot_class": "cloud_push",

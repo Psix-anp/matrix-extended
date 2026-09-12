@@ -106,3 +106,32 @@ jobs:
       - name: Stop real stack
         if: always()
         run: docker compose -f compose.test.yml down -v --remove-orphans
+
+  package:
+    name: Verified install ZIP
+    needs:
+      - fast
+      - real_stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build and verify install archive
+        id: release
+        run: |
+          version="$(python -c 'import json; print(json.load(open("custom_components/matrix_extended/manifest.json"))["version"])')"
+          python ci/scripts/build-release.py
+          sha256sum "dist/matrix_extended-ha-install-v${version}.zip" > "dist/matrix_extended-ha-install-v${version}.zip.sha256"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Upload verified install archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix_extended-ha-install-v${{ steps.release.outputs.version }}
+          path: |
+            dist/matrix_extended-ha-install-v${{ steps.release.outputs.version }}.zip
+            dist/matrix_extended-ha-install-v${{ steps.release.outputs.version }}.zip.sha256
+          if-no-files-found: error
+          compression-level: 0

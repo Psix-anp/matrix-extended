@@ -268,17 +268,15 @@ async def _async_handle_send(hass: HomeAssistant, call: ServiceCall) -> None:
                                 notification_key, room.room_id, event_id
                             )
                             registry_changed = True
-                if registry_changed:
+                if registry_changed and account.notification_store:
                     await account.notification_store.async_save(
-                        account.notification_registry.snapshot()
+                        account.notification_registry.dump()
                     )
             else:
                 event_ids = await account.client.async_send_prepared(
                     prepared_rooms,
                     build_text_content(
-                        message,
-                        formatted_body=formatted_body,
-                        thread_id=thread_id,
+                        message, formatted_body=formatted_body, thread_id=thread_id
                     ),
                 )
             if actions and account.action_registry:
@@ -291,135 +289,125 @@ async def _async_handle_send(hass: HomeAssistant, call: ServiceCall) -> None:
                         )
 
         resolver = MediaResolver(hass)
+        room_groups = _rooms_by_encryption(prepared_rooms)
         for item in media_items:
             media = await resolver.async_resolve(item)
-            thumbnail = media.thumbnail
-            if thumbnail is not None:
-                await account.client.async_upload_media(thumbnail)
-            await account.client.async_upload_media(media)
-            await account.client.async_send_prepared(
-                prepared_rooms,
-                build_media_content(media, thread_id=thread_id),
-            )
+            thumbnail = None
+            if thumbnail_source := item.get("thumbnail"):
+                thumbnail = await resolver.async_resolve(thumbnail_source, force_type="image")
+
+            for encrypted, rooms in room_groups.items():
+                thumbnail_upload = None
+                if thumbnail is not None:
+                    thumbnail_upload = await account.client.async_upload(
+                        thumbnail.data,
+                        filename=thumbnail.filename,
+                        content_type=thumbnail.content_type,
+                        encrypt=encrypted,
+                    )
+                media_upload = await account.client.async_upload(
+                    media.data,
+                    filename=media.filename,
+                    content_type=media.content_type,
+                    encrypt=encrypted,
+                )
+                content = build_media_content(
+                    media_type=media.media_type,
+                    mxc_uri=None if encrypted else media_upload.mxc_uri,
+                    encrypted_file=media_upload.encrypted_file if encrypted else None,
+                    filename=media.filename,
+                    content_type=media.content_type,
+                    size=media.size,
+                    caption=item.get("caption"),
+                    formatted_caption=item.get("formatted_caption"),
+                    width=media.width,
+                    height=media.height,
+                    duration_ms=media.duration_ms,
+                    thumbnail_mxc_uri=(None if encrypted or thumbnail_upload is None else thumbnail_upload.mxc_uri),
+                    thumbnail_encrypted_file=(thumbnail_upload.encrypted_file if encrypted and thumbnail_upload is not None else None),
+                    thumbnail_info=thumbnail.image_info() if thumbnail else None,
+                    thread_id=thread_id,
+                )
+                await account.client.async_send_prepared(rooms, content)
         account.status.mark_send_success()
     except MatrixEncryptionRequiredError as err:
-        account.status.mark_error(str(err))
-        raise HomeAssistantError(str(err)) from err
+        account.status.mark_error(str(err), connected=True)
+        raise
     except MatrixExtendedError as err:
         account.status.mark_error(str(err))
-        raise HomeAssistantError(str(err)) from err
+        raise
 
 
 async def _async_handle_reply(hass: HomeAssistant, call: ServiceCall) -> None:
     account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
-    room = _room_for_call(account, call)
-    try:
-        prepared = await account.client.async_prepare_rooms([room])
-        formatted_body = call.data[ATTR_MESSAGE] if call.data[ATTR_FORMAT] == FORMAT_HTML else None
-        await account.client.async_send_prepared(
-            prepared,
-            build_reply_content(
-                call.data[ATTR_MESSAGE],
-                reply_to=call.data[ATTR_EVENT_ID],
-                formatted_body=formatted_body,
-                thread_id=call.data.get(ATTR_THREAD_ID),
-            ),
-        )
-        account.status.mark_send_success()
-    except MatrixExtendedError as err:
-        account.status.mark_error(str(err))
-        raise HomeAssistantError(str(err)) from err
+    formatted = call.data[ATTR_MESSAGE] if call.data[ATTR_FORMAT] == FORMAT_HTML else None
+    await account.client.async_send_content(
+        _room_for_call(account, call),
+        build_reply_content(
+            call.data[ATTR_MESSAGE],
+            reply_to=call.data[ATTR_EVENT_ID],
+            formatted_body=formatted,
+            thread_id=call.data.get(ATTR_THREAD_ID),
+        ),
+    )
+    account.status.mark_send_success()
 
 
 async def _async_handle_react(hass: HomeAssistant, call: ServiceCall) -> None:
     account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
-    room = _room_for_call(account, call)
-    try:
-        prepared = await account.client.async_prepare_rooms([room])
-        await account.client.async_send_prepared(
-            prepared,
-            build_reaction_content(call.data[ATTR_EVENT_ID], call.data[ATTR_REACTION]),
-            event_type="m.reaction",
-        )
-        account.status.mark_send_success()
-    except MatrixExtendedError as err:
-        account.status.mark_error(str(err))
-        raise HomeAssistantError(str(err)) from err
+    await account.client.async_send_event(
+        _room_for_call(account, call),
+        "m.reaction",
+        build_reaction_content(call.data[ATTR_EVENT_ID], call.data[ATTR_REACTION]),
+    )
+    account.status.mark_send_success()
 
 
 async def _async_handle_edit(hass: HomeAssistant, call: ServiceCall) -> None:
     account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
-    room = _room_for_call(account, call)
-    try:
-        prepared = await account.client.async_prepare_rooms([room])
-        formatted_body = call.data[ATTR_MESSAGE] if call.data[ATTR_FORMAT] == FORMAT_HTML else None
-        await account.client.async_send_prepared(
-            prepared,
-            build_edit_content(
-                call.data[ATTR_MESSAGE],
-                event_id=call.data[ATTR_EVENT_ID],
-                formatted_body=formatted_body,
-            ),
-        )
-        account.status.mark_send_success()
-    except MatrixExtendedError as err:
-        account.status.mark_error(str(err))
-        raise HomeAssistantError(str(err)) from err
+    formatted = call.data[ATTR_MESSAGE] if call.data[ATTR_FORMAT] == FORMAT_HTML else None
+    await account.client.async_send_content(
+        _room_for_call(account, call),
+        build_edit_content(
+            call.data[ATTR_MESSAGE],
+            event_id=call.data[ATTR_EVENT_ID],
+            formatted_body=formatted,
+        ),
+    )
+    account.status.mark_send_success()
 
 
 async def _async_handle_redact(hass: HomeAssistant, call: ServiceCall) -> None:
     account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
-    room = _room_for_call(account, call)
-    try:
-        await account.client.async_redact_event(
-            room=room,
-            event_id=call.data[ATTR_EVENT_ID],
-            reason=call.data.get(ATTR_REASON),
-        )
-        account.status.mark_send_success()
-    except MatrixExtendedError as err:
-        account.status.mark_error(str(err))
-        raise HomeAssistantError(str(err)) from err
+    await account.client.async_redact(
+        _room_for_call(account, call),
+        call.data[ATTR_EVENT_ID],
+        reason=call.data.get(ATTR_REASON),
+    )
+    account.status.mark_send_success()
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up Matrix Extended services."""
     hass.data.setdefault(DOMAIN, {})
-    if not hass.services.has_service(DOMAIN, SERVICE_SEND):
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_SEND,
-            partial(_async_handle_send, hass),
-            schema=SEND_SCHEMA,
-        )
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_REPLY,
-            partial(_async_handle_reply, hass),
-            schema=_REPLY_SCHEMA,
-        )
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_REACT,
-            partial(_async_handle_react, hass),
-            schema=_REACT_SCHEMA,
-        )
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_EDIT,
-            partial(_async_handle_edit, hass),
-            schema=_EDIT_SCHEMA,
-        )
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_REDACT,
-            partial(_async_handle_redact, hass),
-            schema=_REDACT_SCHEMA,
-        )
+
+    def register(name: str, handler: Any, schema: vol.Schema) -> None:
+        async def wrapped(call: ServiceCall) -> None:
+            try:
+                await handler(hass, call)
+            except (MatrixExtendedError, ValueError) as err:
+                raise HomeAssistantError(str(err)) from err
+        hass.services.async_register(DOMAIN, name, wrapped, schema=schema)
+
+    register(SERVICE_SEND, _async_handle_send, SEND_SCHEMA)
+    register(SERVICE_REPLY, _async_handle_reply, _REPLY_SCHEMA)
+    register(SERVICE_REACT, _async_handle_react, _REACT_SCHEMA)
+    register(SERVICE_EDIT, _async_handle_edit, _EDIT_SCHEMA)
+    register(SERVICE_REDACT, _async_handle_redact, _REDACT_SCHEMA)
     return True
 
 
-def _entry_value(entry: ConfigEntry, key: str, default: Any) -> Any:
+def _entry_value(entry: ConfigEntry, key: str, default: Any = None) -> Any:
     return entry.options.get(key, entry.data.get(key, default))
 
 

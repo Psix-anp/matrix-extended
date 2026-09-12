@@ -9,7 +9,8 @@ Reliability release validated against real Home Assistant 2026.9.2 and Synapse 1
 - Verify automatic inbound and encrypted outbound recovery after Synapse restart without reloading Home Assistant.
 - Move matrix-nio crypto-store `restore_login()` file access out of Home Assistant's event loop.
 - Add real-stack CI covering config flow, encrypted send, reload, Synapse outage/recovery, inbound recovery, Home Assistant restart, and runtime log safety.
-- Add a fast source/compile/regression gate; current release branch has 147 passing tests.
+- Add a fast source/compile/regression gate; current release branch has 149 passing tests.
+- Add a verified release-package gate that creates the Home Assistant install ZIP only after both mandatory test gates succeed, checks its contents byte-for-byte against the component tree, and publishes the archive with a SHA-256 checksum.
 
 ## 0.4.1
 

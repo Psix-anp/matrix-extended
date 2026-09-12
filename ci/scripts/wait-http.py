@@ -17,7 +17,7 @@ def wait(url: str, timeout: float = 60.0, interval: float = 0.5) -> None:
             with urlopen(url, timeout=5) as response:
                 if 200 <= response.status < 500:
                     return
-        except (HTTPError, URLError, TimeoutError) as err:
+        except (HTTPError, URLError, OSError) as err:
             last_error = err
         time.sleep(interval)
     raise TimeoutError(f"endpoint did not become ready: {url}; last_error={type(last_error).__name__ if last_error else 'none'}")

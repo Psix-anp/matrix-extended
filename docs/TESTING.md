@@ -1,6 +1,6 @@
 # Testing Matrix Extended
 
-Matrix Extended uses two mandatory CI gates before merge or release.
+Matrix Extended uses two mandatory test gates before merge or release, followed by a release-package gate that only runs when both test gates are green.
 
 ## Fast regression gate
 
@@ -13,7 +13,7 @@ python -m compileall -q custom_components/matrix_extended
 pytest -q
 ```
 
-The current v0.4.2 branch has 147 regression tests. This suite includes the imported v0.4.1 behavior tests plus regressions for source validation, Synapse readiness, config-flow schema compatibility, E2EE runtime dependencies, Matrix disconnect status, reconnect container handling, and Home Assistant event-loop blocking.
+The current v0.4.2 branch has 149 regression tests. This suite includes the imported v0.4.1 behavior tests plus regressions for source validation, release-archive integrity, Synapse readiness, config-flow schema compatibility, E2EE runtime dependencies, Matrix disconnect status, reconnect container handling, and Home Assistant event-loop blocking.
 
 ## Real Home Assistant + Synapse gate
 
@@ -37,6 +37,18 @@ The job checks:
 9. Home Assistant is restarted and the persisted config entry returns to `loaded`.
 10. Home Assistant logs contain no Matrix Extended event-loop blocking warning or leaked unhandled background-task exception.
 
+## Verified release package
+
+The package job depends on both mandatory test jobs. It runs only after they succeed and executes:
+
+```bash
+python ci/scripts/build-release.py
+```
+
+The builder reads the version from `custom_components/matrix_extended/manifest.json`, creates `dist/matrix_extended-ha-install-v<version>.zip`, and then reopens the archive and compares every file byte-for-byte with the source component tree. Generated caches and bytecode are excluded, and any file outside `custom_components/matrix_extended/` makes verification fail.
+
+GitHub Actions publishes the verified install ZIP together with its SHA-256 checksum as a workflow artifact. Matrix credentials, access tokens, passwords, Synapse secrets, crypto-store data, and Home Assistant runtime configuration are never included in that artifact.
+
 ## Local real-stack run
 
 On a Docker-capable machine:
@@ -56,6 +68,6 @@ The CI workflow additionally executes the outage/reconnect and Home Assistant re
 
 ## Release rule
 
-Do not merge, tag, or publish an install archive unless both the fast regression gate and the real HA + Synapse gate are green on the release commit.
+Do not merge, tag, or publish an install archive unless both the fast regression gate and the real HA + Synapse gate are green on the release commit. The install archive must be produced by the verified package job from that same commit.
 
 Never upload `.ci/matrix-env.json`, `.ci/matrix-passwords.json`, Synapse registration secrets, Matrix access tokens, passwords, crypto-store keys, or Authorization headers as CI artifacts.

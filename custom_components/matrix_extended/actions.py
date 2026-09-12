@@ -32,10 +32,12 @@ class ReactionActionRegistry:
         stored: Mapping[str, Any] | None = None,
         *,
         max_entries: int = 256,
+        store: Any = None,
     ) -> None:
         if max_entries < 1:
             raise ValueError("max_entries must be at least 1")
         self._max_entries = max_entries
+        self._store = store
         self._items: OrderedDict[
             tuple[str, str], dict[str, ReactionAction]
         ] = OrderedDict()
@@ -131,3 +133,8 @@ class ReactionActionRegistry:
                 for reaction, action in actions.items()
             }
         return stored
+
+    async def async_save(self) -> None:
+        """Persist the current registry when a Home Assistant Store is attached."""
+        if self._store is not None:
+            await self._store.async_save(self.dump())

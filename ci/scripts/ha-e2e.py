@@ -308,10 +308,19 @@ def verify_restart() -> None:
     _wait_ha_state(state["access_token"], "counter.matrix_reaction", "1", timeout=30)
 
     # Matrix forbids duplicate annotations from one sender while the first
-    # annotation exists. Redact it, then submit the same reaction again so a
-    # second real ReactionEvent reaches Home Assistant and exercises one-shot
-    # consumption instead of being blocked by Synapse first.
+    # annotation exists. Redact it, then rebuild the config entry from Store
+    # before sending the same reaction again. If consumption was not persisted,
+    # the action would be restored and the counter would reach 2.
     _matrix_redact(matrix_env, reaction_event_id)
+    _request_json(
+        HA_URL,
+        "POST",
+        f"/api/config/config_entries/entry/{state['entry_id']}/reload",
+        token=state["access_token"],
+        json_body={},
+        timeout=60,
+    )
+    _wait_entry_loaded(state["access_token"], timeout=90)
     _matrix_react(matrix_env, event_id, "✅")
     time.sleep(3)
     final_state = _ha_state(state["access_token"], "counter.matrix_reaction")

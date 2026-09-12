@@ -1,0 +1,77 @@
+CONF_DEVICE_ID],
+        verify_ssl=data[CONF_VERIFY_SSL],
+        store_path=store_path,
+        store_key=data[CONF_STORE_KEY],
+        require_e2ee=_entry_value(entry, CONF_REQUIRE_E2EE, True),
+    )
+    try:
+        default_room_encrypted = await client.async_connect(data[CONF_DEFAULT_ROOM])
+        allowed_rooms = {
+            await client.async_resolve_room(room)
+            for room in _entry_value(entry, CONF_ALLOWED_ROOMS, [data[CONF_DEFAULT_ROOM]])
+        }
+    except MatrixAuthenticationError as err:
+        await client.async_close()
+        raise ConfigEntryAuthFailed(str(err)) from err
+    except (MatrixConnectionError, MatrixExtendedError) as err:
+        await client.async_close()
+        raise ConfigEntryNotReady(str(err)) from err
+
+    status.mark_connected(default_room_encrypted=default_room_encrypted)
+    notification_store: Store[dict[str, dict[str, str]]] = Store(
+        hass, 1, f"{DOMAIN}.notification_keys_{entry.entry_id}", private=True
+    )
+    stored_notifications = await notification_store.async_load() or {}
+    notification_registry = NotificationKeyRegistry(stored_notifications)
+    rooms = client.rooms_snapshot()
+    default_room_id = await client.async_resolve_room(data[CONF_DEFAULT_ROOM])
+    account = MatrixAccount(
+        client=client,
+        default_room=data[CONF_DEFAULT_ROOM],
+        user_id=data[CONF_USER_ID],
+        device_id=data[CONF_DEVICE_ID],
+        homeserver=data[CONF_HOMESERVER],
+        status=status,
+        action_registry=ReactionActionRegistry(),
+        incoming_policy=IncomingPolicy(
+            allowed_users=_entry_value(entry, CONF_ALLOWED_USERS, [data[CONF_USER_ID]]),
+            allowed_rooms=allowed_rooms,
+        ),
+        rooms=rooms,
+        routing_profiles=normalize_routing_profiles(
+            _entry_value(entry, CONF_ROUTING_PROFILES, {})
+        ),
+        notification_registry=notification_registry,
+        notification_store=notification_store,
+        entry_id=entry.entry_id,
+        default_room_id=default_room_id,
+    )
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = account
+
+    if _entry_value(entry, CONF_INCOMING_ENABLED, True):
+        incoming_dir = hass.config.path(DOMAIN, "incoming", entry.entry_id)
+        await hass.async_add_executor_job(partial(Path(incoming_dir).mkdir, parents=True, exist_ok=True))
+        receiver = MatrixInboundReceiver(
+            hass,
+            entry_id=entry.entry_id,
+            account=account,
+            incoming_dir=incoming_dir,
+            download_media=_entry_value(entry, CONF_DOWNLOAD_INCOMING_MEDIA, True),
+        )
+        receiver.register()
+        await client.async_start_listener(receiver.async_listener_error)
+
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a Matrix account."""
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not unloaded:
+        return False
+    account: MatrixAccount | None = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+    if account is not None:
+        await account.client.async_close()
+    return True

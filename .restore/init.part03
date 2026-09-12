@@ -1,0 +1,75 @@
+oms, event_ids, strict=True):
+                    if event_id:
+                        account.action_registry.register(
+                            room_id=room.room_id,
+                            event_id=event_id,
+                            actions=actions,
+                        )
+
+        resolver = MediaResolver(hass)
+        room_groups = _rooms_by_encryption(prepared_rooms)
+        for item in media_items:
+            media = await resolver.async_resolve(item)
+            thumbnail = None
+            if thumbnail_source := item.get("thumbnail"):
+                thumbnail = await resolver.async_resolve(thumbnail_source, force_type="image")
+
+            for encrypted, rooms in room_groups.items():
+                thumbnail_upload = None
+                if thumbnail is not None:
+                    thumbnail_upload = await account.client.async_upload(
+                        thumbnail.data,
+                        filename=thumbnail.filename,
+                        content_type=thumbnail.content_type,
+                        encrypt=encrypted,
+                    )
+                media_upload = await account.client.async_upload(
+                    media.data,
+                    filename=media.filename,
+                    content_type=media.content_type,
+                    encrypt=encrypted,
+                )
+                content = build_media_content(
+                    media_type=media.media_type,
+                    mxc_uri=None if encrypted else media_upload.mxc_uri,
+                    encrypted_file=media_upload.encrypted_file if encrypted else None,
+                    filename=media.filename,
+                    content_type=media.content_type,
+                    size=media.size,
+                    caption=item.get("caption"),
+                    formatted_caption=item.get("formatted_caption"),
+                    width=media.width,
+                    height=media.height,
+                    duration_ms=media.duration_ms,
+                    thumbnail_mxc_uri=(None if encrypted or thumbnail_upload is None else thumbnail_upload.mxc_uri),
+                    thumbnail_encrypted_file=(thumbnail_upload.encrypted_file if encrypted and thumbnail_upload is not None else None),
+                    thumbnail_info=thumbnail.image_info() if thumbnail else None,
+                    thread_id=thread_id,
+                )
+                await account.client.async_send_prepared(rooms, content)
+        account.status.mark_send_success()
+    except MatrixEncryptionRequiredError as err:
+        account.status.mark_error(str(err), connected=True)
+        raise
+    except MatrixExtendedError as err:
+        account.status.mark_error(str(err))
+        raise
+
+
+async def _async_handle_reply(hass: HomeAssistant, call: ServiceCall) -> None:
+    account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
+    formatted = call.data[ATTR_MESSAGE] if call.data[ATTR_FORMAT] == FORMAT_HTML else None
+    await account.client.async_send_content(
+        _room_for_call(account, call),
+        build_reply_content(
+            call.data[ATTR_MESSAGE],
+            reply_to=call.data[ATTR_EVENT_ID],
+            formatted_body=formatted,
+            thread_id=call.data.get(ATTR_THREAD_ID),
+        ),
+    )
+    account.status.mark_send_success()
+
+
+async def _async_handle_react(hass: HomeAssistant, call: ServiceCall) -> None:
+    account = _select_ac

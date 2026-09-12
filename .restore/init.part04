@@ -1,0 +1,90 @@
+count(hass, call.data.get(ATTR_ACCOUNT))
+    await account.client.async_send_event(
+        _room_for_call(account, call),
+        "m.reaction",
+        build_reaction_content(call.data[ATTR_EVENT_ID], call.data[ATTR_REACTION]),
+    )
+    account.status.mark_send_success()
+
+
+async def _async_handle_edit(hass: HomeAssistant, call: ServiceCall) -> None:
+    account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
+    formatted = call.data[ATTR_MESSAGE] if call.data[ATTR_FORMAT] == FORMAT_HTML else None
+    await account.client.async_send_content(
+        _room_for_call(account, call),
+        build_edit_content(
+            call.data[ATTR_MESSAGE],
+            event_id=call.data[ATTR_EVENT_ID],
+            formatted_body=formatted,
+        ),
+    )
+    account.status.mark_send_success()
+
+
+async def _async_handle_redact(hass: HomeAssistant, call: ServiceCall) -> None:
+    account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
+    await account.client.async_redact(
+        _room_for_call(account, call),
+        call.data[ATTR_EVENT_ID],
+        reason=call.data.get(ATTR_REASON),
+    )
+    account.status.mark_send_success()
+
+
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
+    """Set up Matrix Extended services."""
+    hass.data.setdefault(DOMAIN, {})
+
+    def register(name: str, handler: Any, schema: vol.Schema) -> None:
+        async def wrapped(call: ServiceCall) -> None:
+            try:
+                await handler(hass, call)
+            except (MatrixExtendedError, ValueError) as err:
+                raise HomeAssistantError(str(err)) from err
+        hass.services.async_register(DOMAIN, name, wrapped, schema=schema)
+
+    register(SERVICE_SEND, _async_handle_send, SEND_SCHEMA)
+    register(SERVICE_REPLY, _async_handle_reply, _REPLY_SCHEMA)
+    register(SERVICE_REACT, _async_handle_react, _REACT_SCHEMA)
+    register(SERVICE_EDIT, _async_handle_edit, _EDIT_SCHEMA)
+    register(SERVICE_REDACT, _async_handle_redact, _REDACT_SCHEMA)
+    return True
+
+
+def _entry_value(entry: ConfigEntry, key: str, default: Any = None) -> Any:
+    return entry.options.get(key, entry.data.get(key, default))
+
+
+async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up a Matrix account from a config entry."""
+    data = dict(entry.data)
+    changed = False
+    defaults = {
+        CONF_STORE_KEY: secrets.token_urlsafe(32),
+        CONF_REQUIRE_E2EE: True,
+        CONF_INCOMING_ENABLED: True,
+        CONF_ALLOWED_USERS: [data[CONF_USER_ID]],
+        CONF_ALLOWED_ROOMS: [data[CONF_DEFAULT_ROOM]],
+        CONF_DOWNLOAD_INCOMING_MEDIA: True,
+        CONF_ROUTING_PROFILES: {},
+    }
+    for key, value in defaults.items():
+        if key not in data:
+            data[key] = value
+            changed = True
+    if changed:
+        hass.config_entries.async_update_entry(entry, data=data)
+
+    store_path = hass.config.path(".storage", DOMAIN, entry.entry_id)
+    await hass.async_add_executor_job(partial(Path(store_path).mkdir, parents=True, exist_ok=True))
+
+    status = MatrixRuntimeStatus()
+    client = MatrixClient(
+        homeserver=data[CONF_HOMESERVER],
+        user_id=data[CONF_USER_ID],
+        access_token=data[CONF_ACCESS_TOKEN],
+        device_id=data[

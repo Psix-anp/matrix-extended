@@ -1,0 +1,35 @@
+name: Restore exact v0.4.1 runtime
+
+on:
+  push:
+    branches:
+      - feature/v041-real-stack-tests
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/v041-real-stack-tests
+          fetch-depth: 0
+      - name: Restore exact runtime files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .restore/init.part00 .restore/init.part01 .restore/init.part02 .restore/init.part03 .restore/init.part04 .restore/init.part05 > custom_components/matrix_extended/__init__.py
+          test "$(git hash-object custom_components/matrix_extended/__init__.py)" = "59674b621c7c5b6e652f79e3ae6c05812e091dcf"
+          test "$(git hash-object custom_components/matrix_extended/client.py)" = "eb1815a1563779f5d203ce455c6aa5b41e2b323d"
+          test "$(wc -c < custom_components/matrix_extended/__init__.py)" = "20283"
+          test "$(wc -c < custom_components/matrix_extended/client.py)" = "18016"
+          rm -rf .restore
+          rm .github/workflows/restore-runtime.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: restore exact Matrix Extended 0.4.1 runtime baseline"
+          git push origin HEAD:feature/v041-real-stack-tests

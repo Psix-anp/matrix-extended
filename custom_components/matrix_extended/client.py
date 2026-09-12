@@ -295,61 +295,103 @@ class MatrixClient:
         await self._client.close()
 
     async def async_resolve_room(self, room: str) -> str:
-        """Resolve room aliases while preserving room IDs."""
+        """Resolve a room alias to a room ID, caching successful aliases."""
         if room.startswith("!"):
             return room
-        if room in self._room_cache:
-            return self._room_cache[room]
+        if not room.startswith("#"):
+            raise MatrixSendError("Matrix room must start with '#' or '!'")
+        if cached := self._room_cache.get(room):
+            return cached
         try:
             response = await self._client.room_resolve_alias(room)
         except Exception as err:
             raise MatrixConnectionError(str(err)) from err
         if not isinstance(response, RoomResolveAliasResponse):
-            raise MatrixSendError(f"Unable to resolve {room}: {_error_text(response)}")
+            raise MatrixSendError(f"Unable to resolve room {room}: {_error_text(response)}")
         self._room_cache[room] = response.room_id
         return response.room_id
 
     async def async_room_encrypted(self, room: str, *, sync: bool = True) -> bool:
-        """Return whether a room is encrypted after a state sync."""
-        room_id = await self.async_resolve_room(room)
+        """Return whether a joined room has Matrix E2EE enabled."""
         if sync:
-            await self._async_sync(full_state=True)
+            await self._async_sync(full_state=False)
+        room_id = await self.async_resolve_room(room)
         nio_room = self._client.rooms.get(room_id)
         if nio_room is None:
-            raise MatrixEncryptionError(
-                f"Room {room} ({room_id}) is not available in the current Matrix state"
-            )
+            # A stored incremental sync can omit a room that has not yet been
+            # materialized in this process. One full sync resolves that case.
+            await self._async_sync(full_state=True)
+            nio_room = self._client.rooms.get(room_id)
+        if nio_room is None:
+            raise MatrixSendError(f"Matrix account is not joined to room {room}")
         return bool(nio_room.encrypted)
 
     async def async_prepare_rooms(self, rooms: list[str]) -> list[PreparedRoom]:
-        """Resolve targets, sync once, and enforce the E2EE policy."""
-        room_ids = [await self.async_resolve_room(room) for room in rooms]
-        await self._async_sync(full_state=True)
-        await self._async_crypto_housekeeping()
+        """Resolve rooms and enforce the configured E2EE policy before sending."""
+        listener_running = self._sync_task is not None and not self._sync_task.done()
+        if not listener_running:
+            await self._async_sync(full_state=False)
+            await self._async_crypto_housekeeping()
         prepared: list[PreparedRoom] = []
-        for original, room_id in zip(rooms, room_ids, strict=True):
+        for room in rooms:
+            room_id = await self.async_resolve_room(room)
             nio_room = self._client.rooms.get(room_id)
             if nio_room is None:
-                raise MatrixEncryptionError(
-                    f"Room {original} ({room_id}) is not available in the current Matrix state"
-                )
+                await self._async_sync(full_state=True)
+                nio_room = self._client.rooms.get(room_id)
+            if nio_room is None:
+                raise MatrixSendError(f"Matrix account is not joined to room {room}")
             encrypted = bool(nio_room.encrypted)
             if self._require_e2ee and not encrypted:
                 raise MatrixEncryptionRequiredError(
-                    f"Refusing to send to unencrypted Matrix room {original}; Require E2EE is enabled"
+                    f"Room {room} is not encrypted; Matrix Extended requires E2EE"
                 )
             prepared.append(PreparedRoom(room_id=room_id, encrypted=encrypted))
         return prepared
 
-    async def async_send_prepared(
+    async def async_upload(
+        self,
+        data: bytes,
+        *,
+        filename: str,
+        content_type: str,
+        encrypt: bool = False,
+    ) -> UploadedMedia:
+        """Upload bytes, optionally encrypted for use in an E2EE room."""
+        try:
+            response, decryption_info = await self._client.upload(
+                io.BytesIO(data),
+                content_type=content_type,
+                filename=filename,
+                filesize=len(data),
+                encrypt=encrypt,
+            )
+        except Exception as err:
+            raise MatrixConnectionError(str(err)) from err
+        if not isinstance(response, UploadResponse):
+            raise MatrixSendError(f"Matrix media upload failed: {_error_text(response)}")
+
+        if not encrypt:
+            return UploadedMedia(mxc_uri=response.content_uri)
+        if not decryption_info:
+            raise MatrixEncryptionError(
+                "Matrix encrypted upload did not return attachment decryption metadata"
+            )
+        encrypted_file = dict(decryption_info)
+        encrypted_file["url"] = response.content_uri
+        return UploadedMedia(
+            mxc_uri=response.content_uri,
+            encrypted_file=encrypted_file,
+        )
+
+    async def async_send_event_prepared(
         self,
         rooms: list[PreparedRoom],
+        event_type: str,
         content: dict[str, Any],
-        *,
-        event_type: str = "m.room.message",
     ) -> list[str | None]:
-        """Send content to rooms that already passed state and E2EE checks."""
-        event_ids: list[str | None] = []
+        """Send an arbitrary Matrix room event to already prepared rooms."""
+        results: list[str | None] = []
         for room in rooms:
             try:
                 response = await self._client.room_send(
@@ -359,69 +401,92 @@ class MatrixClient:
                     ignore_unverified_devices=True,
                 )
             except Exception as err:
-                raise MatrixSendError(str(err)) from err
+                raise MatrixConnectionError(str(err)) from err
             if isinstance(response, ErrorResponse):
-                raise MatrixSendError(_error_text(response))
-            event_ids.append(getattr(response, "event_id", None))
-        return event_ids
+                raise MatrixSendError(
+                    f"Matrix send failed for {room.room_id}: {_error_text(response)}"
+                )
+            results.append(getattr(response, "event_id", None))
+        return results
 
-    async def async_send_content(
+    async def async_send_prepared(
         self,
-        room: str,
+        rooms: list[PreparedRoom],
         content: dict[str, Any],
-        *,
-        event_type: str = "m.room.message",
-    ) -> str | None:
-        """Convenience wrapper for sending one event to one room."""
-        prepared = await self.async_prepare_rooms([room])
-        return (await self.async_send_prepared(prepared, content, event_type=event_type))[0]
+    ) -> list[str | None]:
+        """Send m.room.message content to already-resolved rooms."""
+        return await self.async_send_event_prepared(
+            rooms, "m.room.message", content
+        )
 
-    async def async_redact_event(
-        self,
-        *,
-        room: str,
-        event_id: str,
-        reason: str | None = None,
-    ) -> None:
-        """Redact one Matrix event."""
+    async def async_send_event(
+        self, room: str, event_type: str, content: dict[str, Any]
+    ) -> str | None:
+        """Prepare a room and send an arbitrary Matrix event."""
         prepared = await self.async_prepare_rooms([room])
+        return (await self.async_send_event_prepared(prepared, event_type, content))[0]
+
+    async def async_redact(
+        self, room: str, event_id: str, *, reason: str | None = None
+    ) -> None:
+        """Redact one event in an authorized target room."""
+        prepared = await self.async_prepare_rooms([room])
+        room_id = prepared[0].room_id
         try:
             response = await self._client.room_redact(
-                prepared[0].room_id,
-                event_id,
-                reason=reason,
+                room_id, event_id, reason=reason
             )
         except Exception as err:
-            raise MatrixSendError(str(err)) from err
+            raise MatrixConnectionError(str(err)) from err
         if isinstance(response, ErrorResponse):
-            raise MatrixSendError(_error_text(response))
-
-    async def async_upload_media(self, media: Any) -> UploadedMedia:
-        """Upload a ResolvedMedia item, encrypted when requested by the caller."""
-        encrypt = bool(getattr(media, "encrypt", True))
-        try:
-            response, encryption_info = await self._client.upload(
-                io.BytesIO(media.data),
-                content_type=media.content_type,
-                filename=media.filename,
-                encrypt=encrypt,
-                filesize=len(media.data),
+            raise MatrixSendError(
+                f"Matrix redaction failed for {event_id}: {_error_text(response)}"
             )
+
+    async def async_download_media(
+        self,
+        mxc_uri: str,
+        *,
+        encrypted_file: dict[str, Any] | None = None,
+    ) -> tuple[bytes, str | None, str | None]:
+        """Download a Matrix media object and decrypt it locally when needed."""
+        try:
+            response = await self._client.download(mxc=mxc_uri)
         except Exception as err:
-            raise MatrixSendError(str(err)) from err
-        if not isinstance(response, UploadResponse):
-            raise MatrixSendError(_error_text(response))
-        encrypted_file = None
-        if encryption_info is not None:
-            encrypted_file = {
-                "url": response.content_uri,
-                "key": encryption_info["key"],
-                "iv": encryption_info["iv"],
-                "hashes": encryption_info["hashes"],
-                "v": "v2",
-            }
-        media.uploaded = UploadedMedia(
-            mxc_uri=response.content_uri,
-            encrypted_file=encrypted_file,
+            raise MatrixConnectionError(str(err)) from err
+        if isinstance(response, ErrorResponse) or not hasattr(response, "body"):
+            raise MatrixSendError(
+                f"Matrix media download failed: {_error_text(response)}"
+            )
+        data = bytes(response.body)
+        if encrypted_file is not None:
+            try:
+                from nio.crypto.attachments import decrypt_attachment
+
+                data = decrypt_attachment(
+                    data,
+                    encrypted_file["key"]["k"],
+                    encrypted_file["hashes"]["sha256"],
+                    encrypted_file["iv"],
+                )
+            except Exception as err:
+                raise MatrixEncryptionError(
+                    f"Unable to decrypt Matrix attachment: {err}"
+                ) from err
+        return (
+            data,
+            getattr(response, "content_type", None),
+            getattr(response, "filename", None),
         )
-        return media.uploaded
+
+    async def async_send_content(self, room: str, content: dict[str, Any]) -> str | None:
+        """Prepare and send one m.room.message event."""
+        prepared = await self.async_prepare_rooms([room])
+        return (await self.async_send_prepared(prepared, content))[0]
+
+    async def async_send_many(
+        self, rooms: list[str], content: dict[str, Any]
+    ) -> list[str | None]:
+        """Prepare and send the same event content to multiple rooms."""
+        prepared = await self.async_prepare_rooms(rooms)
+        return await self.async_send_prepared(prepared, content)

@@ -304,7 +304,7 @@ data:
 
 ## Тестирование
 
-Перед merge/release обязательны два CI-gate: быстрые regression-тесты и реальный стек Home Assistant + Synapse. Подробности — в `docs/TESTING.md`.
+Перед merge/release обязательны два test-gate: быстрые regression-тесты и реальный стек Home Assistant + Synapse. После них отдельный package-gate собирает и побайтно проверяет установочный ZIP и публикует его вместе с SHA-256 checksum. Подробности — в `docs/TESTING.md`.
 
 ## Что сознательно не делается
 

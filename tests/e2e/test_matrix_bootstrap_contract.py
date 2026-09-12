@@ -88,3 +88,11 @@ def test_bootstrap_contract_and_no_secret_output(tmp_path):
     saved = (tmp_path / "matrix-env.json").read_text()
     assert "secret-ha_bot-token" in saved
     assert (tmp_path / "matrix-env.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_password_bundle_is_private(tmp_path):
+    module = _load_module()
+    path = tmp_path / "matrix-passwords.json"
+    module.write_password_bundle(path, bot_password="bot-pass", user_password="user-pass")
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert path.read_text() == '{\n  "bot_password": "bot-pass",\n  "user_password": "user-pass"\n}\n'

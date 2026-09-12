@@ -28,11 +28,11 @@ jobs:
       - name: Run regression suite
         run: pytest -q
 
-  synapse:
-    name: Real Synapse bootstrap
+  real_stack:
+    name: Real HA 2026.9.2 + Synapse 1.160.0
     needs: fast
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,12 +49,13 @@ jobs:
         run: |
           MATRIX_REGISTRATION_SHARED_SECRET="$(cat .ci/synapse-shared-secret)" \
             python ci/scripts/bootstrap-matrix.py
-      - name: Verify bootstrap contract
+      - name: Verify Matrix bootstrap contract
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           p = Path('.ci/matrix-env.json')
+          s = Path('.ci/matrix-passwords.json')
           data = json.loads(p.read_text())
           assert set(data) == {
               'homeserver', 'bot_user_id', 'bot_access_token',
@@ -64,11 +65,28 @@ jobs:
           assert data['room_id'].startswith('!')
           assert data['room_alias'] == '#matrix-extended-e2e:matrix.test'
           assert p.stat().st_mode & 0o777 == 0o600
+          assert s.stat().st_mode & 0o777 == 0o600
           print('Matrix bootstrap contract verified')
           PY
-      - name: Synapse status on failure
+      - name: Prepare Home Assistant config
+        run: ci/scripts/prepare-ha.sh
+      - name: Start Home Assistant 2026.9.2
+        run: docker compose -f compose.test.yml up -d homeassistant
+      - name: Wait for Home Assistant onboarding API
+        run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
+      - name: Configure Matrix Extended and verify encrypted send + reload
+        run: python ci/scripts/ha-e2e.py setup-send-reload
+      - name: Restart Home Assistant
+        run: docker compose -f compose.test.yml restart homeassistant
+      - name: Wait for Home Assistant after restart
+        run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
+      - name: Verify config entry after Home Assistant restart
+        run: python ci/scripts/ha-e2e.py verify-restart
+      - name: Stack diagnostics on failure
         if: failure()
-        run: docker compose -f compose.test.yml ps
-      - name: Stop Synapse
+        run: |
+          docker compose -f compose.test.yml ps
+          docker compose -f compose.test.yml logs --no-color --tail=300 homeassistant synapse
+      - name: Stop real stack
         if: always()
         run: docker compose -f compose.test.yml down -v --remove-orphans

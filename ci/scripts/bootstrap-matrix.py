@@ -155,6 +155,19 @@ def bootstrap_matrix(
     return result
 
 
+def write_password_bundle(path: Path, *, bot_password: str, user_password: str) -> None:
+    """Persist disposable Matrix passwords for the HA E2E step without logging them."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {"bot_password": bot_password, "user_password": user_password},
+            indent=2,
+        )
+        + "\n"
+    )
+    path.chmod(0o600)
+
+
 def main() -> int:
     homeserver = os.environ.get("MATRIX_HOMESERVER", "http://127.0.0.1:8008")
     server_name = os.environ.get("MATRIX_SERVER_NAME", "matrix.test")
@@ -163,13 +176,21 @@ def main() -> int:
         print("MATRIX_REGISTRATION_SHARED_SECRET is required", file=sys.stderr)
         return 2
     output = Path(os.environ.get("MATRIX_ENV_OUTPUT", ".ci/matrix-env.json"))
+    password_output = Path(
+        os.environ.get("MATRIX_PASSWORD_OUTPUT", ".ci/matrix-passwords.json")
+    )
+    bot_password = os.environ.get("MATRIX_BOT_PASSWORD", secrets.token_urlsafe(24))
+    user_password = os.environ.get("MATRIX_USER_PASSWORD", secrets.token_urlsafe(24))
+    write_password_bundle(
+        password_output, bot_password=bot_password, user_password=user_password
+    )
     bootstrap_matrix(
         request=make_http_request(homeserver),
         homeserver=homeserver,
         server_name=server_name,
         shared_secret=shared_secret,
-        bot_password=os.environ.get("MATRIX_BOT_PASSWORD", secrets.token_urlsafe(24)),
-        user_password=os.environ.get("MATRIX_USER_PASSWORD", secrets.token_urlsafe(24)),
+        bot_password=bot_password,
+        user_password=user_password,
         output_path=output,
     )
     return 0

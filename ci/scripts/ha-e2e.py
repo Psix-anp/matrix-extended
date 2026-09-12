@@ -173,10 +173,10 @@ def _matrix_sync(token: str, *, since: str | None = None, timeout_ms: int = 0) -
     )
 
 
-def _matrix_react(matrix_env: dict[str, Any], event_id: str, reaction: str) -> None:
+def _matrix_react(matrix_env: dict[str, Any], event_id: str, reaction: str) -> str:
     room_id = quote(matrix_env["room_id"], safe="")
     txn_id = secrets.token_hex(8)
-    _request_json(
+    result = _request_json(
         MATRIX_HOST_URL,
         "PUT",
         f"/_matrix/client/v3/rooms/{room_id}/send/m.reaction/{txn_id}",
@@ -188,6 +188,24 @@ def _matrix_react(matrix_env: dict[str, Any], event_id: str, reaction: str) -> N
                 "key": reaction,
             }
         },
+        timeout=30,
+    )
+    reaction_event_id = result.get("event_id")
+    if not reaction_event_id:
+        raise RuntimeError("Matrix reaction response has no event_id")
+    return str(reaction_event_id)
+
+
+def _matrix_redact(matrix_env: dict[str, Any], event_id: str) -> None:
+    room_id = quote(matrix_env["room_id"], safe="")
+    redacts = quote(event_id, safe="")
+    txn_id = secrets.token_hex(8)
+    _request_json(
+        MATRIX_HOST_URL,
+        "PUT",
+        f"/_matrix/client/v3/rooms/{room_id}/redact/{redacts}/{txn_id}",
+        token=matrix_env["user_access_token"],
+        json_body={"reason": "Matrix Extended one-shot E2E replay"},
         timeout=30,
     )
 
@@ -286,8 +304,14 @@ def verify_restart() -> None:
     if not event_id:
         raise RuntimeError("reaction test event id is missing")
     _wait_ha_state(state["access_token"], "counter.matrix_reaction", "0", timeout=30)
-    _matrix_react(matrix_env, event_id, "✅")
+    reaction_event_id = _matrix_react(matrix_env, event_id, "✅")
     _wait_ha_state(state["access_token"], "counter.matrix_reaction", "1", timeout=30)
+
+    # Matrix forbids duplicate annotations from one sender while the first
+    # annotation exists. Redact it, then submit the same reaction again so a
+    # second real ReactionEvent reaches Home Assistant and exercises one-shot
+    # consumption instead of being blocked by Synapse first.
+    _matrix_redact(matrix_env, reaction_event_id)
     _matrix_react(matrix_env, event_id, "✅")
     time.sleep(3)
     final_state = _ha_state(state["access_token"], "counter.matrix_reaction")

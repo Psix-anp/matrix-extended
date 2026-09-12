@@ -14,7 +14,11 @@
     "media_source"
   ],
   "requirements": [
-    "matrix-nio[e2e]==0.26.0",
+    "matrix-nio==0.26.0",
+    "atomicwrites~=1.4",
+    "cachetools>=5.3",
+    "peewee~=3.14",
+    "vodozemac>=0.9.0.post2",
     "Pillow==12.3.0"
   ]
 }

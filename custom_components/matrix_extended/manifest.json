@@ -1,0 +1,24 @@
+{
+  "domain": "matrix_extended",
+  "name": "Matrix Extended",
+  "version": "0.4.2",
+  "config_flow": true,
+  "integration_type": "service",
+  "iot_class": "cloud_push",
+  "dependencies": [
+    "notify"
+  ],
+  "after_dependencies": [
+    "camera",
+    "image",
+    "media_source"
+  ],
+  "requirements": [
+    "matrix-nio==0.26.0",
+    "atomicwrites~=1.4",
+    "cachetools>=5.3",
+    "peewee~=3.14",
+    "vodozemac>=0.9.0.post2",
+    "Pillow==12.3.0"
+  ]
+}

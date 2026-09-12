@@ -1,0 +1,27 @@
+services:
+  synapse:
+    image: matrixdotorg/synapse:v1.160.0
+    restart: "no"
+    ports:
+      - "127.0.0.1:8008:8008"
+    environment:
+      SYNAPSE_CONFIG_PATH: /data/homeserver.yaml
+      UID: "${E2E_UID:-991}"
+      GID: "${E2E_GID:-991}"
+    volumes:
+      - ./.ci/synapse-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8008/health || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:2026.9.2
+    restart: "no"
+    ports:
+      - "127.0.0.1:8123:8123"
+    environment:
+      TZ: UTC
+    volumes:
+      - ./.ci/ha-config:/config

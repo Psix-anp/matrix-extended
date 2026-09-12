@@ -81,7 +81,7 @@ jobs:
       - name: Verify Home Assistant observes the Matrix outage
         run: python ci/scripts/ha-reconnect.py wait-disconnected
       - name: Start Synapse again
-        run: docker compose -f compose.test.yml up -d synapse
+        run: docker compose -f compose.test.yml start synapse
       - name: Wait for Matrix Client API after Synapse restart
         run: python ci/scripts/wait-http.py http://127.0.0.1:8008/_matrix/client/versions 90
       - name: Verify inbound listener and encrypted outbound recovery without HA reload

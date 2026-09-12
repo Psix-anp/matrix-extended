@@ -27,3 +27,48 @@ jobs:
         run: python -m compileall -q custom_components/matrix_extended
       - name: Run regression suite
         run: pytest -q
+
+  synapse:
+    name: Real Synapse bootstrap
+    needs: fast
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Generate disposable Synapse config
+        run: ci/scripts/prepare-synapse.sh
+      - name: Start Synapse 1.160.0
+        run: |
+          E2E_UID="$(id -u)" E2E_GID="$(id -g)" docker compose -f compose.test.yml up -d synapse
+      - name: Wait for Matrix Client API
+        run: python ci/scripts/wait-http.py http://127.0.0.1:8008/_matrix/client/versions 90
+      - name: Bootstrap Matrix users and encrypted room
+        run: |
+          MATRIX_REGISTRATION_SHARED_SECRET="$(cat .ci/synapse-shared-secret)" \
+            python ci/scripts/bootstrap-matrix.py
+      - name: Verify bootstrap contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('.ci/matrix-env.json')
+          data = json.loads(p.read_text())
+          assert set(data) == {
+              'homeserver', 'bot_user_id', 'bot_access_token',
+              'user_user_id', 'user_access_token', 'room_id', 'room_alias',
+          }
+          assert data['homeserver'] == 'http://127.0.0.1:8008'
+          assert data['room_id'].startswith('!')
+          assert data['room_alias'] == '#matrix-extended-e2e:matrix.test'
+          assert p.stat().st_mode & 0o777 == 0o600
+          print('Matrix bootstrap contract verified')
+          PY
+      - name: Synapse status on failure
+        if: failure()
+        run: docker compose -f compose.test.yml ps
+      - name: Stop Synapse
+        if: always()
+        run: docker compose -f compose.test.yml down -v --remove-orphans

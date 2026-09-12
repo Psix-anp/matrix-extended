@@ -10,6 +10,12 @@ cp -a "$ROOT/custom_components/matrix_extended" "$CONFIG_DIR/custom_components/m
 cat > "$CONFIG_DIR/configuration.yaml" <<'YAML'
 default_config:
 
+counter:
+  matrix_reaction:
+    name: Matrix reaction executions
+    initial: 0
+    step: 1
+
 logger:
   default: info
   logs:

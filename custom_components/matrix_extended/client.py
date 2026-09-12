@@ -152,11 +152,10 @@ class MatrixClient:
             config=config,
             ssl=verify_ssl,
         )
-        self._client.restore_login(
-            user_id=user_id,
-            device_id=device_id,
-            access_token=access_token,
-        )
+        self._login_user_id = user_id
+        self._login_device_id = device_id
+        self._login_access_token = access_token
+        self._login_restored = False
         self._room_cache: dict[str, str] = {}
         self._require_e2ee = require_e2ee
         self._sync_task: asyncio.Task[Any] | None = None
@@ -215,6 +214,14 @@ class MatrixClient:
 
     async def async_connect(self, default_room: str | None = None) -> bool | None:
         """Verify login, load room state, and initialize E2EE keys."""
+        if not self._login_restored:
+            await asyncio.to_thread(
+                self._client.restore_login,
+                user_id=self._login_user_id,
+                device_id=self._login_device_id,
+                access_token=self._login_access_token,
+            )
+            self._login_restored = True
         try:
             response = await self._client.whoami()
         except Exception as err:

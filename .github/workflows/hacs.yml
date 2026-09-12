@@ -12,11 +12,11 @@ permissions:
 
 jobs:
   validate-hacs:
+    if: ${{ github.event.repository.private == false }}
     runs-on: ubuntu-latest
     steps:
       - name: HACS validation
         uses: hacs/action@main
         with:
           category: integration
-          ignore: description topics
           comment: false

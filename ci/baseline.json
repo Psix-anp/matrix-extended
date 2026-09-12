@@ -1,0 +1,11 @@
+{
+  "version": "0.4.1",
+  "source_archive": "matrix_extended-v0.4.1-source.zip",
+  "source_archive_sha256": "3de0b517ad36b590fc1f4a5110d3b109adc33a8dbe73a543eb8cb4c80305defc",
+  "runtime_git_blobs": {
+    "custom_components/matrix_extended/client.py": "eb1815a1563779f5d203ce455c6aa5b41e2b323d",
+    "custom_components/matrix_extended/__init__.py": "59674b621c7c5b6e652f79e3ae6c05812e091dcf"
+  },
+  "baseline_tests": 129,
+  "validator_tests": 5
+}

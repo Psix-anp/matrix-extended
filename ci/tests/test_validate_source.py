@@ -63,7 +63,7 @@ def test_wrong_manifest_version_is_rejected(tmp_path: Path) -> None:
     manifest["version"] = "9.9.9"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     errors = mod.validate_repository(repo)
-    assert any("manifest version must be 0.4.1" in error for error in errors)
+    assert any("manifest version must be 0.4.2" in error for error in errors)
 
 
 def test_invalid_translation_json_is_rejected(tmp_path: Path) -> None:

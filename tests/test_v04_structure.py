@@ -9,7 +9,7 @@ COMP = ROOT / "custom_components" / "matrix_extended"
 
 def test_manifest_bumped_to_v04() -> None:
     manifest = json.loads((COMP / "manifest.json").read_text())
-    assert manifest["version"] == "0.4.1"
+    assert manifest["version"] == "0.4.2"
 
 
 def test_v04_adds_room_select_and_room_notify_support() -> None:

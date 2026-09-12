@@ -1,0 +1,163 @@
+send:
+  name: Send Matrix message
+  description: Send text and rich media to one or more Matrix rooms. Encrypted rooms use Matrix E2EE, including encrypted media uploads.
+  fields:
+    account:
+      name: Account
+      description: Config entry ID. Omit when only one Matrix Extended account is loaded.
+      selector:
+        text:
+    target:
+      name: Rooms
+      description: Matrix room aliases or IDs. Omit to use the configured default room.
+      selector:
+        text:
+          multiple: true
+    route:
+      name: Route
+      description: Named routing profile configured in Matrix Extended options. Cannot be used together with Rooms.
+      selector:
+        text:
+    notification_key:
+      name: Notification key
+      description: Stable key for an updateable text notification. The first send creates a message per room; later sends with the same key edit the original message.
+      selector:
+        text:
+    message:
+      name: Message
+      selector:
+        text:
+          multiline: true
+    format:
+      name: Format
+      default: text
+      selector:
+        select:
+          options: [text, html]
+    thread_id:
+      name: Thread ID
+      description: Optional Matrix event ID used as m.thread parent.
+      selector:
+        text:
+    media:
+      name: Media
+      description: List of media objects using entity_id, path, url, or media_source.
+      selector:
+        object:
+    actions:
+      name: Reaction actions
+      description: One-shot Home Assistant service calls attached to reactions on the text message. Each item needs reaction and service; target/data are optional.
+      selector:
+        object:
+
+reply:
+  name: Reply to Matrix event
+  description: Send a rich reply to an existing Matrix event.
+  fields:
+    account:
+      name: Account
+      selector:
+        text:
+    room:
+      name: Room
+      description: Room alias or ID. Omit to use the default room.
+      selector:
+        text:
+    event_id:
+      name: Event ID
+      description: Matrix event being replied to.
+      required: true
+      selector:
+        text:
+    message:
+      name: Message
+      required: true
+      selector:
+        text:
+          multiline: true
+    format:
+      name: Format
+      default: text
+      selector:
+        select:
+          options: [text, html]
+    thread_id:
+      name: Thread ID
+      selector:
+        text:
+
+react:
+  name: React to Matrix event
+  description: Add a Matrix emoji reaction. matrix-nio sends m.reaction unencrypted even in E2EE rooms; the relation and emoji are visible to the homeserver.
+  fields:
+    account:
+      name: Account
+      selector:
+        text:
+    room:
+      name: Room
+      selector:
+        text:
+    event_id:
+      name: Event ID
+      required: true
+      selector:
+        text:
+    reaction:
+      name: Reaction
+      description: Emoji or reaction key.
+      required: true
+      selector:
+        text:
+
+edit:
+  name: Edit Matrix message
+  description: Replace the content of a previously sent text message using m.replace.
+  fields:
+    account:
+      name: Account
+      selector:
+        text:
+    room:
+      name: Room
+      selector:
+        text:
+    event_id:
+      name: Event ID
+      required: true
+      selector:
+        text:
+    message:
+      name: New message
+      required: true
+      selector:
+        text:
+          multiline: true
+    format:
+      name: Format
+      default: text
+      selector:
+        select:
+          options: [text, html]
+
+redact:
+  name: Redact Matrix event
+  description: Redact an event from a Matrix room.
+  fields:
+    account:
+      name: Account
+      selector:
+        text:
+    room:
+      name: Room
+      selector:
+        text:
+    event_id:
+      name: Event ID
+      required: true
+      selector:
+        text:
+    reason:
+      name: Reason
+      selector:
+        text:

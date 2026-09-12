@@ -1,0 +1,86 @@
+{
+  "title": "Matrix Extended",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Подключение Matrix",
+        "description": "Пароль используется один раз для получения access token Matrix и не сохраняется. Сквозное шифрование рекомендуется и включено по умолчанию.",
+        "data": {
+          "homeserver": "URL homeserver",
+          "user_id": "Matrix ID пользователя",
+          "password": "Пароль",
+          "default_room": "Комната по умолчанию",
+          "verify_ssl": "Проверять TLS-сертификат",
+          "require_e2ee": "Требовать сквозное шифрование для комнат назначения",
+          "incoming_enabled": "Принимать входящие сообщения и реакции",
+          "allowed_users": "Разрешённые Matrix пользователи",
+          "allowed_rooms": "Разрешённые Matrix комнаты",
+          "download_incoming_media": "Скачивать и расшифровывать входящие медиа"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Не удалось подключиться к Matrix homeserver",
+      "invalid_auth": "Неверные данные авторизации Matrix",
+      "invalid_room": "Некорректный alias или ID комнаты",
+      "invalid_routes": "Некорректная структура маршрутов уведомлений"
+    },
+    "abort": {
+      "already_configured": "Этот Matrix-аккаунт уже настроен"
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connected": {
+        "name": "Соединение"
+      }
+    },
+    "sensor": {
+      "user_id": {
+        "name": "ID пользователя"
+      },
+      "device_id": {
+        "name": "ID устройства"
+      },
+      "default_room": {
+        "name": "Комната по умолчанию"
+      },
+      "default_room_encryption": {
+        "name": "Шифрование комнаты по умолчанию"
+      },
+      "last_send": {
+        "name": "Последняя успешная отправка"
+      },
+      "last_error": {
+        "name": "Последняя ошибка"
+      },
+      "last_receive": {
+        "name": "Последнее входящее событие"
+      }
+    },
+    "select": {
+      "default_room": {
+        "name": "Комната по умолчанию"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Настройки Matrix Extended",
+        "description": "Входящие события обрабатываются только при совпадении пользователя и комнаты с allowlist. Маршруты задаются объектом, например {\"security\": [\"!room:server\"]}.",
+        "data": {
+          "require_e2ee": "Требовать E2EE",
+          "incoming_enabled": "Принимать входящие события",
+          "allowed_users": "Разрешённые пользователи",
+          "allowed_rooms": "Разрешённые комнаты",
+          "download_incoming_media": "Скачивать входящие медиа",
+          "routing_profiles": "Маршруты уведомлений (имя → список комнат)"
+        }
+      }
+    },
+    "error": {
+      "invalid_routes": "Некорректная структура маршрутов уведомлений"
+    }
+  }
+}

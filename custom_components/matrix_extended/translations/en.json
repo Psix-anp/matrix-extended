@@ -1,0 +1,86 @@
+{
+  "title": "Matrix Extended",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Matrix",
+        "description": "The password is used only once to obtain a Matrix access token and is not stored. End-to-end encryption is recommended and enabled by default.",
+        "data": {
+          "homeserver": "Homeserver URL",
+          "user_id": "Matrix user ID",
+          "password": "Password",
+          "default_room": "Default room",
+          "verify_ssl": "Verify TLS certificate",
+          "require_e2ee": "Require end-to-end encryption for target rooms",
+          "incoming_enabled": "Enable incoming messages and reactions",
+          "allowed_users": "Allowed Matrix users",
+          "allowed_rooms": "Allowed Matrix rooms",
+          "download_incoming_media": "Download and decrypt incoming media"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the Matrix homeserver",
+      "invalid_auth": "Invalid Matrix credentials",
+      "invalid_room": "The default room alias or ID is invalid",
+      "invalid_routes": "Invalid notification routing profile structure"
+    },
+    "abort": {
+      "already_configured": "This Matrix account is already configured"
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connected": {
+        "name": "Connection"
+      }
+    },
+    "sensor": {
+      "user_id": {
+        "name": "User ID"
+      },
+      "device_id": {
+        "name": "Device ID"
+      },
+      "default_room": {
+        "name": "Default room"
+      },
+      "default_room_encryption": {
+        "name": "Default room encryption"
+      },
+      "last_send": {
+        "name": "Last successful send"
+      },
+      "last_error": {
+        "name": "Last error"
+      },
+      "last_receive": {
+        "name": "Last incoming event"
+      }
+    },
+    "select": {
+      "default_room": {
+        "name": "Default room"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Matrix Extended options",
+        "description": "Inbound events require both user and room allowlists. Routes are an object such as {\"security\": [\"!room:server\"]}.",
+        "data": {
+          "require_e2ee": "Require E2EE",
+          "incoming_enabled": "Enable incoming events",
+          "allowed_users": "Allowed users",
+          "allowed_rooms": "Allowed rooms",
+          "download_incoming_media": "Download incoming media",
+          "routing_profiles": "Notification routes (name → room list)"
+        }
+      }
+    },
+    "error": {
+      "invalid_routes": "Invalid notification routing profile structure"
+    }
+  }
+}

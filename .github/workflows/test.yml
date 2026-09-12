@@ -1,0 +1,30 @@
+name: Matrix Extended tests
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    name: Fast regression gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-test.txt
+      - name: Validate source tree
+        run: python ci/scripts/validate-source.py
+      - name: Compile integration
+        run: python -m compileall -q custom_components/matrix_extended
+      - name: Run regression suite
+        run: pytest -q

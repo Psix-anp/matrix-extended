@@ -91,10 +91,15 @@ def test_media_requires_exactly_one_plain_or_encrypted_source(encrypted_file: di
         )
 
 
-def test_manifest_installs_matrix_nio_e2e_extra() -> None:
+def test_manifest_installs_matrix_nio_e2e_dependencies_explicitly() -> None:
     manifest = json.loads(MANIFEST_PATH.read_text())
     assert manifest["version"] == "0.4.1"
-    assert "matrix-nio[e2e]==0.26.0" in manifest["requirements"]
+    requirements = set(manifest["requirements"])
+    assert "matrix-nio==0.26.0" in requirements
+    assert "atomicwrites~=1.4" in requirements
+    assert "cachetools>=5.3" in requirements
+    assert "peewee~=3.14" in requirements
+    assert "vodozemac>=0.9.0.post2" in requirements
 
 
 def test_runtime_status_tracks_success_error_and_encryption() -> None:

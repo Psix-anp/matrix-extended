@@ -11,7 +11,7 @@ import sys
 import time
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 HA_URL = os.environ.get("HA_URL", "http://127.0.0.1:8123").rstrip("/")
@@ -173,6 +173,45 @@ def _matrix_sync(token: str, *, since: str | None = None, timeout_ms: int = 0) -
     )
 
 
+def _matrix_react(matrix_env: dict[str, Any], event_id: str, reaction: str) -> None:
+    room_id = quote(matrix_env["room_id"], safe="")
+    txn_id = secrets.token_hex(8)
+    _request_json(
+        MATRIX_HOST_URL,
+        "PUT",
+        f"/_matrix/client/v3/rooms/{room_id}/send/m.reaction/{txn_id}",
+        token=matrix_env["user_access_token"],
+        json_body={
+            "m.relates_to": {
+                "rel_type": "m.annotation",
+                "event_id": event_id,
+                "key": reaction,
+            }
+        },
+        timeout=30,
+    )
+
+
+def _ha_state(token: str, entity_id: str) -> str:
+    state = _request_json(HA_URL, "GET", f"/api/states/{entity_id}", token=token)
+    return str(state.get("state"))
+
+
+def _wait_ha_state(token: str, entity_id: str, expected: str, *, timeout: float = 30) -> None:
+    deadline = time.monotonic() + timeout
+    last_state = "missing"
+    while time.monotonic() < deadline:
+        try:
+            last_state = _ha_state(token, entity_id)
+        except RuntimeError:
+            time.sleep(0.5)
+            continue
+        if last_state == expected:
+            return
+        time.sleep(0.5)
+    raise TimeoutError(f"{entity_id} did not reach {expected}; last_state={last_state}")
+
+
 def setup_send_reload() -> None:
     matrix_env = json.loads(Path(".ci/matrix-env.json").read_text())
     matrix_passwords = json.loads(Path(".ci/matrix-passwords.json").read_text())
@@ -190,7 +229,17 @@ def setup_send_reload() -> None:
         "POST",
         "/api/services/matrix_extended/send",
         token=ha_token,
-        json_body={"target": [matrix_env["room_id"]], "message": marker},
+        json_body={
+            "target": [matrix_env["room_id"]],
+            "message": marker,
+            "actions": [
+                {
+                    "reaction": "✅",
+                    "service": "counter.increment",
+                    "target": {"entity_id": "counter.matrix_reaction"},
+                }
+            ],
+        },
         timeout=60,
     )
     after = _matrix_sync(
@@ -228,10 +277,27 @@ def setup_send_reload() -> None:
 
 def verify_restart() -> None:
     state = json.loads(Path(".ci/ha-env.json").read_text())
+    matrix_env = json.loads(Path(".ci/matrix-env.json").read_text())
     entry = _wait_entry_loaded(state["access_token"], timeout=120)
     if entry.get("entry_id") != state["entry_id"]:
         raise RuntimeError("Matrix Extended entry changed across HA restart")
-    print(f"Home Assistant restart verified: entry={state['entry_id']} state=loaded")
+
+    event_id = state.get("matrix_event_id")
+    if not event_id:
+        raise RuntimeError("reaction test event id is missing")
+    _wait_ha_state(state["access_token"], "counter.matrix_reaction", "0", timeout=30)
+    _matrix_react(matrix_env, event_id, "✅")
+    _wait_ha_state(state["access_token"], "counter.matrix_reaction", "1", timeout=30)
+    _matrix_react(matrix_env, event_id, "✅")
+    time.sleep(3)
+    final_state = _ha_state(state["access_token"], "counter.matrix_reaction")
+    if final_state != "1":
+        raise RuntimeError(f"reaction action was not one-shot after restart; counter={final_state}")
+
+    print(
+        f"Home Assistant restart verified: entry={state['entry_id']} "
+        "persistent_reaction_action=one-shot"
+    )
 
 
 def main() -> int:

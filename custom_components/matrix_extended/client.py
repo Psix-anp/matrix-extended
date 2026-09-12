@@ -142,6 +142,7 @@ class MatrixClient:
             encryption_enabled=True,
             store_sync_tokens=True,
             pickle_key=store_key,
+            max_timeouts=0,
         )
         self._client = AsyncClient(
             homeserver,

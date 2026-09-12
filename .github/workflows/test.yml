@@ -92,6 +92,10 @@ jobs:
         run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
       - name: Verify config entry after Home Assistant restart
         run: python ci/scripts/ha-e2e.py verify-restart
+      - name: Verify Matrix Extended did not block or leak background tasks
+        run: |
+          docker compose -f compose.test.yml logs --no-color homeassistant > .ci/home-assistant.log
+          python ci/scripts/assert-clean-ha-log.py .ci/home-assistant.log
       - name: Stack diagnostics on failure
         if: failure()
         run: |

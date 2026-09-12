@@ -1,0 +1,36 @@
+name: Patch v0.5 receiver test double
+
+on:
+  push:
+    branches:
+      - feature/v050-persistent-reaction-actions
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/v050-persistent-reaction-actions
+      - name: Update exact FakeRegistry contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/test_receiver_behavior.py')
+          text = path.read_text()
+          old = '''class FakeRegistry:\n    def __init__(self, action=None):\n        self.action = action\n        self.calls = []\n\n    def consume(self, **kwargs):\n        self.calls.append(kwargs)\n        return self.action\n'''
+          new = '''class FakeRegistry:\n    def __init__(self, action=None):\n        self.action = action\n        self.calls = []\n        self.saves = 0\n\n    def consume(self, **kwargs):\n        self.calls.append(kwargs)\n        return self.action\n\n    async def async_save(self):\n        self.saves += 1\n'''
+          assert text.count(old) == 1, 'FakeRegistry block did not match exactly once'
+          path.write_text(text.replace(old, new, 1))
+          PY
+          rm .github/workflows/patch-v050-test-double.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tests/test_receiver_behavior.py .github/workflows/patch-v050-test-double.yml
+          git diff --cached --check
+          git commit -m 'test: update receiver registry double for persistence'
+          git push origin HEAD:feature/v050-persistent-reaction-actions

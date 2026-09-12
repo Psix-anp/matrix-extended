@@ -132,3 +132,92 @@ def test_consuming_one_reaction_preserves_other_action() -> None:
     second = registry.consume(room_id="!room:example", event_id="$message", reaction="🔕")
     assert second is not None
     assert second.service == "input_boolean.turn_off"
+
+
+def test_registry_round_trips_json_safe_state_across_restart() -> None:
+    mod = load()
+    registry = mod.ReactionActionRegistry(max_entries=4)
+    registry.register(
+        room_id="!room:example",
+        event_id="$message",
+        actions=[
+            {
+                "reaction": "💡",
+                "service": "light.turn_on",
+                "target": {"entity_id": "light.gate"},
+                "data": {"brightness_pct": 50},
+            },
+            {
+                "reaction": "🔕",
+                "service": "input_boolean.turn_off",
+            },
+        ],
+    )
+
+    stored = registry.dump()
+    restored = mod.ReactionActionRegistry(stored, max_entries=4)
+
+    action = restored.consume(
+        room_id="!room:example",
+        event_id="$message",
+        reaction="💡",
+    )
+    assert action is not None
+    assert action.service == "light.turn_on"
+    assert action.target == {"entity_id": "light.gate"}
+    assert action.data == {"brightness_pct": 50}
+    assert restored.consume(
+        room_id="!room:example",
+        event_id="$message",
+        reaction="💡",
+    ) is None
+
+
+def test_dump_reflects_consumed_action_without_losing_other_reactions() -> None:
+    mod = load()
+    registry = mod.ReactionActionRegistry()
+    registry.register(
+        room_id="!room:example",
+        event_id="$message",
+        actions=[
+            {"reaction": "💡", "service": "light.turn_on"},
+            {"reaction": "🔕", "service": "input_boolean.turn_off"},
+        ],
+    )
+
+    registry.consume(room_id="!room:example", event_id="$message", reaction="💡")
+    stored = registry.dump()
+    restored = mod.ReactionActionRegistry(stored)
+
+    assert restored.consume(room_id="!room:example", event_id="$message", reaction="💡") is None
+    second = restored.consume(room_id="!room:example", event_id="$message", reaction="🔕")
+    assert second is not None
+    assert second.service == "input_boolean.turn_off"
+
+
+def test_restore_ignores_invalid_persisted_actions() -> None:
+    mod = load()
+    registry = mod.ReactionActionRegistry(
+        {
+            "!room:example": {
+                "$message": {
+                    "✅": {"service": "light.turn_on", "target": {}, "data": {}},
+                    "bad": {"service": "not-a-service"},
+                }
+            },
+            "": {"$ignored": {"✅": {"service": "light.turn_on"}}},
+        }
+    )
+
+    action = registry.consume(
+        room_id="!room:example",
+        event_id="$message",
+        reaction="✅",
+    )
+    assert action is not None
+    assert action.service == "light.turn_on"
+    assert registry.consume(
+        room_id="!room:example",
+        event_id="$message",
+        reaction="bad",
+    ) is None

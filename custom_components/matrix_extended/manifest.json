@@ -2,6 +2,11 @@
   "domain": "matrix_extended",
   "name": "Matrix Extended",
   "version": "0.4.2",
+  "documentation": "https://github.com/Psix-anp/matrix-extended",
+  "issue_tracker": "https://github.com/Psix-anp/matrix-extended/issues",
+  "codeowners": [
+    "@Psix-anp"
+  ],
   "config_flow": true,
   "integration_type": "service",
   "iot_class": "cloud_push",

@@ -8,7 +8,7 @@ CLIENT_PATH = ROOT / "custom_components" / "matrix_extended" / "client.py"
 
 
 def test_matrix_nio_timeout_retries_are_bounded() -> None:
-    """Let listener transport failures escape nio so runtime status can update."""
+    """Override nio's unlimited timeout retries so HA can expose disconnects."""
     tree = ast.parse(CLIENT_PATH.read_text())
     configs = [
         node

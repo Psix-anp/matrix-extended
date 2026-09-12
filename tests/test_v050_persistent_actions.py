@@ -62,3 +62,4 @@ async def test_registry_store_tracks_registration_and_one_shot_consumption() -> 
     ) is not None
     await registry.async_save()
     assert store.saved[-1] == {}
+    assert len(store.saved) == 2

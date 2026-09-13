@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 _DELIVERY_STATUSES = {"sent", "queued", "failed", "dropped"}
-_DELIVERY_KINDS = {"text", "media"}
+_DELIVERY_KINDS = {"text", "media", "location"}
 
 
 def delivery_event_record(
@@ -18,10 +18,10 @@ def delivery_event_record(
 ) -> dict[str, Any]:
     """Build a JSON-safe record describing one delivered Matrix event."""
     if kind not in _DELIVERY_KINDS:
-        raise ValueError("delivery event kind must be text or media")
+        raise ValueError("delivery event kind must be text, media, or location")
     if not room_id or not event_id:
         raise ValueError("delivery event requires room_id and event_id")
-    if kind == "text" and media_index is not None:
+    if kind != "media" and media_index is not None:
         raise ValueError("media_index is only valid for media delivery events")
     if kind == "media":
         if not isinstance(media_index, int) or media_index < 0:

@@ -90,6 +90,10 @@ jobs:
         run: python ci/scripts/ha-e2e.py setup-send-reload
       - name: Verify Element decrypts the HA E2EE message
         run: python ci/scripts/element-e2e.py verify-message
+      - name: Send encrypted location and native voice through Home Assistant
+        run: python ci/scripts/ha-e2e.py send-rich
+      - name: Verify Element renders location and native voice
+        run: python ci/scripts/element-e2e.py verify-rich
       - name: Arm persistent outbox verification
         run: python ci/scripts/ha-reconnect.py arm-outbox
       - name: Stop Synapse while Home Assistant stays running

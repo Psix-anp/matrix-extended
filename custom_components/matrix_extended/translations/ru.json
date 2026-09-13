@@ -44,7 +44,7 @@
     "step": {
       "init": {
         "title": "Настройки Matrix Extended",
-        "description": "Входящие события обрабатываются только при совпадении пользователя и комнаты с allowlist. Маршруты задаются объектом, например {\"security\": [\"!room:server\"]}.",
+        "description": "Входящие события обрабатываются только при совпадении пользователя и комнаты с allowlist. Автоматический Voice Assist включается явно и обрабатывает только нативные голосовые Matrix. Маршруты задаются объектом, например {\"security\": [\"!room:server\"]}.",
         "data": {
           "require_e2ee": "Требовать E2EE",
           "incoming_enabled": "Принимать входящие события",
@@ -53,7 +53,15 @@
           "download_incoming_media": "Скачивать входящие медиа",
           "incoming_media_retention_days": "Хранить входящие медиа, дней (0 — не удалять по возрасту)",
           "incoming_media_max_mb": "Лимит хранилища входящих медиа, МиБ",
-          "routing_profiles": "Маршруты уведомлений (имя → список комнат)"
+          "routing_profiles": "Маршруты уведомлений (имя → список комнат)",
+          "voice_assist_enabled": "Автоматически отправлять нативные голосовые Matrix в Assist",
+          "voice_assist_stt_entity": "STT-сущность для Voice Assist",
+          "voice_assist_language": "Язык Voice Assist",
+          "voice_assist_conversation_agent": "Conversation agent для Voice Assist",
+          "voice_assist_reply_mode": "Режим ответа Voice Assist",
+          "voice_assist_tts_entity": "TTS-сущность для Voice Assist",
+          "voice_assist_allowed_users": "Разрешённые пользователи Voice Assist (дополнительное ограничение)",
+          "voice_assist_allowed_rooms": "Разрешённые комнаты Voice Assist (дополнительное ограничение)"
         }
       }
     },

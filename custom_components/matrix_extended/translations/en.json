@@ -46,7 +46,7 @@
     "step": {
       "init": {
         "title": "Matrix Extended options",
-        "description": "Inbound events require both user and room allowlists. Routes are an object such as {\"security\": [\"!room:server\"]}.",
+        "description": "Inbound events require both user and room allowlists. Automatic Voice Assist is opt-in and only handles native Matrix voice messages. Routes are an object such as {\"security\": [\"!room:server\"]}.",
         "data": {
           "require_e2ee": "Require E2EE",
           "incoming_enabled": "Enable incoming events",
@@ -55,7 +55,15 @@
           "download_incoming_media": "Download incoming media",
           "incoming_media_retention_days": "Incoming media retention (days, 0 disables age cleanup)",
           "incoming_media_max_mb": "Incoming media storage limit (MiB)",
-          "routing_profiles": "Notification routes (name → room list)"
+          "routing_profiles": "Notification routes (name → room list)",
+          "voice_assist_enabled": "Automatically send native Matrix voice messages to Assist",
+          "voice_assist_stt_entity": "Voice Assist STT entity",
+          "voice_assist_language": "Voice Assist language",
+          "voice_assist_conversation_agent": "Voice Assist conversation agent",
+          "voice_assist_reply_mode": "Voice Assist reply mode",
+          "voice_assist_tts_entity": "Voice Assist TTS entity",
+          "voice_assist_allowed_users": "Voice Assist allowed users (additional restriction)",
+          "voice_assist_allowed_rooms": "Voice Assist allowed rooms (additional restriction)"
         }
       }
     },

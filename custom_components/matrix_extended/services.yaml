@@ -60,7 +60,7 @@ send:
         text:
     media:
       name: Media
-      description: List of media objects using entity_id, path, url, or media_source.
+      description: List of media objects using entity_id, path, url, or media_source. For audio, set voice: true to send a native Matrix voice message marker.
       selector:
         object:
     actions:
@@ -68,6 +68,60 @@ send:
       description: Explicit Home Assistant service calls attached to reactions on this text event. Each object needs reaction and service; target/data are optional. v0.5 also supports expires_in (seconds), max_uses, and allowed_users.
       selector:
         object:
+
+send_location:
+  name: Send Matrix location
+  description: Send an m.location message from explicit coordinates or from a Home Assistant entity exposing latitude and longitude attributes. Supports E2EE rooms, routes, threads, and optional response data.
+  fields:
+    account:
+      name: Account
+      description: Config entry ID. Omit when only one Matrix Extended account is loaded.
+      selector:
+        text:
+    target:
+      name: Rooms
+      description: Matrix room aliases or IDs. Omit to use the configured default room.
+      selector:
+        text:
+          multiple: true
+    route:
+      name: Route
+      description: Named routing profile configured in Matrix Extended options. Cannot be used together with Rooms.
+      selector:
+        text:
+    entity_id:
+      name: Location entity
+      description: Optional person/device_tracker/other HA entity with latitude and longitude attributes. Use this or explicit coordinates.
+      selector:
+        entity:
+    latitude:
+      name: Latitude
+      description: Explicit latitude from -90 to 90. Use together with longitude when entity_id is omitted.
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+          mode: box
+    longitude:
+      name: Longitude
+      description: Explicit longitude from -180 to 180. Use together with latitude when entity_id is omitted.
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+          mode: box
+    description:
+      name: Description
+      description: Location label shown in Matrix. Defaults to the entity friendly name or Location.
+      selector:
+        text:
+    thread_id:
+      name: Thread ID
+      description: Optional Matrix event ID used as m.thread parent.
+      selector:
+        text:
 
 reply:
   name: Reply to Matrix event

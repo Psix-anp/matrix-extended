@@ -12,7 +12,9 @@ MessageType = Literal["text", "notice", "emote"]
 SOURCE_KEYS = ("path", "url", "entity_id", "media_source")
 _MESSAGE_TYPES = {"text", "notice", "emote"}
 _SAFE_LINK_RE = re.compile(r"\[([^\]\n]+)\]\((https?://[^\s)]+)\)")
-_ANY_LINK_RE = re.compile(r"\[([^\]\n]+)\]\(([^\s)]+(?:\([^)]*\))?)\)")
+_UNSAFE_LINK_RE = re.compile(
+    r"\[([^\]\n]+)\]\((?!https?://)(?:[^()\s]|\([^()]*\))*\)"
+)
 _CODE_RE = re.compile(r"`([^`\n]+)`")
 _BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
 _ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
@@ -64,7 +66,7 @@ def render_markdown(message: str) -> str:
 
     rendered = _CODE_RE.sub(stash_code, rendered)
     rendered = _SAFE_LINK_RE.sub(r'<a href="\2">\1</a>', rendered)
-    rendered = _ANY_LINK_RE.sub(r"\1", rendered)
+    rendered = _UNSAFE_LINK_RE.sub(r"[\1]", rendered)
     rendered = _BOLD_RE.sub(r"<strong>\1</strong>", rendered)
     rendered = _ITALIC_RE.sub(r"<em>\1</em>", rendered)
     rendered = rendered.replace("\n", "<br>")

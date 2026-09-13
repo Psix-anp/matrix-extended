@@ -7,8 +7,8 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
-import time
 from urllib.parse import quote
 
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
@@ -16,9 +16,6 @@ from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sy
 ELEMENT_URL = os.environ.get("ELEMENT_URL", "http://127.0.0.1:8080").rstrip("/")
 PROFILE_DIR = Path(os.environ.get("ELEMENT_PROFILE_DIR", ".ci/element-profile"))
 SCREENSHOT_DIR = Path(os.environ.get("ELEMENT_SCREENSHOT_DIR", ".ci/screenshots"))
-PROFILE_REOPEN_SETTLE_SECONDS = float(
-    os.environ.get("ELEMENT_PROFILE_REOPEN_SETTLE_SECONDS", "2.0")
-)
 ROOM_NAME = "Matrix Extended E2E"
 MESSAGE_RE = re.compile(r"matrix-extended-ha-e2e-[0-9a-f]+")
 LOCATION_TEXT = "Matrix Extended E2E Location"
@@ -103,17 +100,17 @@ def _screenshot(page: Page, name: str) -> None:
     page.screenshot(path=str(SCREENSHOT_DIR / name), full_page=False)
 
 
+def _send_rich_from_ha() -> None:
+    subprocess.run(
+        [sys.executable, "ci/scripts/ha-e2e.py", "send-rich"],
+        check=True,
+    )
+
+
 def run(mode: str) -> None:
     matrix_env, passwords = _state()
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-
-    # The previous Playwright process can exit before Chromium/Element has fully
-    # released and flushed the persistent IndexedDB crypto/profile state. A very
-    # fast reopen then loads Element without restoring the authenticated client,
-    # so no Matrix /sync starts even though the page itself is healthy.
-    if mode != "login":
-        time.sleep(PROFILE_REOPEN_SETTLE_SECONDS)
 
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
@@ -135,11 +132,17 @@ def run(mode: str) -> None:
             message = _message(page)
             message.wait_for(state="visible", timeout=60000)
             message.scroll_into_view_if_needed()
-            if mode == "verify-message":
+
+            if mode == "verify-message-rich":
                 _screenshot(page, "02-element-decrypted-ha-message.png")
                 print("Element decrypted the Home Assistant E2EE message")
-                return
-            if mode == "verify-rich":
+
+                # Keep this authenticated Element/crypto session alive while HA sends
+                # the rich events. Reopening the same persistent browser profile a
+                # third time proved unreliable in CI even though Matrix delivery was
+                # already successful.
+                _send_rich_from_ha()
+
                 location = page.get_by_text(LOCATION_TEXT, exact=True).last
                 location.wait_for(state="visible", timeout=60000)
                 location.scroll_into_view_if_needed()
@@ -153,11 +156,7 @@ def run(mode: str) -> None:
                     print("Element rendered native voice with the E2E caption")
                 print("Element rendered encrypted Matrix location and native voice")
                 return
-            if mode == "final":
-                page.wait_for_timeout(1500)
-                _screenshot(page, "04-element-final-reaction-state.png")
-                print("Element final room state captured")
-                return
+
             raise ValueError(f"unknown mode: {mode}")
         except Exception:
             _screenshot(page, f"failure-{mode}.png")
@@ -167,10 +166,10 @@ def run(mode: str) -> None:
 
 
 def main() -> int:
-    modes = {"login", "verify-message", "verify-rich", "final"}
+    modes = {"login", "verify-message-rich"}
     if len(sys.argv) != 2 or sys.argv[1] not in modes:
         print(
-            "usage: element-e2e.py {login|verify-message|verify-rich|final}",
+            "usage: element-e2e.py {login|verify-message-rich}",
             file=sys.stderr,
         )
         return 2

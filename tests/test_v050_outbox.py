@@ -51,6 +51,28 @@ def test_outbox_round_trips_json_state_and_prunes_expired_items() -> None:
     }
 
 
+def test_outbox_restore_ignores_invalid_and_duplicate_records() -> None:
+    mod = load()
+    outbox = mod.PersistentOutbox(
+        {
+            "items": [
+                {"id": "keep", "created_at": 90, "payload": {"message": "first"}},
+                {"id": "keep", "created_at": 91, "payload": {"message": "duplicate"}},
+                {"id": "", "created_at": 92, "payload": {"message": "empty id"}},
+                {"id": "bad-time", "created_at": "never", "payload": {"message": "bad"}},
+                {"id": "bad-payload", "created_at": 93, "payload": ["not", "object"]},
+            ]
+        },
+        ttl_seconds=100,
+        now=lambda: 100.0,
+    )
+
+    pending = outbox.pending()
+    assert len(pending) == 1
+    assert pending[0].delivery_id == "keep"
+    assert pending[0].payload == {"message": "first"}
+
+
 @pytest.mark.asyncio
 async def test_outbox_is_bounded_deduplicated_and_persisted() -> None:
     mod = load()
@@ -63,7 +85,9 @@ async def test_outbox_is_bounded_deduplicated_and_persisted() -> None:
     )
 
     await outbox.async_enqueue({"message": "one"}, delivery_id="one")
+    saved_after_first = len(store.saved)
     await outbox.async_enqueue({"message": "one-duplicate"}, delivery_id="one")
+    assert len(store.saved) == saved_after_first
     await outbox.async_enqueue({"message": "two"}, delivery_id="two")
     await outbox.async_enqueue({"message": "three"}, delivery_id="three")
 

@@ -68,8 +68,8 @@ def wait_matrix_entry_loaded(token: str, timeout: float = 90) -> dict[str, Any]:
     raise TimeoutError(f"Matrix Extended entry did not load; last_state={last}")
 
 
-def _finish_onboarding(token: str) -> None:
-    """Complete the authenticated onboarding steps so frontend routes are usable."""
+def finish_onboarding(token: str) -> None:
+    """Complete authenticated onboarding so normal frontend routes are available."""
     request_json("POST", "/api/onboarding/core_config", token=token, json_body={})
     request_json("POST", "/api/onboarding/analytics", token=token, json_body={})
     request_json(
@@ -111,7 +111,7 @@ def setup_fixture() -> None:
         },
     )
     token = token_data["access_token"]
-    _finish_onboarding(token)
+    finish_onboarding(token)
 
     flow = request_json(
         "POST",
@@ -147,7 +147,6 @@ def setup_fixture() -> None:
             {
                 "username": username,
                 "password": password,
-                "access_token": token,
                 "entry_id": entry["entry_id"],
             },
             indent=2,
@@ -158,7 +157,7 @@ def setup_fixture() -> None:
     print(f"Documentation fixture ready: entry={entry['entry_id']}")
 
 
-def _login(page: Any, username: str, password: str) -> None:
+def login(page: Any, username: str, password: str) -> None:
     page.goto(f"{HA_URL}/?storeToken=true", wait_until="domcontentloaded")
     page.wait_for_timeout(1500)
     if "/auth/" not in page.url:
@@ -181,20 +180,24 @@ def _login(page: Any, username: str, password: str) -> None:
     page.wait_for_timeout(1500)
 
 
-def _shot(page: Any, name: str, *, full_page: bool = False) -> None:
+def shot(page: Any, name: str) -> None:
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    page.screenshot(path=str(IMAGE_DIR / name), full_page=full_page)
+    page.screenshot(path=str(IMAGE_DIR / name), full_page=False)
     print(f"captured {name}: {page.url}")
 
 
-def _fill_first_search(page: Any, text: str) -> bool:
+def fill_visible_search(page: Any, text: str) -> bool:
+    """Fill the first visible search field; HA keeps hidden search inputs in DOM."""
     candidates = [
         page.get_by_placeholder(re.compile("search|поиск", re.I)),
         page.locator('input[type="search"]'),
     ]
     for candidate in candidates:
-        if candidate.count():
-            candidate.first.fill(text)
+        for index in range(candidate.count()):
+            field = candidate.nth(index)
+            if not field.is_visible() or not field.is_enabled():
+                continue
+            field.fill(text, timeout=3000)
             page.wait_for_timeout(1200)
             return True
     return False
@@ -203,7 +206,7 @@ def _fill_first_search(page: Any, text: str) -> bool:
 def capture() -> None:
     try:
         from playwright.sync_api import sync_playwright
-    except ImportError as err:  # pragma: no cover - CI dependency guard
+    except ImportError as err:  # pragma: no cover
         raise RuntimeError("playwright is required for documentation capture") from err
 
     auth = json.loads(AUTH_FILE.read_text())
@@ -218,13 +221,9 @@ def capture() -> None:
             device_scale_factor=1,
         )
         page = context.new_page()
-        _login(page, auth["username"], auth["password"])
+        login(page, auth["username"], auth["password"])
 
-        # Integration overview: HA 2026.x uses the Devices & Services dashboard route.
-        page.goto(
-            f"{HA_URL}/config/integrations/dashboard",
-            wait_until="domcontentloaded",
-        )
+        page.goto(f"{HA_URL}/config/integrations/dashboard", wait_until="domcontentloaded")
         page.wait_for_timeout(2500)
         matrix = page.get_by_text("Matrix Extended", exact=False)
         if matrix.count() == 0:
@@ -234,40 +233,36 @@ def capture() -> None:
                 f"url={page.url!r} body={body!r}"
             )
         matrix.first.scroll_into_view_if_needed()
-        _shot(page, "matrix-extended-integrations.png")
+        shot(page, "matrix-extended-integrations.png")
 
-        # Integration detail page with the live config entry and status.
         page.goto(
             f"{HA_URL}/config/integrations/integration/matrix_extended",
             wait_until="domcontentloaded",
         )
         page.wait_for_timeout(2200)
-        _shot(page, "matrix-extended-entry.png")
+        shot(page, "matrix-extended-entry.png")
 
-        # Options flow: security/E2EE/allowlist/routing fields rendered by HA itself.
         configure = page.get_by_role(
             "button", name=re.compile("configure|настроить|параметры", re.I)
         )
         if configure.count():
             configure.first.click()
             page.wait_for_timeout(1800)
-            _shot(page, "matrix-extended-options.png")
+            shot(page, "matrix-extended-options.png")
             page.keyboard.press("Escape")
             page.wait_for_timeout(500)
 
-        # Entity registry: diagnostics and room/default-room entities from this integration.
         page.goto(f"{HA_URL}/config/entities", wait_until="domcontentloaded")
         page.wait_for_timeout(2200)
-        _fill_first_search(page, "Matrix")
-        _shot(page, "matrix-extended-entities.png")
+        fill_visible_search(page, "Matrix")
+        shot(page, "matrix-extended-entities.png")
 
-        # The real setup form, useful for README/HACS installation documentation.
         page.goto(
             f"{HA_URL}/config/integrations/dashboard/add?domain=matrix_extended",
             wait_until="domcontentloaded",
         )
         page.wait_for_timeout(2200)
-        _shot(page, "matrix-extended-config-flow.png")
+        shot(page, "matrix-extended-config-flow.png")
 
         browser.close()
 

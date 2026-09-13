@@ -1,0 +1,11 @@
+appId: io.element.android.x
+---
+- scrollUntilVisible:
+    element:
+      text: ".*Видео с камеры.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- extendedWaitUntil:
+    visible: ".*Видео с камеры.*"
+    timeout: 10000

@@ -9,6 +9,7 @@
   "disable_guests": true,
   "brand": "Matrix Extended E2E",
   "default_theme": "dark",
+  "map_style_url": "https://tiles.openfreemap.org/styles/liberty",
   "room_directory": {
     "servers": [
       "matrix.test"

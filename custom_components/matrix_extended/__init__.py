@@ -287,6 +287,7 @@ async def _async_handle_send(hass: HomeAssistant, call: ServiceCall) -> None:
                             event_id=event_id,
                             actions=actions,
                         )
+                await account.action_registry.async_save()
 
         resolver = MediaResolver(hass)
         room_groups = _rooms_by_encryption(prepared_rooms)
@@ -468,6 +469,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     stored_notifications = await notification_store.async_load() or {}
     notification_registry = NotificationKeyRegistry(stored_notifications)
+    action_store: Store[dict[str, Any]] = Store(
+        hass, 1, f"{DOMAIN}.reaction_actions_{entry.entry_id}", private=True
+    )
+    stored_actions = await action_store.async_load() or {}
+    action_registry = ReactionActionRegistry(stored_actions, store=action_store)
     rooms = client.rooms_snapshot()
     default_room_id = await client.async_resolve_room(data[CONF_DEFAULT_ROOM])
     account = MatrixAccount(
@@ -477,7 +483,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         device_id=data[CONF_DEVICE_ID],
         homeserver=data[CONF_HOMESERVER],
         status=status,
-        action_registry=ReactionActionRegistry(),
+        action_registry=action_registry,
         incoming_policy=IncomingPolicy(
             allowed_users=_entry_value(entry, CONF_ALLOWED_USERS, [data[CONF_USER_ID]]),
             allowed_rooms=allowed_rooms,

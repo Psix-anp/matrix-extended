@@ -27,13 +27,42 @@ class ReactionAction:
 class ReactionActionRegistry:
     """Bounded one-shot mapping from Matrix reactions to explicit HA actions."""
 
-    def __init__(self, *, max_entries: int = 256) -> None:
+    def __init__(
+        self,
+        stored: Mapping[str, Any] | None = None,
+        *,
+        max_entries: int = 256,
+        store: Any = None,
+    ) -> None:
         if max_entries < 1:
             raise ValueError("max_entries must be at least 1")
         self._max_entries = max_entries
+        self._store = store
         self._items: OrderedDict[
             tuple[str, str], dict[str, ReactionAction]
         ] = OrderedDict()
+        if isinstance(stored, Mapping):
+            for raw_room, raw_events in stored.items():
+                room_id = str(raw_room).strip()
+                if not room_id or not isinstance(raw_events, Mapping):
+                    continue
+                for raw_event, raw_actions in raw_events.items():
+                    event_id = str(raw_event).strip()
+                    if not event_id or not isinstance(raw_actions, Mapping):
+                        continue
+                    actions: list[dict[str, Any]] = []
+                    for raw_reaction, raw_action in raw_actions.items():
+                        if not isinstance(raw_action, Mapping):
+                            continue
+                        item = dict(raw_action)
+                        item["reaction"] = str(raw_reaction)
+                        try:
+                            self._parse_action(item)
+                        except ValueError:
+                            continue
+                        actions.append(item)
+                    if actions:
+                        self.register(room_id=room_id, event_id=event_id, actions=actions)
 
     @staticmethod
     def _parse_action(item: Mapping[str, Any]) -> tuple[str, ReactionAction]:
@@ -89,3 +118,23 @@ class ReactionActionRegistry:
         if not actions:
             self._items.pop(key, None)
         return action
+
+    def dump(self) -> dict[str, dict[str, dict[str, dict[str, Any]]]]:
+        """Return a JSON-safe copy for Home Assistant Store."""
+        stored: dict[str, dict[str, dict[str, dict[str, Any]]]] = {}
+        for (room_id, event_id), actions in self._items.items():
+            room = stored.setdefault(room_id, {})
+            room[event_id] = {
+                reaction: {
+                    "service": action.service,
+                    "target": dict(action.target),
+                    "data": dict(action.data),
+                }
+                for reaction, action in actions.items()
+            }
+        return stored
+
+    async def async_save(self) -> None:
+        """Persist the current registry when a Home Assistant Store is attached."""
+        if self._store is not None:
+            await self._store.async_save(self.dump())

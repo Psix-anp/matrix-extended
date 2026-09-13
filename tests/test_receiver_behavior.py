@@ -141,10 +141,14 @@ class FakeRegistry:
     def __init__(self, action=None):
         self.action = action
         self.calls = []
+        self.saves = 0
 
     def consume(self, **kwargs):
         self.calls.append(kwargs)
         return self.action
+
+    async def async_save(self):
+        self.saves += 1
 
 
 class Action:

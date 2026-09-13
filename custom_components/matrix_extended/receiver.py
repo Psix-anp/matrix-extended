@@ -133,6 +133,7 @@ class MatrixInboundReceiver:
             else None
         )
         if action is not None:
+            await registry.async_save()
             domain, service = action.service.split(".", 1)
             await self._hass.services.async_call(
                 domain,

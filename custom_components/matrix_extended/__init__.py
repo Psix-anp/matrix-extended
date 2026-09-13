@@ -103,6 +103,11 @@ _MEDIA_BASE_SCHEMA = vol.Schema(
         vol.Optional("width"): vol.All(vol.Coerce(int), vol.Range(min=1)),
         vol.Optional("height"): vol.All(vol.Coerce(int), vol.Range(min=1)),
         vol.Optional("duration_ms"): vol.All(vol.Coerce(int), vol.Range(min=0)),
+        vol.Optional("voice", default=False): cv.boolean,
+        vol.Optional("waveform"): vol.All(
+            cv.ensure_list,
+            [vol.All(vol.Coerce(int), vol.Range(min=0, max=1024))],
+        ),
         vol.Optional("thumbnail"): dict,
     },
     extra=vol.PREVENT_EXTRA,
@@ -127,6 +132,8 @@ def _validate_media_item(value: Any, *, allow_thumbnail: bool = True) -> dict[st
         raise vol.Invalid(str(err)) from err
     if item.get("formatted_caption") is not None and item.get("caption") is None:
         raise vol.Invalid("formatted_caption requires caption")
+    if item.get("waveform") is not None and not item.get("voice"):
+        raise vol.Invalid("waveform requires voice=true")
     if "thumbnail" in item:
         if not allow_thumbnail:
             raise vol.Invalid("nested thumbnails are not supported")
@@ -359,6 +366,8 @@ async def _async_execute_send(
                 width=media.width,
                 height=media.height,
                 duration_ms=media.duration_ms,
+                voice=item.get("voice", False),
+                waveform=item.get("waveform"),
                 thumbnail_mxc_uri=(
                     None
                     if encrypted or thumbnail_upload is None

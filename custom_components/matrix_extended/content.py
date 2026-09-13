@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from html import escape
+import math
 import re
 from typing import Any, Literal, cast
 
@@ -171,6 +172,36 @@ def build_reaction_content(event_id: str, key: str) -> dict[str, Any]:
     }
 
 
+def build_location_content(
+    *,
+    latitude: float,
+    longitude: float,
+    description: str = "Location",
+    thread_id: str | None = None,
+) -> dict[str, Any]:
+    """Build a stable Matrix m.location room message."""
+    try:
+        lat = float(latitude)
+    except (TypeError, ValueError) as err:
+        raise ValueError("latitude must be numeric") from err
+    try:
+        lon = float(longitude)
+    except (TypeError, ValueError) as err:
+        raise ValueError("longitude must be numeric") from err
+    if not math.isfinite(lat) or not -90 <= lat <= 90:
+        raise ValueError("latitude must be between -90 and 90")
+    if not math.isfinite(lon) or not -180 <= lon <= 180:
+        raise ValueError("longitude must be between -180 and 180")
+    body = str(description).strip() or "Location"
+    content: dict[str, Any] = {
+        "msgtype": "m.location",
+        "body": body,
+        "geo_uri": f"geo:{lat:g},{lon:g}",
+    }
+    content.update(_thread_relation(thread_id))
+    return content
+
+
 def infer_media_type(content_type: str | None) -> MediaType:
     """Infer a Matrix media msgtype from a MIME type."""
     if content_type:
@@ -220,12 +251,15 @@ def build_media_content(
     thumbnail_encrypted_file: Mapping[str, Any] | None = None,
     thumbnail_info: Mapping[str, Any] | None = None,
     thread_id: str | None = None,
+    voice: bool = False,
 ) -> dict[str, Any]:
     """Build Matrix media content according to Client-Server API v1.10+."""
     if media_type not in {"image", "video", "audio", "file"}:
         raise ValueError(f"unsupported media type: {media_type}")
     if size < 0:
         raise ValueError("size cannot be negative")
+    if voice and media_type != "audio":
+        raise ValueError("voice metadata is only valid for audio media")
     if (mxc_uri is None) == (encrypted_file is None):
         raise ValueError("media content requires exactly one plain or encrypted source")
     if thumbnail_mxc_uri is not None and thumbnail_encrypted_file is not None:
@@ -264,6 +298,13 @@ def build_media_content(
             info["h"] = height
     if media_type in {"video", "audio"} and duration_ms is not None:
         info["duration"] = duration_ms
+
+    if voice:
+        content["org.matrix.msc3245.voice"] = {}
+        voice_audio: dict[str, Any] = {}
+        if duration_ms is not None:
+            voice_audio["duration"] = duration_ms
+        content["org.matrix.msc1767.audio"] = voice_audio
 
     if thumbnail_encrypted_file is not None:
         info["thumbnail_file"] = dict(thumbnail_encrypted_file)

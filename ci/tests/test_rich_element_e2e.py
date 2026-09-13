@@ -5,6 +5,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "test.yml"
 PREPARE_HA = ROOT / "ci" / "scripts" / "prepare-ha.sh"
 HA_E2E = ROOT / "ci" / "scripts" / "ha-e2e.py"
 ELEMENT_E2E = ROOT / "ci" / "scripts" / "element-e2e.py"
+ELEMENT_CONFIG = ROOT / "ci" / "element" / "config.json"
 
 
 def test_real_stack_prepares_voice_fixture_in_allowed_ha_directory() -> None:
@@ -19,6 +20,8 @@ def test_ha_e2e_sends_encrypted_location_and_native_voice() -> None:
     assert "def send_rich()" in text
     assert '"/api/services/matrix_extended/send_location"' in text
     assert "Matrix Extended E2E Location" in text
+    assert '"latitude": 52.3676' in text
+    assert '"longitude": 4.9041' in text
     assert "/config/matrix-e2e-media/matrix-e2e-voice.wav" in text
     assert '"voice": True' in text
     assert "Matrix Extended E2E Voice" in text
@@ -56,3 +59,17 @@ def test_real_stack_uses_one_post_login_element_session_for_text_and_rich() -> N
     assert "python ci/scripts/ha-e2e.py send-rich" not in text
     assert "python ci/scripts/element-e2e.py verify-rich" not in text
     assert "python ci/scripts/element-e2e.py final" not in text
+
+
+def test_element_demo_config_has_public_map_style_for_static_location() -> None:
+    text = ELEMENT_CONFIG.read_text()
+    assert '"map_style_url": "https://tiles.openfreemap.org/styles/liberty"' in text
+
+
+def test_showcase_screenshot_dismisses_sections_tip_and_hides_only_ci_trust_warning() -> None:
+    text = ELEMENT_E2E.read_text()
+    assert '"Ok"' in text
+    assert "def _prepare_showcase_screenshot(" in text
+    assert ".mx_EventTile_e2eIcon_warning" in text
+    assert "Unable to load map" in text
+    assert "wait_for(state=\"hidden\"" in text

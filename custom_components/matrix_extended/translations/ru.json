@@ -28,7 +28,10 @@
     "abort": {"already_configured": "Этот Matrix-аккаунт уже настроен"}
   },
   "entity": {
-    "binary_sensor": {"connected": {"name": "Соединение"}},
+    "binary_sensor": {
+      "connected": {"name": "Соединение"},
+      "e2ee_ready": {"name": "Готовность E2EE"}
+    },
     "sensor": {
       "user_id": {"name": "ID пользователя"},
       "device_id": {"name": "ID устройства"},
@@ -36,7 +39,10 @@
       "default_room_encryption": {"name": "Шифрование комнаты по умолчанию"},
       "last_send": {"name": "Последняя успешная отправка"},
       "last_error": {"name": "Последняя ошибка"},
-      "last_receive": {"name": "Последнее входящее событие"}
+      "last_receive": {"name": "Последнее входящее событие"},
+      "outbox_size": {"name": "Размер очереди отправки"},
+      "last_delivery_status": {"name": "Статус последней доставки"},
+      "last_command": {"name": "Последняя команда"}
     },
     "select": {"default_room": {"name": "Комната по умолчанию"}}
   },

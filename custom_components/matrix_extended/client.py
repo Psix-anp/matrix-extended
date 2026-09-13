@@ -85,6 +85,8 @@ class MatrixAccount:
     routing_profiles: dict[str, list[str]] = None
     notification_registry: Any = None
     notification_store: Any = None
+    outbox: Any = None
+    outbox_task: Any = None
     entry_id: str = ""
     default_room_id: str = ""
 

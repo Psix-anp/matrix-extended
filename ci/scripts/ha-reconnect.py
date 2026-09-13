@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[2]
 HA_E2E_SCRIPT = ROOT / "ci" / "scripts" / "ha-e2e.py"
+OUTBOX_ENV = ROOT / ".ci" / "outbox-env.json"
 
 
 def _load_ha_e2e():
@@ -93,6 +94,35 @@ def _read_state() -> tuple[dict[str, Any], dict[str, Any]]:
     return matrix_env, ha_env
 
 
+def _encrypted_bot_events(sync: dict[str, Any], matrix_env: dict[str, Any]) -> list[dict[str, Any]]:
+    events = (
+        sync.get("rooms", {})
+        .get("join", {})
+        .get(matrix_env["room_id"], {})
+        .get("timeline", {})
+        .get("events", [])
+    )
+    return [
+        event
+        for event in events
+        if event.get("type") == "m.room.encrypted"
+        and event.get("sender") == matrix_env["bot_user_id"]
+    ]
+
+
+def arm_outbox() -> None:
+    """Capture a Matrix sync token and marker before the outage begins."""
+    matrix_env, _ = _read_state()
+    sync = HA._matrix_sync(matrix_env["user_access_token"])
+    state = {
+        "since": sync["next_batch"],
+        "marker": "matrix-extended-outbox-" + secrets.token_hex(6),
+    }
+    OUTBOX_ENV.write_text(json.dumps(state, indent=2) + "\n")
+    OUTBOX_ENV.chmod(0o600)
+    print("Persistent outbox E2E armed")
+
+
 def wait_disconnected() -> None:
     """Prove the running HA listener notices that Synapse went away."""
     _, ha_env = _read_state()
@@ -115,10 +145,35 @@ def wait_disconnected() -> None:
     )
 
 
+def queue_outbox() -> None:
+    """Send through HA while Synapse is down; the service must queue, not fail."""
+    _, ha_env = _read_state()
+    queued = json.loads(OUTBOX_ENV.read_text())
+    HA._request_json(
+        HA.HA_URL,
+        "POST",
+        "/api/services/matrix_extended/send",
+        token=ha_env["access_token"],
+        json_body={"message": queued["marker"]},
+        timeout=60,
+    )
+    print("Matrix send accepted into persistent outbox while Synapse is offline")
+
+
 def verify_reconnect() -> None:
-    """Prove inbound listener and outbound E2EE both recover without reloading HA."""
+    """Prove queued send, inbound listener, and outbound E2EE recover without reload."""
     matrix_env, ha_env = _read_state()
     ha_token = ha_env["access_token"]
+    queued = json.loads(OUTBOX_ENV.read_text())
+
+    queued_sync = HA._matrix_sync(
+        matrix_env["user_access_token"],
+        since=queued["since"],
+        timeout_ms=15000,
+    )
+    queued_events = _encrypted_bot_events(queued_sync, matrix_env)
+    if not queued_events:
+        raise RuntimeError("persistent outbox did not deliver an encrypted event after reconnect")
 
     receive_before = find_matrix_state(
         _ha_states(ha_token),
@@ -184,6 +239,7 @@ def verify_reconnect() -> None:
 
     print(
         "Synapse reconnect verified without HA reload: "
+        f"queued_event={queued_events[0].get('event_id', '<none>')} "
         f"inbound_event={inbound_event_id} "
         f"last_receive={receive_after.get('state')} "
         f"connection={connection.get('state')} "
@@ -193,11 +249,16 @@ def verify_reconnect() -> None:
 
 def main() -> int:
     commands = {
+        "arm-outbox": arm_outbox,
         "wait-disconnected": wait_disconnected,
+        "queue-outbox": queue_outbox,
         "verify-reconnect": verify_reconnect,
     }
     if len(sys.argv) != 2 or sys.argv[1] not in commands:
-        print("usage: ha-reconnect.py {wait-disconnected|verify-reconnect}", file=sys.stderr)
+        print(
+            "usage: ha-reconnect.py {arm-outbox|wait-disconnected|queue-outbox|verify-reconnect}",
+            file=sys.stderr,
+        )
         return 2
     commands[sys.argv[1]]()
     return 0

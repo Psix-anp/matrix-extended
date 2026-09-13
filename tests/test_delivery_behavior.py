@@ -18,7 +18,7 @@ def load():
     return mod
 
 
-def test_delivery_event_record_for_text_and_media() -> None:
+def test_delivery_event_record_for_text_media_and_location() -> None:
     mod = load()
     assert mod.delivery_event_record(
         room_id="!room:example",
@@ -40,6 +40,15 @@ def test_delivery_event_record_for_text_and_media() -> None:
         "kind": "media",
         "media_index": 2,
     }
+    assert mod.delivery_event_record(
+        room_id="!room:example",
+        event_id="$location",
+        kind="location",
+    ) == {
+        "room_id": "!room:example",
+        "event_id": "$location",
+        "kind": "location",
+    }
 
 
 def test_delivery_event_record_rejects_bad_shape() -> None:
@@ -48,6 +57,8 @@ def test_delivery_event_record_rejects_bad_shape() -> None:
         mod.delivery_event_record(room_id="!r:x", event_id="$e", kind="file")
     with pytest.raises(ValueError, match="media_index"):
         mod.delivery_event_record(room_id="!r:x", event_id="$e", kind="text", media_index=0)
+    with pytest.raises(ValueError, match="media_index"):
+        mod.delivery_event_record(room_id="!r:x", event_id="$e", kind="location", media_index=0)
     with pytest.raises(ValueError, match="media_index"):
         mod.delivery_event_record(room_id="!r:x", event_id="$e", kind="media", media_index=-1)
 

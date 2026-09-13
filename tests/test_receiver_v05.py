@@ -31,6 +31,7 @@ def load_receiver():
         "RoomMessageImage",
         "RoomMessageNotice",
         "RoomMessageText",
+        "RoomMessageUnknown",
         "RoomMessageVideo",
     ):
         setattr(nio, name, type(name, (), {}))
@@ -184,11 +185,12 @@ def make_receiver(tmp_path, *, registry=None):
     return mod, const, hass, account, receiver
 
 
-def test_register_adds_redaction_callback(tmp_path) -> None:
+def test_register_adds_redaction_and_location_callbacks(tmp_path) -> None:
     mod, _, _, account, receiver = make_receiver(tmp_path)
     receiver.register()
-    assert len(account.client.callbacks) == 4
+    assert len(account.client.callbacks) == 5
     assert account.client.callbacks[3][1] is mod.RedactionEvent
+    assert account.client.callbacks[4][1] is mod.RoomMessageUnknown
 
 
 def test_base_payload_includes_room_and_sender_metadata(tmp_path) -> None:
@@ -241,19 +243,19 @@ async def test_redaction_fires_dedicated_event(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_media_payload_exposes_matrix_info_metadata(tmp_path) -> None:
+async def test_media_payload_exposes_matrix_info_and_voice_metadata(tmp_path) -> None:
     _, const, hass, _, receiver = make_receiver(tmp_path)
     event = make_event(
-        body="clip.mp4",
+        body="voice.ogg",
         source={
             "content": {
-                "msgtype": "m.video",
-                "url": "mxc://example/clip",
+                "msgtype": "m.audio",
+                "url": "mxc://example/voice",
+                "org.matrix.msc3245.voice": {},
+                "org.matrix.msc1767.audio": {"duration": 4200},
                 "info": {
-                    "mimetype": "video/mp4",
+                    "mimetype": "audio/ogg",
                     "size": 12345,
-                    "w": 1280,
-                    "h": 720,
                     "duration": 4200,
                 },
             }
@@ -263,10 +265,39 @@ async def test_media_payload_exposes_matrix_info_metadata(tmp_path) -> None:
     event_type, payload = hass.bus.events[-1]
     assert event_type == const.EVENT_MEDIA
     assert payload["size"] == 12345
-    assert payload["width"] == 1280
-    assert payload["height"] == 720
     assert payload["duration_ms"] == 4200
-    assert payload["msgtype"] == "video"
+    assert payload["msgtype"] == "audio"
+    assert payload["voice"] is True
+
+
+@pytest.mark.asyncio
+async def test_location_unknown_message_fires_location_event(tmp_path) -> None:
+    _, const, hass, account, receiver = make_receiver(tmp_path)
+    event = make_event(
+        source={
+            "content": {
+                "msgtype": "m.location",
+                "body": "Garage",
+                "geo_uri": "geo:44.8901,37.3167",
+            }
+        }
+    )
+    await receiver.async_handle_location(make_room(), event)
+    event_type, payload = hass.bus.events[-1]
+    assert event_type == const.EVENT_LOCATION
+    assert payload["latitude"] == pytest.approx(44.8901)
+    assert payload["longitude"] == pytest.approx(37.3167)
+    assert payload["description"] == "Garage"
+    assert account.status.receives == 1
+
+
+@pytest.mark.asyncio
+async def test_non_location_unknown_message_is_ignored(tmp_path) -> None:
+    _, _, hass, account, receiver = make_receiver(tmp_path)
+    event = make_event(source={"content": {"msgtype": "com.example.custom"}})
+    await receiver.async_handle_location(make_room(), event)
+    assert hass.bus.events == []
+    assert account.status.receives == 0
 
 
 @pytest.mark.asyncio

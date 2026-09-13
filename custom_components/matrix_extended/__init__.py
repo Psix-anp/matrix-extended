@@ -565,6 +565,11 @@ async def _async_handle_send(hass: HomeAssistant, call: ServiceCall) -> dict[str
     account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
     payload = _send_payload(account, call)
     delivery_id = secrets.token_hex(16)
+    if not account.status.connected:
+        if account.outbox is not None:
+            await account.outbox.async_enqueue(payload, delivery_id=delivery_id)
+            delivery = _fire_delivery(hass, account, delivery_id, "queued")
+            return _delivery_response(delivery)
     try:
         events = await _async_execute_send(
             hass,

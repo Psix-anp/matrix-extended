@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import mimetypes
-import secrets
 from pathlib import Path
+import secrets
 from typing import Any
 
 import voluptuous as vol
@@ -24,12 +24,14 @@ from .const import (
     SERVICE_PURGE_MEDIA,
     SERVICE_SEND_LOCATION,
     SERVICE_SEND_VOICE,
+    SERVICE_TRANSCRIBE_VOICE,
 )
 from .content import build_location_content, build_media_content
 from .delivery import delivery_event_record, delivery_lifecycle_payload
 from .outbox import matrix_transaction_id
 from .retention import purge_media_directory
 from .routing import resolve_targets
+from .voice_pipeline import TRANSCRIBE_SCHEMA, async_transcribe_voice
 
 _LOCATION_SCHEMA = vol.Schema(
     {
@@ -319,4 +321,5 @@ def install_v05_services(hass: HomeAssistant) -> None:
 
     register(SERVICE_SEND_LOCATION, _async_send_location, _LOCATION_SCHEMA)
     register(SERVICE_SEND_VOICE, _async_send_voice, _VOICE_SCHEMA)
+    register(SERVICE_TRANSCRIBE_VOICE, async_transcribe_voice, TRANSCRIBE_SCHEMA)
     register(SERVICE_PURGE_MEDIA, _async_purge_media, _PURGE_SCHEMA)

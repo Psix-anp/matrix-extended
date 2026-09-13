@@ -91,6 +91,29 @@ def _encrypted_event_count(sync: dict[str, Any], room_id: str, sender: str) -> i
     )
 
 
+def _wait_for_encrypted_events(
+    token: str,
+    *,
+    since: str,
+    room_id: str,
+    sender: str,
+    expected_count: int,
+    timeout: float = 20,
+) -> int:
+    """Accumulate encrypted events across incremental sync batches."""
+    deadline = time.monotonic() + timeout
+    total = 0
+    while time.monotonic() < deadline:
+        sync = _matrix_sync(token, since=since, timeout_ms=3000)
+        since = sync["next_batch"]
+        total += _encrypted_event_count(sync, room_id, sender)
+        if total >= expected_count:
+            return total
+    raise TimeoutError(
+        f"expected {expected_count} encrypted events from {sender} in {room_id}; got {total}"
+    )
+
+
 def _wait_entry_loaded(token: str, *, timeout: float = 60) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
     last_state = "missing"
@@ -346,18 +369,14 @@ def send_rich() -> None:
         timeout=60,
     )
 
-    after = _matrix_sync(
+    encrypted = _wait_for_encrypted_events(
         matrix_env["user_access_token"],
         since=before["next_batch"],
-        timeout_ms=10000,
+        room_id=matrix_env["room_id"],
+        sender=matrix_env["bot_user_id"],
+        expected_count=2,
+        timeout=20,
     )
-    encrypted = _encrypted_event_count(
-        after, matrix_env["room_id"], matrix_env["bot_user_id"]
-    )
-    if encrypted < 2:
-        raise RuntimeError(
-            f"rich E2E expected at least 2 new encrypted events, got {encrypted}"
-        )
     print(
         "Home Assistant rich Matrix E2E sent: "
         f"location={LOCATION_TEXT!r} voice={VOICE_TEXT!r} encrypted_events={encrypted}"

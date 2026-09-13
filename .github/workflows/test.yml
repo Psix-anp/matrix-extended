@@ -78,15 +78,19 @@ jobs:
         run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
       - name: Configure Matrix Extended and verify encrypted send + reload
         run: python ci/scripts/ha-e2e.py setup-send-reload
+      - name: Arm persistent outbox verification
+        run: python ci/scripts/ha-reconnect.py arm-outbox
       - name: Stop Synapse while Home Assistant stays running
         run: docker compose -f compose.test.yml stop synapse
       - name: Verify Home Assistant observes the Matrix outage
         run: python ci/scripts/ha-reconnect.py wait-disconnected
+      - name: Queue Matrix send while Synapse is unavailable
+        run: python ci/scripts/ha-reconnect.py queue-outbox
       - name: Start Synapse again
         run: docker compose -f compose.test.yml start synapse
       - name: Wait for Matrix Client API after Synapse restart
         run: python ci/scripts/wait-http.py http://127.0.0.1:8008/_matrix/client/versions 90
-      - name: Verify inbound listener and encrypted outbound recovery without HA reload
+      - name: Verify queued delivery, inbound listener, and encrypted outbound recovery without HA reload
         run: python ci/scripts/ha-reconnect.py verify-reconnect
       - name: Restart Home Assistant
         run: docker compose -f compose.test.yml restart homeassistant

@@ -32,17 +32,21 @@ def test_ha_e2e_waits_for_both_encrypted_rich_events_across_sync_batches() -> No
     assert "total += _encrypted_event_count(" in text
 
 
-def test_element_e2e_verifies_location_and_voice_rendering() -> None:
+def test_element_e2e_verifies_text_then_sends_and_renders_rich_in_one_session() -> None:
     text = ELEMENT_E2E.read_text()
     assert 'LOCATION_TEXT = "Matrix Extended E2E Location"' in text
     assert 'VOICE_TEXT = "Matrix Extended E2E Voice"' in text
-    assert 'mode == "verify-rich"' in text
-    assert '"verify-rich"' in text
+    assert 'mode == "verify-message-rich"' in text
+    assert 'subprocess.run(' in text
+    assert '"ci/scripts/ha-e2e.py", "send-rich"' in text
+    assert '.mx_MVoiceMessageBody' in text
+    assert '03-element-location-and-voice.png' in text
 
 
-def test_real_stack_runs_rich_send_and_element_render_checks() -> None:
+def test_real_stack_uses_one_post_login_element_session_for_text_and_rich() -> None:
     text = WORKFLOW.read_text()
-    assert "Send encrypted location and native voice through Home Assistant" in text
-    assert "python ci/scripts/ha-e2e.py send-rich" in text
-    assert "Verify Element renders location and native voice" in text
-    assert "python ci/scripts/element-e2e.py verify-rich" in text
+    assert "Verify Element decrypts text and renders rich Matrix events" in text
+    assert "python ci/scripts/element-e2e.py verify-message-rich" in text
+    assert "python ci/scripts/ha-e2e.py send-rich" not in text
+    assert "python ci/scripts/element-e2e.py verify-rich" not in text
+    assert "python ci/scripts/element-e2e.py final" not in text

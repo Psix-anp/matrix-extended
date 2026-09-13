@@ -20,6 +20,7 @@ from nio import (
     RoomMessageImage,
     RoomMessageNotice,
     RoomMessageText,
+    RoomMessageUnknown,
     RoomMessageVideo,
 )
 
@@ -30,6 +31,7 @@ from .const import (
     DEFAULT_INCOMING_MEDIA_MAX_MB,
     DEFAULT_INCOMING_MEDIA_RETENTION_DAYS,
     EVENT_EDIT,
+    EVENT_LOCATION,
     EVENT_MEDIA,
     EVENT_MESSAGE,
     EVENT_REACTION,
@@ -62,6 +64,23 @@ def _msgtype(content: Any) -> str | None:
     return value.removeprefix("m.")
 
 
+def _parse_geo_uri(value: Any) -> tuple[float, float] | None:
+    """Parse the stable Matrix geo URI subset used by m.location."""
+    if not isinstance(value, str) or not value.startswith("geo:"):
+        return None
+    coordinates = value[4:].split(";", 1)[0].split(",")
+    if len(coordinates) < 2:
+        return None
+    try:
+        latitude = float(coordinates[0])
+        longitude = float(coordinates[1])
+    except ValueError:
+        return None
+    if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+        return None
+    return latitude, longitude
+
+
 class MatrixInboundReceiver:
     """Translate authorized matrix-nio callbacks into Home Assistant events."""
 
@@ -90,6 +109,11 @@ class MatrixInboundReceiver:
         self._account.client.add_event_callback(self.async_handle_reaction, ReactionEvent)
         self._account.client.add_event_callback(self.async_handle_media, _MEDIA_EVENTS)
         self._account.client.add_event_callback(self.async_handle_redaction, RedactionEvent)
+        # matrix-nio 0.26 maps unsupported m.room.message msgtypes such as
+        # stable m.location to RoomMessageUnknown.
+        self._account.client.add_event_callback(
+            self.async_handle_location, RoomMessageUnknown
+        )
 
     def _allowed(self, room: Any, event: Any) -> bool:
         policy = self._account.incoming_policy
@@ -209,6 +233,7 @@ class MatrixInboundReceiver:
             {
                 "msgtype": media_type,
                 "media_type": media_type,
+                "voice": "org.matrix.msc3245.voice" in content,
                 "filename": filename,
                 "content_type": info.get("mimetype") or getattr(event, "mimetype", None),
                 "size": info.get("size"),
@@ -257,6 +282,31 @@ class MatrixInboundReceiver:
                 payload["download_error"] = str(err)
         self._account.status.mark_receive()
         self._hass.bus.async_fire(EVENT_MEDIA, payload)
+
+    async def async_handle_location(self, room: Any, event: Any) -> None:
+        """Forward stable m.location events represented as RoomMessageUnknown."""
+        source = event.source if isinstance(event.source, dict) else {}
+        content = source.get("content", {})
+        if not isinstance(content, dict) or content.get("msgtype") != "m.location":
+            return
+        if not self._allowed(room, event):
+            return
+        parsed = _parse_geo_uri(content.get("geo_uri"))
+        if parsed is None:
+            return
+        latitude, longitude = parsed
+        payload = self._base_payload(room, event)
+        payload.update(
+            {
+                "msgtype": "location",
+                "latitude": latitude,
+                "longitude": longitude,
+                "geo_uri": content.get("geo_uri"),
+                "description": str(content.get("body") or "Location"),
+            }
+        )
+        self._account.status.mark_receive()
+        self._hass.bus.async_fire(EVENT_LOCATION, payload)
 
     async def async_handle_redaction(self, room: Any, event: Any) -> None:
         """Forward authorized m.room.redaction events into Home Assistant."""

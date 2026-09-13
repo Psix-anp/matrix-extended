@@ -54,11 +54,15 @@ from .const import (
     CONF_DOWNLOAD_INCOMING_MEDIA,
     CONF_HOMESERVER,
     CONF_INCOMING_ENABLED,
+    CONF_INCOMING_MEDIA_MAX_MB,
+    CONF_INCOMING_MEDIA_RETENTION_DAYS,
     CONF_REQUIRE_E2EE,
     CONF_ROUTING_PROFILES,
     CONF_STORE_KEY,
     CONF_USER_ID,
     CONF_VERIFY_SSL,
+    DEFAULT_INCOMING_MEDIA_MAX_MB,
+    DEFAULT_INCOMING_MEDIA_RETENTION_DAYS,
     DOMAIN,
     EVENT_DELIVERY,
     FORMAT_HTML,
@@ -90,6 +94,7 @@ from .outbox import PersistentOutbox, matrix_transaction_id
 from .routing import normalize_routing_profiles, resolve_targets
 from .receiver import MatrixInboundReceiver
 from .status import MatrixRuntimeStatus
+from .v05_services import install_v05_services
 
 PLATFORMS = [Platform.NOTIFY, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SELECT]
 _OUTBOX_RETRY_SECONDS = 5.0
@@ -108,6 +113,7 @@ _MEDIA_BASE_SCHEMA = vol.Schema(
         vol.Optional("width"): vol.All(vol.Coerce(int), vol.Range(min=1)),
         vol.Optional("height"): vol.All(vol.Coerce(int), vol.Range(min=1)),
         vol.Optional("duration_ms"): vol.All(vol.Coerce(int), vol.Range(min=0)),
+        vol.Optional("voice", default=False): cv.boolean,
         vol.Optional("thumbnail"): dict,
     },
     extra=vol.PREVENT_EXTRA,
@@ -137,6 +143,8 @@ def _validate_media_item(value: Any, *, allow_thumbnail: bool = True) -> dict[st
         raise vol.Invalid(str(err)) from err
     if item.get("formatted_caption") is not None and item.get("caption") is None:
         raise vol.Invalid("formatted_caption requires caption")
+    if item.get("voice") and item.get("type") not in {"auto", "audio"}:
+        raise vol.Invalid("voice is only supported for audio media")
     if "thumbnail" in item:
         if not allow_thumbnail:
             raise vol.Invalid("nested thumbnails are not supported")
@@ -483,6 +491,7 @@ async def _async_execute_send(
                 ),
                 thumbnail_info=thumbnail.image_info() if thumbnail else None,
                 thread_id=thread_id,
+                voice=bool(item.get("voice", False)),
             )
             sent = await account.client.async_send_prepared(
                 rooms,
@@ -674,6 +683,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     register(SERVICE_REACT, _async_handle_react, _REACT_SCHEMA)
     register(SERVICE_EDIT, _async_handle_edit, _EDIT_SCHEMA)
     register(SERVICE_REDACT, _async_handle_redact, _REDACT_SCHEMA)
+    install_v05_services(hass)
     return True
 
 
@@ -788,6 +798,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             account=account,
             incoming_dir=incoming_dir,
             download_media=_entry_value(entry, CONF_DOWNLOAD_INCOMING_MEDIA, True),
+            media_retention_days=int(
+                _entry_value(
+                    entry,
+                    CONF_INCOMING_MEDIA_RETENTION_DAYS,
+                    DEFAULT_INCOMING_MEDIA_RETENTION_DAYS,
+                )
+            ),
+            media_max_bytes=int(
+                _entry_value(
+                    entry,
+                    CONF_INCOMING_MEDIA_MAX_MB,
+                    DEFAULT_INCOMING_MEDIA_MAX_MB,
+                )
+            )
+            * 1024
+            * 1024,
         )
         receiver.register()
         await client.async_start_listener(receiver.async_listener_error)

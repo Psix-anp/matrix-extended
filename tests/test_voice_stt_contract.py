@@ -40,6 +40,13 @@ def test_transcribe_voice_uses_ha_stt_and_restricts_files_to_incoming_directory(
         assert marker in source
 
 
+def test_stt_normalizes_element_audio_for_pcm_only_providers() -> None:
+    source = (COMP / "v05_services.py").read_text()
+    assert "get_ffmpeg_manager" in source
+    assert "pcm_s16le" in source
+    assert "asyncio.create_subprocess_exec" in source
+
+
 def test_assist_execution_is_explicit_opt_in() -> None:
     source = (COMP / "v05_services.py").read_text()
     assert 'vol.Optional("assist", default=False)' in source
@@ -47,7 +54,8 @@ def test_assist_execution_is_explicit_opt_in() -> None:
     assert 'call.data.get("assist", False)' in source
 
 
-def test_manifest_declares_stt_and_conversation_after_dependencies() -> None:
+def test_manifest_declares_voice_pipeline_after_dependencies() -> None:
     manifest = (COMP / "manifest.json").read_text()
     assert '"stt"' in manifest
     assert '"conversation"' in manifest
+    assert '"ffmpeg"' in manifest

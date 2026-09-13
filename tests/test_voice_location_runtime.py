@@ -19,7 +19,7 @@ def test_voice_is_wired_through_send_media_runtime() -> None:
 
 
 def test_location_service_is_registered_and_can_resolve_ha_entity() -> None:
-    source = (COMP / "__init__.py").read_text()
+    source = (COMP / "v05_services.py").read_text()
     for marker in (
         "SERVICE_SEND_LOCATION",
         "build_location_content",
@@ -32,7 +32,9 @@ def test_location_service_is_registered_and_can_resolve_ha_entity() -> None:
 
 def test_receiver_exposes_incoming_location_and_voice_metadata() -> None:
     receiver = (COMP / "receiver.py").read_text()
-    assert "RoomMessageLocation" in receiver
+    # matrix-nio 0.26 maps unsupported m.room.message msgtypes, including
+    # m.location, to RoomMessageUnknown.
+    assert "RoomMessageUnknown" in receiver
     assert "EVENT_LOCATION" in receiver
     assert '"voice"' in receiver
     assert "org.matrix.msc3245.voice" in receiver

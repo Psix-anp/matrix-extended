@@ -25,6 +25,7 @@ DEFAULT_INCOMING_MEDIA_MAX_MB: Final = 256
 
 SERVICE_SEND: Final = "send"
 SERVICE_SEND_VOICE: Final = "send_voice"
+SERVICE_TRANSCRIBE_VOICE: Final = "transcribe_voice"
 SERVICE_SEND_LOCATION: Final = "send_location"
 SERVICE_REPLY: Final = "reply"
 SERVICE_REACT: Final = "react"

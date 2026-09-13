@@ -14,7 +14,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.storage import Store
@@ -35,7 +35,10 @@ from .const import (
     ATTR_EVENT_ID,
     ATTR_FORMAT,
     ATTR_MEDIA,
+    ATTR_MENTION_ROOM,
+    ATTR_MENTION_USERS,
     ATTR_MESSAGE,
+    ATTR_MSGTYPE,
     ATTR_NOTIFICATION_KEY,
     ATTR_REACTION,
     ATTR_REASON,
@@ -57,13 +60,12 @@ from .const import (
     CONF_USER_ID,
     CONF_VERIFY_SSL,
     DOMAIN,
-    EVENT_MEDIA,
-    EVENT_MESSAGE,
-    EVENT_REACTION,
-    EVENT_REPLY,
+    EVENT_DELIVERY,
     FORMAT_HTML,
+    FORMAT_MARKDOWN,
     FORMAT_TEXT,
     MEDIA_TYPES,
+    MESSAGE_TYPES,
     SERVICE_EDIT,
     SERVICE_REACT,
     SERVICE_REDACT,
@@ -73,11 +75,14 @@ from .const import (
 from .content import (
     build_edit_content,
     build_media_content,
+    build_mentions,
     build_reaction_content,
     build_reply_content,
     build_text_content,
+    render_markdown,
     validate_media_item_shape,
 )
+from .delivery import delivery_event_record, delivery_lifecycle_payload
 from .incoming import IncomingPolicy
 from .media import MediaResolver
 from .notifications import NotificationKeyRegistry
@@ -114,6 +119,11 @@ _ACTION_SCHEMA = vol.Schema(
         vol.Required("service"): cv.string,
         vol.Optional("target", default={}): dict,
         vol.Optional("data", default={}): dict,
+        vol.Optional("expires_in"): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=7 * 24 * 60 * 60)
+        ),
+        vol.Optional("max_uses"): vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
+        vol.Optional("allowed_users"): vol.All(cv.ensure_list, [cv.string]),
     },
     extra=vol.PREVENT_EXTRA,
 )
@@ -141,7 +151,14 @@ SEND_SCHEMA = vol.Schema(
         vol.Optional(ATTR_ROUTE): cv.string,
         vol.Optional(ATTR_NOTIFICATION_KEY): cv.string,
         vol.Optional(ATTR_MESSAGE, default=""): cv.string,
-        vol.Optional(ATTR_FORMAT, default=FORMAT_TEXT): vol.In([FORMAT_TEXT, FORMAT_HTML]),
+        vol.Optional(ATTR_MSGTYPE, default="text"): vol.In(MESSAGE_TYPES),
+        vol.Optional(ATTR_FORMAT, default=FORMAT_TEXT): vol.In(
+            [FORMAT_TEXT, FORMAT_HTML, FORMAT_MARKDOWN]
+        ),
+        vol.Optional(ATTR_MENTION_USERS, default=[]): vol.All(
+            cv.ensure_list, [cv.string]
+        ),
+        vol.Optional(ATTR_MENTION_ROOM, default=False): cv.boolean,
         vol.Optional(ATTR_THREAD_ID): cv.string,
         vol.Optional(ATTR_MEDIA, default=[]): vol.All(cv.ensure_list, [_validate_media_item]),
         vol.Optional(ATTR_ACTIONS, default=[]): vol.All(cv.ensure_list, [_ACTION_SCHEMA]),
@@ -154,7 +171,14 @@ _REPLY_SCHEMA = vol.Schema(
         vol.Optional(ATTR_ROOM): cv.string,
         vol.Required(ATTR_EVENT_ID): cv.string,
         vol.Required(ATTR_MESSAGE): cv.string,
-        vol.Optional(ATTR_FORMAT, default=FORMAT_TEXT): vol.In([FORMAT_TEXT, FORMAT_HTML]),
+        vol.Optional(ATTR_MSGTYPE, default="text"): vol.In(MESSAGE_TYPES),
+        vol.Optional(ATTR_FORMAT, default=FORMAT_TEXT): vol.In(
+            [FORMAT_TEXT, FORMAT_HTML, FORMAT_MARKDOWN]
+        ),
+        vol.Optional(ATTR_MENTION_USERS, default=[]): vol.All(
+            cv.ensure_list, [cv.string]
+        ),
+        vol.Optional(ATTR_MENTION_ROOM, default=False): cv.boolean,
         vol.Optional(ATTR_THREAD_ID): cv.string,
     }
 )
@@ -172,7 +196,10 @@ _EDIT_SCHEMA = vol.Schema(
         vol.Optional(ATTR_ROOM): cv.string,
         vol.Required(ATTR_EVENT_ID): cv.string,
         vol.Required(ATTR_MESSAGE): cv.string,
-        vol.Optional(ATTR_FORMAT, default=FORMAT_TEXT): vol.In([FORMAT_TEXT, FORMAT_HTML]),
+        vol.Optional(ATTR_MSGTYPE, default="text"): vol.In(MESSAGE_TYPES),
+        vol.Optional(ATTR_FORMAT, default=FORMAT_TEXT): vol.In(
+            [FORMAT_TEXT, FORMAT_HTML, FORMAT_MARKDOWN]
+        ),
     }
 )
 _REDACT_SCHEMA = vol.Schema(
@@ -212,6 +239,14 @@ def _room_for_call(account: MatrixAccount, call: ServiceCall) -> str:
     return call.data.get(ATTR_ROOM) or account.default_room
 
 
+def _formatted_body(message: str, message_format: str) -> str | None:
+    if message_format == FORMAT_HTML:
+        return message
+    if message_format == FORMAT_MARKDOWN:
+        return render_markdown(message)
+    return None
+
+
 def _send_payload(account: MatrixAccount, call: ServiceCall) -> dict[str, Any]:
     targets = resolve_targets(
         explicit_targets=call.data.get(ATTR_TARGET),
@@ -223,7 +258,12 @@ def _send_payload(account: MatrixAccount, call: ServiceCall) -> dict[str, Any]:
         "targets": targets,
         "notification_key": call.data.get(ATTR_NOTIFICATION_KEY),
         "message": call.data[ATTR_MESSAGE],
+        "msgtype": call.data[ATTR_MSGTYPE],
         "format": call.data[ATTR_FORMAT],
+        "mentions": build_mentions(
+            call.data.get(ATTR_MENTION_USERS, []),
+            room=bool(call.data.get(ATTR_MENTION_ROOM, False)),
+        ),
         "thread_id": call.data.get(ATTR_THREAD_ID),
         "media": call.data[ATTR_MEDIA],
         "actions": call.data[ATTR_ACTIONS],
@@ -244,19 +284,60 @@ def _tx_ids(delivery_id: str, event_key: str, rooms: list[PreparedRoom]) -> list
     ]
 
 
+def _delivery_payload(
+    account: MatrixAccount,
+    delivery_id: str,
+    status: str,
+    events: list[dict[str, Any]] | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    account_id = account.entry_id
+    if not account_id:
+        raise HomeAssistantError("Matrix account has no config entry ID")
+    return delivery_lifecycle_payload(
+        account_id=account_id,
+        delivery_id=delivery_id,
+        status=status,
+        events=events or [],
+        error=error,
+    )
+
+
+def _fire_delivery(
+    hass: HomeAssistant,
+    account: MatrixAccount,
+    delivery_id: str,
+    status: str,
+    events: list[dict[str, Any]] | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    payload = _delivery_payload(account, delivery_id, status, events, error)
+    hass.bus.async_fire(EVENT_DELIVERY, payload)
+    return payload
+
+
+def _delivery_response(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "delivery_id": payload["delivery_id"],
+        "status": payload["status"],
+        "events": list(payload["events"]),
+    }
+
+
 async def _async_execute_send(
     hass: HomeAssistant,
     account: MatrixAccount,
     payload: dict[str, Any],
     *,
     delivery_id: str,
-) -> None:
+) -> list[dict[str, Any]]:
     targets: list[str] = list(payload["targets"])
     notification_key: str | None = payload.get("notification_key")
     message: str = payload["message"]
     media_items: list[dict[str, Any]] = payload["media"]
     actions: list[dict[str, Any]] = payload["actions"]
     thread_id: str | None = payload.get("thread_id")
+    delivery_events: list[dict[str, Any]] = []
 
     prepared_rooms = await account.client.async_prepare_rooms(targets)
     for target, room in zip(targets, prepared_rooms, strict=True):
@@ -264,7 +345,7 @@ async def _async_execute_send(
             account.status.set_default_room_encryption(room.encrypted)
 
     if message:
-        formatted_body = message if payload["format"] == FORMAT_HTML else None
+        formatted_body = _formatted_body(message, payload["format"])
         event_ids: list[str | None] = []
         registry_changed = False
         if notification_key and account.notification_registry:
@@ -275,16 +356,25 @@ async def _async_execute_send(
                 event_key = f"notification:{notification_key}"
                 room_tx_ids = _tx_ids(delivery_id, event_key, [room])
                 if original_event_id:
-                    await account.client.async_send_prepared(
+                    sent = await account.client.async_send_prepared(
                         [room],
                         build_edit_content(
                             message,
                             event_id=original_event_id,
                             formatted_body=formatted_body,
+                            msgtype=payload["msgtype"],
                         ),
                         tx_ids=room_tx_ids,
                     )
                     event_ids.append(original_event_id)
+                    if sent[0]:
+                        delivery_events.append(
+                            delivery_event_record(
+                                room_id=room.room_id,
+                                event_id=sent[0],
+                                kind="text",
+                            )
+                        )
                 else:
                     sent = await account.client.async_send_prepared(
                         [room],
@@ -292,12 +382,21 @@ async def _async_execute_send(
                             message,
                             formatted_body=formatted_body,
                             thread_id=thread_id,
+                            msgtype=payload["msgtype"],
+                            mentions=payload["mentions"],
                         ),
                         tx_ids=room_tx_ids,
                     )
                     event_id = sent[0]
                     event_ids.append(event_id)
                     if event_id:
+                        delivery_events.append(
+                            delivery_event_record(
+                                room_id=room.room_id,
+                                event_id=event_id,
+                                kind="text",
+                            )
+                        )
                         account.notification_registry.set(
                             notification_key, room.room_id, event_id
                         )
@@ -310,10 +409,23 @@ async def _async_execute_send(
             event_ids = await account.client.async_send_prepared(
                 prepared_rooms,
                 build_text_content(
-                    message, formatted_body=formatted_body, thread_id=thread_id
+                    message,
+                    formatted_body=formatted_body,
+                    thread_id=thread_id,
+                    msgtype=payload["msgtype"],
+                    mentions=payload["mentions"],
                 ),
                 tx_ids=_tx_ids(delivery_id, "text", prepared_rooms),
             )
+            for room, event_id in zip(prepared_rooms, event_ids, strict=True):
+                if event_id:
+                    delivery_events.append(
+                        delivery_event_record(
+                            room_id=room.room_id,
+                            event_id=event_id,
+                            kind="text",
+                        )
+                    )
         if actions and account.action_registry:
             for room, event_id in zip(prepared_rooms, event_ids, strict=True):
                 if event_id:
@@ -372,14 +484,23 @@ async def _async_execute_send(
                 thumbnail_info=thumbnail.image_info() if thumbnail else None,
                 thread_id=thread_id,
             )
-            await account.client.async_send_prepared(
+            sent = await account.client.async_send_prepared(
                 rooms,
                 content,
-                tx_ids=_tx_ids(
-                    delivery_id, f"media-{media_index}", rooms
-                ),
+                tx_ids=_tx_ids(delivery_id, f"media-{media_index}", rooms),
             )
+            for room, event_id in zip(rooms, sent, strict=True):
+                if event_id:
+                    delivery_events.append(
+                        delivery_event_record(
+                            room_id=room.room_id,
+                            event_id=event_id,
+                            kind="media",
+                            media_index=media_index,
+                        )
+                    )
     account.status.mark_send_success()
+    return delivery_events
 
 
 async def _async_outbox_worker(hass: HomeAssistant, account: MatrixAccount) -> None:
@@ -393,7 +514,7 @@ async def _async_outbox_worker(hass: HomeAssistant, account: MatrixAccount) -> N
             continue
         item = pending[0]
         try:
-            await _async_execute_send(
+            events = await _async_execute_send(
                 hass,
                 account,
                 item.payload,
@@ -411,6 +532,9 @@ async def _async_outbox_worker(hass: HomeAssistant, account: MatrixAccount) -> N
                 item.delivery_id,
                 err,
             )
+            _fire_delivery(
+                hass, account, item.delivery_id, "dropped", error=str(err)
+            )
             await account.outbox.async_remove(item.delivery_id)
         except (MatrixExtendedError, HomeAssistantError, ValueError) as err:
             account.status.mark_error(str(err))
@@ -419,17 +543,21 @@ async def _async_outbox_worker(hass: HomeAssistant, account: MatrixAccount) -> N
                 item.delivery_id,
                 err,
             )
+            _fire_delivery(
+                hass, account, item.delivery_id, "dropped", error=str(err)
+            )
             await account.outbox.async_remove(item.delivery_id)
         else:
+            _fire_delivery(hass, account, item.delivery_id, "sent", events=events)
             await account.outbox.async_remove(item.delivery_id)
 
 
-async def _async_handle_send(hass: HomeAssistant, call: ServiceCall) -> None:
+async def _async_handle_send(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
     account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
     payload = _send_payload(account, call)
     delivery_id = secrets.token_hex(16)
     try:
-        await _async_execute_send(
+        events = await _async_execute_send(
             hass,
             account,
             payload,
@@ -437,19 +565,31 @@ async def _async_handle_send(hass: HomeAssistant, call: ServiceCall) -> None:
         )
     except MatrixEncryptionRequiredError as err:
         account.status.mark_error(str(err), connected=True)
+        _fire_delivery(hass, account, delivery_id, "failed", error=str(err))
         raise
     except MatrixConnectionError as err:
         account.status.mark_error(str(err))
         if account.outbox is None:
+            _fire_delivery(hass, account, delivery_id, "failed", error=str(err))
             raise
         await account.outbox.async_enqueue(payload, delivery_id=delivery_id)
-    except MatrixExtendedError as err:
+        delivery = _fire_delivery(hass, account, delivery_id, "queued")
+        return _delivery_response(delivery)
+    except (MatrixExtendedError, HomeAssistantError, ValueError) as err:
         account.status.mark_error(str(err))
+        _fire_delivery(hass, account, delivery_id, "failed", error=str(err))
         raise
+    delivery = _fire_delivery(hass, account, delivery_id, "sent", events=events)
+    return _delivery_response(delivery)
+
 
 async def _async_handle_reply(hass: HomeAssistant, call: ServiceCall) -> None:
     account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
-    formatted = call.data[ATTR_MESSAGE] if call.data[ATTR_FORMAT] == FORMAT_HTML else None
+    formatted = _formatted_body(call.data[ATTR_MESSAGE], call.data[ATTR_FORMAT])
+    mentions = build_mentions(
+        call.data.get(ATTR_MENTION_USERS, []),
+        room=bool(call.data.get(ATTR_MENTION_ROOM, False)),
+    )
     await account.client.async_send_content(
         _room_for_call(account, call),
         build_reply_content(
@@ -457,6 +597,8 @@ async def _async_handle_reply(hass: HomeAssistant, call: ServiceCall) -> None:
             reply_to=call.data[ATTR_EVENT_ID],
             formatted_body=formatted,
             thread_id=call.data.get(ATTR_THREAD_ID),
+            msgtype=call.data[ATTR_MSGTYPE],
+            mentions=mentions,
         ),
     )
     account.status.mark_send_success()
@@ -474,13 +616,14 @@ async def _async_handle_react(hass: HomeAssistant, call: ServiceCall) -> None:
 
 async def _async_handle_edit(hass: HomeAssistant, call: ServiceCall) -> None:
     account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
-    formatted = call.data[ATTR_MESSAGE] if call.data[ATTR_FORMAT] == FORMAT_HTML else None
+    formatted = _formatted_body(call.data[ATTR_MESSAGE], call.data[ATTR_FORMAT])
     await account.client.async_send_content(
         _room_for_call(account, call),
         build_edit_content(
             call.data[ATTR_MESSAGE],
             event_id=call.data[ATTR_EVENT_ID],
             formatted_body=formatted,
+            msgtype=call.data[ATTR_MSGTYPE],
         ),
     )
     account.status.mark_send_success()
@@ -500,15 +643,33 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up Matrix Extended services."""
     hass.data.setdefault(DOMAIN, {})
 
-    def register(name: str, handler: Any, schema: vol.Schema) -> None:
-        async def wrapped(call: ServiceCall) -> None:
+    def register(
+        name: str,
+        handler: Any,
+        schema: vol.Schema,
+        *,
+        supports_response: SupportsResponse = SupportsResponse.NONE,
+    ) -> None:
+        async def wrapped(call: ServiceCall) -> Any:
             try:
-                await handler(hass, call)
+                return await handler(hass, call)
             except (MatrixExtendedError, ValueError) as err:
                 raise HomeAssistantError(str(err)) from err
-        hass.services.async_register(DOMAIN, name, wrapped, schema=schema)
 
-    register(SERVICE_SEND, _async_handle_send, SEND_SCHEMA)
+        hass.services.async_register(
+            DOMAIN,
+            name,
+            wrapped,
+            schema=schema,
+            supports_response=supports_response,
+        )
+
+    register(
+        SERVICE_SEND,
+        _async_handle_send,
+        SEND_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
     register(SERVICE_REPLY, _async_handle_reply, _REPLY_SCHEMA)
     register(SERVICE_REACT, _async_handle_react, _REACT_SCHEMA)
     register(SERVICE_EDIT, _async_handle_edit, _EDIT_SCHEMA)
@@ -571,7 +732,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await client.async_close()
         raise ConfigEntryNotReady(str(err)) from err
 
-    status.mark_connected(default_room_encrypted=default_room_encrypted)
+    status.mark_connected(default_room_encryption=default_room_encrypted)
     notification_store: Store[dict[str, dict[str, str]]] = Store(
         hass, 1, f"{DOMAIN}.notification_keys_{entry.entry_id}", private=True
     )

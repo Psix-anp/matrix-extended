@@ -74,6 +74,19 @@ async def test_outbox_is_bounded_deduplicated_and_persisted() -> None:
     assert store.saved[-1] == outbox.dump()
 
 
+@pytest.mark.asyncio
+async def test_outbox_rejects_non_json_payload_without_saving() -> None:
+    mod = load()
+    store = FakeStore()
+    outbox = mod.PersistentOutbox(store=store)
+
+    with pytest.raises(ValueError, match="JSON"):
+        await outbox.async_enqueue({"bad": object()}, delivery_id="bad")
+
+    assert outbox.pending() == []
+    assert store.saved == []
+
+
 def test_matrix_transaction_id_is_stable_per_delivery_event_and_room() -> None:
     mod = load()
     first = mod.matrix_transaction_id("delivery", "text", "!room:example")

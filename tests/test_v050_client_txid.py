@@ -64,10 +64,8 @@ def load(monkeypatch):
     return mod
 
 
-@pytest.mark.asyncio
-async def test_prepared_send_forwards_transaction_id_per_room(monkeypatch) -> None:
-    mod = load(monkeypatch)
-    client = mod.MatrixClient(
+def make_client(mod):
+    return mod.MatrixClient(
         homeserver="https://matrix.example",
         user_id="@ha:example",
         access_token="token",
@@ -76,6 +74,12 @@ async def test_prepared_send_forwards_transaction_id_per_room(monkeypatch) -> No
         store_path="/tmp/matrix-store",
         store_key="secret-key",
     )
+
+
+@pytest.mark.asyncio
+async def test_prepared_send_forwards_transaction_id_per_room(monkeypatch) -> None:
+    mod = load(monkeypatch)
+    client = make_client(mod)
     rooms = [
         mod.PreparedRoom("!one:example", True),
         mod.PreparedRoom("!two:example", True),
@@ -93,3 +97,23 @@ async def test_prepared_send_forwards_transaction_id_per_room(monkeypatch) -> No
         "mxext-one",
         "mxext-two",
     ]
+
+
+@pytest.mark.asyncio
+async def test_prepared_send_rejects_transaction_id_count_mismatch(monkeypatch) -> None:
+    mod = load(monkeypatch)
+    client = make_client(mod)
+    rooms = [
+        mod.PreparedRoom("!one:example", True),
+        mod.PreparedRoom("!two:example", True),
+    ]
+
+    with pytest.raises(ValueError, match="tx_ids"):
+        await client.async_send_event_prepared(
+            rooms,
+            "m.room.message",
+            {"msgtype": "m.text", "body": "queued"},
+            tx_ids=["only-one"],
+        )
+
+    assert AsyncClient.last_instance.sent == []

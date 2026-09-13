@@ -41,7 +41,7 @@ send:
         text:
     media:
       name: Media
-      description: List of media objects using entity_id, path, url, or media_source.
+      description: List of media objects using entity_id, path, url, or media_source. Audio items can set voice=true with optional duration_ms and waveform (0..1024 samples) to render as native Matrix voice messages in compatible clients.
       selector:
         object:
     actions:

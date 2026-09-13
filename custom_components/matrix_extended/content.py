@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
 
 MediaType = Literal["image", "video", "audio", "file"]
@@ -139,6 +139,8 @@ def build_media_content(
     width: int | None = None,
     height: int | None = None,
     duration_ms: int | None = None,
+    voice: bool = False,
+    waveform: Sequence[int] | None = None,
     thumbnail_mxc_uri: str | None = None,
     thumbnail_encrypted_file: Mapping[str, Any] | None = None,
     thumbnail_info: Mapping[str, Any] | None = None,
@@ -149,6 +151,12 @@ def build_media_content(
         raise ValueError(f"unsupported media type: {media_type}")
     if size < 0:
         raise ValueError("size cannot be negative")
+    if voice and media_type != "audio":
+        raise ValueError("voice metadata is only valid for m.audio")
+    if waveform is not None and not voice:
+        raise ValueError("waveform requires voice=true")
+    if waveform is not None and any(sample < 0 or sample > 1024 for sample in waveform):
+        raise ValueError("voice waveform values must be between 0 and 1024")
     if (mxc_uri is None) == (encrypted_file is None):
         raise ValueError("media content requires exactly one plain or encrypted source")
     if thumbnail_mxc_uri is not None and thumbnail_encrypted_file is not None:
@@ -187,6 +195,16 @@ def build_media_content(
             info["h"] = height
     if media_type in {"video", "audio"} and duration_ms is not None:
         info["duration"] = duration_ms
+
+    if voice:
+        content["org.matrix.msc3245.voice"] = {}
+        audio_meta: dict[str, Any] = {}
+        if duration_ms is not None:
+            audio_meta["duration"] = duration_ms
+        if waveform is not None:
+            audio_meta["waveform"] = list(waveform)
+        if audio_meta:
+            content["org.matrix.msc1767.audio"] = audio_meta
 
     if thumbnail_encrypted_file is not None:
         info["thumbnail_file"] = dict(thumbnail_encrypted_file)

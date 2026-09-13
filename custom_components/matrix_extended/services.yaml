@@ -69,6 +69,54 @@ send:
       selector:
         object:
 
+send_voice:
+  name: Send Matrix voice message
+  description: Convert text to speech using Home Assistant TTS and send the generated audio as a native Matrix voice message. E2EE, routes, threads, and optional service response data are supported.
+  fields:
+    account:
+      name: Account
+      description: Config entry ID. Omit when only one Matrix Extended account is loaded.
+      selector:
+        text:
+    target:
+      name: Rooms
+      description: Matrix room aliases or IDs. Omit to use the configured default room.
+      selector:
+        text:
+          multiple: true
+    route:
+      name: Route
+      description: Named routing profile configured in Matrix Extended options. Cannot be used together with Rooms.
+      selector:
+        text:
+    text:
+      name: Text
+      description: Text that Home Assistant TTS will synthesize.
+      required: true
+      selector:
+        text:
+          multiline: true
+    tts_engine:
+      name: TTS engine
+      description: Optional Home Assistant TTS provider/entity. Omit to use the default engine.
+      selector:
+        text:
+    language:
+      name: Language
+      description: Optional language code passed to the selected TTS engine, for example ru-RU.
+      selector:
+        text:
+    tts_options:
+      name: TTS options
+      description: Optional provider-specific Home Assistant TTS options such as voice.
+      selector:
+        object:
+    thread_id:
+      name: Thread ID
+      description: Optional Matrix event ID used as m.thread parent.
+      selector:
+        text:
+
 send_location:
   name: Send Matrix location
   description: Send an m.location message from explicit coordinates or from a Home Assistant entity exposing latitude and longitude attributes. Supports E2EE rooms, routes, threads, and optional response data.

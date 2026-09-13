@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 import secrets
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 
-from .client import MatrixAccount, MatrixExtendedError
+from .client import MatrixAccount, MatrixExtendedError, PreparedRoom
 from .const import (
     ATTR_ACCOUNT,
     ATTR_ROUTE,
@@ -22,8 +23,9 @@ from .const import (
     EVENT_DELIVERY,
     SERVICE_PURGE_MEDIA,
     SERVICE_SEND_LOCATION,
+    SERVICE_SEND_VOICE,
 )
-from .content import build_location_content
+from .content import build_location_content, build_media_content
 from .delivery import delivery_event_record, delivery_lifecycle_payload
 from .outbox import matrix_transaction_id
 from .retention import purge_media_directory
@@ -38,6 +40,19 @@ _LOCATION_SCHEMA = vol.Schema(
         vol.Optional("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
         vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
         vol.Optional("description"): cv.string,
+        vol.Optional(ATTR_THREAD_ID): cv.string,
+    }
+)
+
+_VOICE_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_ACCOUNT): cv.string,
+        vol.Optional(ATTR_TARGET): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_ROUTE): cv.string,
+        vol.Required("text"): cv.string,
+        vol.Optional("tts_engine"): cv.string,
+        vol.Optional("language"): cv.string,
+        vol.Optional("tts_options", default={}): dict,
         vol.Optional(ATTR_THREAD_ID): cv.string,
     }
 )
@@ -59,6 +74,24 @@ def _select_account(hass: HomeAssistant, account_id: str | None) -> MatrixAccoun
     raise HomeAssistantError(
         "Multiple Matrix Extended accounts are loaded; set 'account' to a config entry ID"
     )
+
+
+def _targets(account: MatrixAccount, call: ServiceCall) -> list[str]:
+    return resolve_targets(
+        explicit_targets=call.data.get(ATTR_TARGET),
+        route=call.data.get(ATTR_ROUTE),
+        default_room=account.default_room,
+        routing_profiles=account.routing_profiles or {},
+    )
+
+
+def _rooms_by_encryption(
+    rooms: list[PreparedRoom],
+) -> dict[bool, list[PreparedRoom]]:
+    grouped: dict[bool, list[PreparedRoom]] = {}
+    for room in rooms:
+        grouped.setdefault(room.encrypted, []).append(room)
+    return grouped
 
 
 def _location_from_call(
@@ -121,17 +154,20 @@ def _fire_delivery(
     return payload
 
 
+def _delivery_response(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "delivery_id": payload["delivery_id"],
+        "status": payload["status"],
+        "events": list(payload["events"]),
+    }
+
+
 async def _async_send_location(
     hass: HomeAssistant, call: ServiceCall
 ) -> dict[str, Any]:
     account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
     latitude, longitude, description = _location_from_call(hass, call)
-    targets = resolve_targets(
-        explicit_targets=call.data.get(ATTR_TARGET),
-        route=call.data.get(ATTR_ROUTE),
-        default_room=account.default_room,
-        routing_profiles=account.routing_profiles or {},
-    )
+    targets = _targets(account, call)
     content = build_location_content(
         latitude=latitude,
         longitude=longitude,
@@ -160,14 +196,89 @@ async def _async_send_location(
         if event_id
     ]
     account.status.mark_send_success()
-    delivery = _fire_delivery(
-        hass, account, delivery_id, "sent", events=events
+    return _delivery_response(
+        _fire_delivery(hass, account, delivery_id, "sent", events=events)
     )
-    return {
-        "delivery_id": delivery["delivery_id"],
-        "status": delivery["status"],
-        "events": list(delivery["events"]),
-    }
+
+
+async def _async_send_voice(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Generate Home Assistant TTS once and send it as native Matrix voice."""
+    from homeassistant.components import tts  # noqa: PLC0415
+    from homeassistant.components.tts.media_source import (  # noqa: PLC0415
+        generate_media_source_id,
+    )
+
+    account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
+    text = str(call.data["text"]).strip()
+    if not text:
+        raise HomeAssistantError("send_voice text must not be empty")
+
+    media_source_id = generate_media_source_id(
+        hass,
+        text,
+        engine=call.data.get("tts_engine"),
+        language=call.data.get("language"),
+        options=dict(call.data.get("tts_options") or {}),
+        cache=True,
+    )
+    extension, audio = await tts.async_get_media_source_audio(hass, media_source_id)
+    if not audio:
+        raise HomeAssistantError("Home Assistant TTS returned empty audio")
+
+    ext = str(extension or "mp3").lower().lstrip(".")
+    content_type = mimetypes.types_map.get(f".{ext}", "audio/mpeg")
+    filename = f"matrix-voice.{ext}"
+    targets = _targets(account, call)
+    delivery_id = secrets.token_hex(16)
+    events: list[dict[str, Any]] = []
+
+    try:
+        rooms = await account.client.async_prepare_rooms(targets)
+        for encrypted, group in _rooms_by_encryption(rooms).items():
+            upload = await account.client.async_upload(
+                audio,
+                filename=filename,
+                content_type=content_type,
+                encrypt=encrypted,
+            )
+            content = build_media_content(
+                media_type="audio",
+                mxc_uri=None if encrypted else upload.mxc_uri,
+                encrypted_file=upload.encrypted_file if encrypted else None,
+                filename=filename,
+                content_type=content_type,
+                size=len(audio),
+                thread_id=call.data.get(ATTR_THREAD_ID),
+                voice=True,
+            )
+            event_ids = await account.client.async_send_prepared(
+                group,
+                content,
+                tx_ids=[
+                    matrix_transaction_id(delivery_id, "voice", room.room_id)
+                    for room in group
+                ],
+            )
+            events.extend(
+                delivery_event_record(
+                    room_id=room.room_id,
+                    event_id=event_id,
+                    kind="voice",
+                )
+                for room, event_id in zip(group, event_ids, strict=True)
+                if event_id
+            )
+    except (MatrixExtendedError, ValueError) as err:
+        account.status.mark_error(str(err))
+        _fire_delivery(hass, account, delivery_id, "failed", error=str(err))
+        raise
+
+    account.status.mark_send_success()
+    return _delivery_response(
+        _fire_delivery(hass, account, delivery_id, "sent", events=events)
+    )
 
 
 async def _async_purge_media(
@@ -207,4 +318,5 @@ def install_v05_services(hass: HomeAssistant) -> None:
         )
 
     register(SERVICE_SEND_LOCATION, _async_send_location, _LOCATION_SCHEMA)
+    register(SERVICE_SEND_VOICE, _async_send_voice, _VOICE_SCHEMA)
     register(SERVICE_PURGE_MEDIA, _async_purge_media, _PURGE_SCHEMA)

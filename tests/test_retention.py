@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
+import sys
 
 ROOT = Path(__file__).parents[1]
 PATH = ROOT / "custom_components" / "matrix_extended" / "retention.py"
@@ -10,10 +11,16 @@ PATH = ROOT / "custom_components" / "matrix_extended" / "retention.py"
 
 def load():
     assert PATH.exists(), "retention.py implementation is absent"
-    spec = importlib.util.spec_from_file_location("matrix_extended_retention", PATH)
+    module_name = "matrix_extended_retention"
+    spec = importlib.util.spec_from_file_location(module_name, PATH)
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    sys.modules[module_name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
     return mod
 
 

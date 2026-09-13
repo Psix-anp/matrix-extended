@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -14,6 +15,7 @@ def load():
     spec = importlib.util.spec_from_file_location("matrix_extended_outbox_v050", PATH)
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

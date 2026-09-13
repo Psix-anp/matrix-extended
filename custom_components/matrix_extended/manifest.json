@@ -11,13 +11,16 @@
   "integration_type": "service",
   "iot_class": "cloud_push",
   "dependencies": [
-    "notify"
+    "notify",
+    "ffmpeg"
   ],
   "after_dependencies": [
     "camera",
     "image",
     "media_source",
-    "tts"
+    "tts",
+    "stt",
+    "conversation"
   ],
   "requirements": [
     "matrix-nio==0.26.0",

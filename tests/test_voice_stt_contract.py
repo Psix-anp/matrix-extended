@@ -9,7 +9,11 @@ COMP = ROOT / "custom_components" / "matrix_extended"
 def test_transcribe_voice_constant_and_service_are_exposed() -> None:
     const = (COMP / "const.py").read_text()
     services = (COMP / "services.yaml").read_text()
+    runtime = (COMP / "v05_services.py").read_text()
     assert 'SERVICE_TRANSCRIBE_VOICE: Final = "transcribe_voice"' in const
+    assert "SERVICE_TRANSCRIBE_VOICE" in runtime
+    assert "TRANSCRIBE_SCHEMA" in runtime
+    assert "async_transcribe_voice" in runtime
     assert "transcribe_voice:" in services
     for marker in (
         "path:",
@@ -26,9 +30,8 @@ def test_transcribe_voice_constant_and_service_are_exposed() -> None:
 
 
 def test_transcribe_voice_uses_ha_stt_and_restricts_files_to_incoming_directory() -> None:
-    source = (COMP / "v05_services.py").read_text()
+    source = (COMP / "voice_pipeline.py").read_text()
     for marker in (
-        "SERVICE_TRANSCRIBE_VOICE",
         "async_get_speech_to_text_entity",
         "SpeechMetadata",
         "check_metadata",
@@ -41,14 +44,14 @@ def test_transcribe_voice_uses_ha_stt_and_restricts_files_to_incoming_directory(
 
 
 def test_stt_normalizes_element_audio_for_pcm_only_providers() -> None:
-    source = (COMP / "v05_services.py").read_text()
+    source = (COMP / "voice_pipeline.py").read_text()
     assert "get_ffmpeg_manager" in source
     assert "pcm_s16le" in source
     assert "asyncio.create_subprocess_exec" in source
 
 
 def test_assist_execution_is_explicit_opt_in() -> None:
-    source = (COMP / "v05_services.py").read_text()
+    source = (COMP / "voice_pipeline.py").read_text()
     assert 'vol.Optional("assist", default=False)' in source
     assert "async_converse" in source
     assert 'call.data.get("assist", False)' in source

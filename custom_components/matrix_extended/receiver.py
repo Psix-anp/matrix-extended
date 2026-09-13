@@ -27,9 +27,11 @@ from nio import (
 from homeassistant.core import HomeAssistant
 
 from .client import MatrixAccount, MatrixExtendedError
+from .command_executor import CommandExecutor
 from .const import (
     DEFAULT_INCOMING_MEDIA_MAX_MB,
     DEFAULT_INCOMING_MEDIA_RETENTION_DAYS,
+    EVENT_COMMAND,
     EVENT_EDIT,
     EVENT_LOCATION,
     EVENT_MEDIA,
@@ -102,6 +104,7 @@ class MatrixInboundReceiver:
         self._download_media = download_media
         self._media_retention_days = int(media_retention_days)
         self._media_max_bytes = int(media_max_bytes)
+        self._command_executor = CommandExecutor(hass, account)
 
     def register(self) -> None:
         """Register all supported callbacks before starting live sync."""
@@ -153,11 +156,12 @@ class MatrixInboundReceiver:
         }
 
     async def async_handle_text(self, room: Any, event: Any) -> None:
-        """Forward authorized text/notices/emotes, replies, and edits to HA."""
+        """Forward authorized text/notices/emotes and execute exact safe commands."""
         if not self._allowed(room, event):
             return
         payload = self._base_payload(room, event)
         replaces, new_content = extract_replacement(event.source)
+        command = None
         if replaces and new_content is not None:
             payload.update(
                 {
@@ -169,15 +173,46 @@ class MatrixInboundReceiver:
             )
             event_type = EVENT_EDIT
         else:
+            message = getattr(event, "body", "")
             payload.update(
                 {
-                    "message": getattr(event, "body", ""),
+                    "message": message,
                     "formatted_body": getattr(event, "formatted_body", None),
                 }
             )
             event_type = EVENT_REPLY if payload["reply_to"] else EVENT_MESSAGE
+            registry = self._account.command_registry
+            if registry is not None:
+                command = registry.match(
+                    message,
+                    sender=event.sender,
+                    room_id=room.room_id,
+                )
+
         self._account.status.mark_receive()
         self._hass.bus.async_fire(event_type, payload)
+
+        if command is not None:
+            result = await self._command_executor.async_execute(
+                command,
+                room_id=room.room_id,
+                sender=event.sender,
+                source_event_id=event.event_id,
+                thread_id=payload["thread_id"],
+            )
+            self._hass.bus.async_fire(
+                EVENT_COMMAND,
+                {
+                    "account_id": self._entry_id,
+                    "room_id": room.room_id,
+                    "sender": event.sender,
+                    "command_id": result.command_id,
+                    "trigger": command.trigger,
+                    "handler_type": result.handler_type,
+                    "status": result.status,
+                    "error": result.error,
+                },
+            )
 
     async def async_handle_reaction(self, room: Any, event: Any) -> None:
         """Fire reaction events and execute only pre-registered actions."""

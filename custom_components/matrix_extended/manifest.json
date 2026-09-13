@@ -16,7 +16,8 @@
   "after_dependencies": [
     "camera",
     "image",
-    "media_source"
+    "media_source",
+    "tts"
   ],
   "requirements": [
     "matrix-nio==0.26.0",

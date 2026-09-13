@@ -31,10 +31,10 @@ jobs:
         run: pytest -q
 
   real_stack:
-    name: Real HA 2026.9.2 + Synapse 1.160.0
+    name: Real HA 2026.9.2 + Synapse 1.160.0 + Element 1.12.26
     needs: fast
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -70,6 +70,16 @@ jobs:
           assert s.stat().st_mode & 0o777 == 0o600
           print('Matrix bootstrap contract verified')
           PY
+      - name: Install Chromium UI test dependencies
+        run: |
+          python -m pip install playwright==1.62.0
+          python -m playwright install --with-deps chromium
+      - name: Start Element Web 1.12.26
+        run: docker compose -f compose.test.yml up -d element
+      - name: Wait for Element Web
+        run: python ci/scripts/wait-http.py http://127.0.0.1:8080/config.json 90
+      - name: Login Element recipient before HA sends E2EE data
+        run: python ci/scripts/element-e2e.py login
       - name: Prepare Home Assistant config
         run: ci/scripts/prepare-ha.sh
       - name: Start Home Assistant 2026.9.2
@@ -78,6 +88,8 @@ jobs:
         run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
       - name: Configure Matrix Extended and verify encrypted send + reload
         run: python ci/scripts/ha-e2e.py setup-send-reload
+      - name: Verify Element decrypts the HA E2EE message
+        run: python ci/scripts/element-e2e.py verify-message
       - name: Arm persistent outbox verification
         run: python ci/scripts/ha-reconnect.py arm-outbox
       - name: Stop Synapse while Home Assistant stays running
@@ -98,15 +110,25 @@ jobs:
         run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
       - name: Verify config entry after Home Assistant restart
         run: python ci/scripts/ha-e2e.py verify-restart
+      - name: Capture final Element room state
+        run: python ci/scripts/element-e2e.py final
       - name: Verify Matrix Extended did not block or leak background tasks
         run: |
           docker compose -f compose.test.yml logs --no-color homeassistant > .ci/home-assistant.log
           python ci/scripts/assert-clean-ha-log.py .ci/home-assistant.log
+      - name: Upload Element screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-element-e2e-screenshots
+          path: .ci/screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 14
       - name: Stack diagnostics on failure
         if: failure()
         run: |
           docker compose -f compose.test.yml ps
-          docker compose -f compose.test.yml logs --no-color --tail=300 homeassistant synapse
+          docker compose -f compose.test.yml logs --no-color --tail=300 homeassistant synapse element
       - name: Stop real stack
         if: always()
         run: docker compose -f compose.test.yml down -v --remove-orphans

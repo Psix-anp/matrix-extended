@@ -43,6 +43,12 @@ def test_element_e2e_verifies_text_then_sends_and_renders_rich_in_one_session() 
     assert '03-element-location-and-voice.png' in text
 
 
+def test_element_location_locator_accepts_element_caption_prefix() -> None:
+    text = ELEMENT_E2E.read_text()
+    assert 're.compile(rf"{re.escape(LOCATION_TEXT)}$")' in text
+    assert 'get_by_text(LOCATION_TEXT, exact=True)' not in text
+
+
 def test_real_stack_uses_one_post_login_element_session_for_text_and_rich() -> None:
     text = WORKFLOW.read_text()
     assert "Verify Element decrypts text and renders rich Matrix events" in text

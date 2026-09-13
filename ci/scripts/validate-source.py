@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sys
 
-EXPECTED_VERSION = "0.4.2"
+EXPECTED_VERSION = "0.5.0"
 COMPONENT = Path("custom_components/matrix_extended")
 REQUIRED = {
     "__init__.py",

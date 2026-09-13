@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,8 @@ from homeassistant.core import HomeAssistant
 
 from .client import MatrixAccount, MatrixExtendedError
 from .const import (
+    DEFAULT_INCOMING_MEDIA_MAX_MB,
+    DEFAULT_INCOMING_MEDIA_RETENTION_DAYS,
     EVENT_EDIT,
     EVENT_MEDIA,
     EVENT_MESSAGE,
@@ -35,6 +38,7 @@ from .const import (
     MAX_INCOMING_MEDIA_BYTES,
 )
 from .incoming import extract_relations, extract_replacement, safe_filename
+from .retention import cleanup_media_directory
 
 _TEXT_EVENTS = (RoomMessageText, RoomMessageNotice, RoomMessageEmote)
 _MEDIA_EVENTS = (
@@ -69,12 +73,16 @@ class MatrixInboundReceiver:
         account: MatrixAccount,
         incoming_dir: str,
         download_media: bool,
+        media_retention_days: int = DEFAULT_INCOMING_MEDIA_RETENTION_DAYS,
+        media_max_bytes: int = DEFAULT_INCOMING_MEDIA_MAX_MB * 1024 * 1024,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
         self._account = account
         self._incoming_dir = Path(incoming_dir)
         self._download_media = download_media
+        self._media_retention_days = int(media_retention_days)
+        self._media_max_bytes = int(media_max_bytes)
 
     def register(self) -> None:
         """Register all supported callbacks before starting live sync."""
@@ -223,6 +231,11 @@ class MatrixInboundReceiver:
                         f"incoming media is too large ({len(data)} bytes); "
                         f"limit is {MAX_INCOMING_MEDIA_BYTES}"
                     )
+                if len(data) > self._media_max_bytes:
+                    raise ValueError(
+                        f"incoming media exceeds configured storage limit "
+                        f"({len(data)} > {self._media_max_bytes} bytes)"
+                    )
                 if response_filename and filename == "matrix-media.bin":
                     filename = safe_filename(response_filename)
                     payload["filename"] = filename
@@ -231,6 +244,14 @@ class MatrixInboundReceiver:
                 prefix = sha256(event.event_id.encode()).hexdigest()[:12]
                 destination = self._incoming_dir / f"{prefix}-{filename}"
                 await self._hass.async_add_executor_job(destination.write_bytes, data)
+                await self._hass.async_add_executor_job(
+                    partial(
+                        cleanup_media_directory,
+                        self._incoming_dir,
+                        retention_days=self._media_retention_days,
+                        max_bytes=self._media_max_bytes,
+                    )
+                )
                 payload["local_path"] = str(destination)
             except (MatrixExtendedError, OSError, ValueError, KeyError) as err:
                 payload["download_error"] = str(err)

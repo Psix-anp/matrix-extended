@@ -143,7 +143,9 @@ def run(mode: str) -> None:
                 # already successful.
                 _send_rich_from_ha()
 
-                location = page.get_by_text(LOCATION_TEXT, exact=True).last
+                location = page.get_by_text(
+                    re.compile(rf"{re.escape(LOCATION_TEXT)}$")
+                ).last
                 location.wait_for(state="visible", timeout=60000)
                 location.scroll_into_view_if_needed()
                 voice = page.locator(".mx_MVoiceMessageBody").last

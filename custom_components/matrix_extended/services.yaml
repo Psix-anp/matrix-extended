@@ -1,6 +1,6 @@
 send:
   name: Send Matrix message
-  description: Send text and rich media to one or more Matrix rooms. Encrypted rooms use Matrix E2EE, including encrypted media uploads.
+  description: Send text and rich media to one or more Matrix rooms. Encrypted rooms use Matrix E2EE, including encrypted media uploads. Supports optional service response data with delivery status and event IDs.
   fields:
     account:
       name: Account
@@ -28,12 +28,31 @@ send:
       selector:
         text:
           multiline: true
+    msgtype:
+      name: Message type
+      description: Matrix text-like message type.
+      default: text
+      selector:
+        select:
+          options: [text, notice, emote]
     format:
       name: Format
       default: text
       selector:
         select:
-          options: [text, html]
+          options: [text, html, markdown]
+    mention_users:
+      name: Mention users
+      description: Matrix user IDs to include in native m.mentions metadata.
+      selector:
+        text:
+          multiple: true
+    mention_room:
+      name: Mention room
+      description: Set native m.mentions room=true.
+      default: false
+      selector:
+        boolean:
     thread_id:
       name: Thread ID
       description: Optional Matrix event ID used as m.thread parent.
@@ -46,7 +65,7 @@ send:
         object:
     actions:
       name: Reaction actions
-      description: One-shot Home Assistant service calls attached to reactions on the text message. Each item needs reaction and service; target/data are optional.
+      description: Explicit Home Assistant service calls attached to reactions on this text event. Each object needs reaction and service; target/data are optional. v0.5 also supports expires_in (seconds), max_uses, and allowed_users.
       selector:
         object:
 
@@ -75,12 +94,28 @@ reply:
       selector:
         text:
           multiline: true
+    msgtype:
+      name: Message type
+      default: text
+      selector:
+        select:
+          options: [text, notice, emote]
     format:
       name: Format
       default: text
       selector:
         select:
-          options: [text, html]
+          options: [text, html, markdown]
+    mention_users:
+      name: Mention users
+      selector:
+        text:
+          multiple: true
+    mention_room:
+      name: Mention room
+      default: false
+      selector:
+        boolean:
     thread_id:
       name: Thread ID
       selector:
@@ -112,7 +147,7 @@ react:
 
 edit:
   name: Edit Matrix message
-  description: Replace the content of a previously sent text message using m.replace.
+  description: Replace the content of a previously sent text-like message using m.replace. Mentions are intentionally not repeated by edits.
   fields:
     account:
       name: Account
@@ -133,12 +168,18 @@ edit:
       selector:
         text:
           multiline: true
+    msgtype:
+      name: Message type
+      default: text
+      selector:
+        select:
+          options: [text, notice, emote]
     format:
       name: Format
       default: text
       selector:
         select:
-          options: [text, html]
+          options: [text, html, markdown]
 
 redact:
   name: Redact Matrix event

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,31 @@ TRANSCRIBE_SCHEMA = vol.Schema(
         vol.Optional("conversation_id"): cv.string,
     }
 )
+
+
+@dataclass(slots=True, frozen=True)
+class VoicePipelineResult:
+    """Reusable STT/Assist result independent from a Home Assistant service call."""
+
+    text: str
+    stt_entity: str
+    language: str
+    normalized: bool
+    assist_executed: bool
+    assist: dict[str, Any] | None = None
+
+    def as_response(self) -> dict[str, Any]:
+        """Return the stable matrix_extended.transcribe_voice response shape."""
+        response: dict[str, Any] = {
+            "text": self.text,
+            "stt_entity": self.stt_entity,
+            "language": self.language,
+            "normalized": self.normalized,
+            "assist_executed": self.assist_executed,
+        }
+        if self.assist is not None:
+            response["assist"] = self.assist
+        return response
 
 
 def _select_account(hass: HomeAssistant, account_id: str | None) -> MatrixAccount:
@@ -121,61 +147,111 @@ def _pcm_metadata_for_provider(stt: Any, provider: Any, language: str) -> Any | 
     )
 
 
-async def async_transcribe_voice(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
-    """Transcribe a downloaded Matrix voice file and optionally execute Assist."""
+async def async_process_voice_file(
+    hass: HomeAssistant,
+    account: MatrixAccount,
+    *,
+    path: str,
+    stt_entity: str | None = None,
+    language: str | None = None,
+    audio_format: str = "ogg",
+    codec: str = "opus",
+    bit_rate: int = 16,
+    sample_rate: int = 48000,
+    channels: int = 1,
+    assist: bool = False,
+    conversation_agent: str | None = None,
+    conversation_id: str | None = None,
+) -> VoicePipelineResult:
+    """Process one integration-owned Matrix voice file through HA STT/Assist."""
     from homeassistant.components import stt  # noqa: PLC0415
 
-    account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
-    path = await hass.async_add_executor_job(_resolve_incoming_voice_path, hass, account, call.data["path"])
-    entity_id = call.data.get("stt_entity") or stt.async_default_engine(hass)
+    resolved_path = await hass.async_add_executor_job(
+        _resolve_incoming_voice_path, hass, account, path
+    )
+    entity_id = stt_entity or stt.async_default_engine(hass)
     if not entity_id:
         raise HomeAssistantError("No Home Assistant STT entity is available")
     provider = stt.async_get_speech_to_text_entity(hass, str(entity_id))
     if provider is None:
         raise HomeAssistantError(f"STT entity not found: {entity_id}; select a modern stt.* entity")
-    language = _stt_language(provider, str(call.data.get("language") or hass.config.language or "en"))
+
+    selected_language = _stt_language(
+        provider, str(language or hass.config.language or "en")
+    )
     metadata = stt.SpeechMetadata(
-        language=language,
-        format=stt.AudioFormats(call.data["audio_format"]),
-        codec=stt.AudioCodecs(call.data["codec"]),
-        bit_rate=stt.AudioBitRates(int(call.data["bit_rate"])),
-        sample_rate=stt.AudioSampleRates(int(call.data["sample_rate"])),
-        channel=stt.AudioChannels(int(call.data["channels"])),
+        language=selected_language,
+        format=stt.AudioFormats(audio_format),
+        codec=stt.AudioCodecs(codec),
+        bit_rate=stt.AudioBitRates(int(bit_rate)),
+        sample_rate=stt.AudioSampleRates(int(sample_rate)),
+        channel=stt.AudioChannels(int(channels)),
     )
     if provider.check_metadata(metadata):
-        audio = await hass.async_add_executor_job(path.read_bytes)
+        audio = await hass.async_add_executor_job(resolved_path.read_bytes)
         normalized = False
     else:
-        normalized_metadata = _pcm_metadata_for_provider(stt, provider, language)
+        normalized_metadata = _pcm_metadata_for_provider(stt, provider, selected_language)
         if normalized_metadata is None or not provider.check_metadata(normalized_metadata):
             raise HomeAssistantError("STT provider does not accept supplied audio and has no WAV/PCM fallback")
         metadata = normalized_metadata
         audio = await _transcode_voice_to_pcm_wav(
-            hass, path, sample_rate=int(metadata.sample_rate.value), channels=int(metadata.channel.value)
+            hass,
+            resolved_path,
+            sample_rate=int(metadata.sample_rate.value),
+            channels=int(metadata.channel.value),
         )
         normalized = True
-    result = await provider.internal_async_process_audio_stream(metadata, _byte_stream(audio))
+
+    result = await provider.internal_async_process_audio_stream(
+        metadata, _byte_stream(audio)
+    )
     if result.result != stt.SpeechResultState.SUCCESS or not result.text:
         raise HomeAssistantError("Home Assistant STT did not return a transcript")
     transcript = str(result.text).strip()
-    response: dict[str, Any] = {
-        "text": transcript,
-        "stt_entity": str(entity_id),
-        "language": language,
-        "normalized": normalized,
-        "assist_executed": False,
-    }
-    if call.data.get("assist", False):
+    if not transcript:
+        raise HomeAssistantError("Home Assistant STT did not return a transcript")
+
+    assist_result_dict: dict[str, Any] | None = None
+    if assist:
         from homeassistant.components import conversation  # noqa: PLC0415
 
         assist_result = await conversation.async_converse(
             hass=hass,
             text=transcript,
-            conversation_id=call.data.get("conversation_id"),
+            conversation_id=conversation_id,
             context=Context(),
-            language=language,
-            agent_id=call.data.get("conversation_agent"),
+            language=selected_language,
+            agent_id=conversation_agent,
         )
-        response["assist_executed"] = True
-        response["assist"] = assist_result.as_dict()
-    return response
+        assist_result_dict = assist_result.as_dict()
+
+    return VoicePipelineResult(
+        text=transcript,
+        stt_entity=str(entity_id),
+        language=selected_language,
+        normalized=normalized,
+        assist_executed=assist,
+        assist=assist_result_dict,
+    )
+
+
+async def async_transcribe_voice(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
+    """Service adapter for a downloaded Matrix voice file."""
+    account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
+    result = await async_process_voice_file(
+        hass,
+        account,
+        path=call.data["path"],
+        stt_entity=call.data.get("stt_entity"),
+        language=call.data.get("language"),
+        audio_format=call.data.get("audio_format", "ogg"),
+        codec=call.data.get("codec", "opus"),
+        bit_rate=int(call.data.get("bit_rate", 16)),
+        sample_rate=int(call.data.get("sample_rate", 48000)),
+        channels=int(call.data.get("channels", 1)),
+        assist=bool(call.data.get("assist", False)),
+        conversation_agent=call.data.get("conversation_agent"),
+        conversation_id=call.data.get("conversation_id"),
+    )
+    return result.as_response()

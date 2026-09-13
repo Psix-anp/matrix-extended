@@ -19,7 +19,6 @@ from .const import (
     EVENT_VOICE_ASSIST,
 )
 from .content import build_media_content, build_reply_content
-from .voice_pipeline import async_process_voice_file
 
 _SECRET_RE = re.compile(
     r"(?i)\b([a-z0-9_-]*(?:token|password|secret)[a-z0-9_-]*)\s*[:=]\s*[^\s,;]+"
@@ -241,6 +240,10 @@ class VoiceAssistCoordinator:
             return
         transcript: str | None = None
         try:
+            # STT/Conversation dependencies are intentionally lazy: receiver import
+            # remains lightweight, and these modules load only for admitted native voice.
+            from .voice_pipeline import async_process_voice_file  # noqa: PLC0415
+
             result = await async_process_voice_file(
                 self._hass,
                 self._account,

@@ -17,6 +17,8 @@ PROFILE_DIR = Path(os.environ.get("ELEMENT_PROFILE_DIR", ".ci/element-profile"))
 SCREENSHOT_DIR = Path(os.environ.get("ELEMENT_SCREENSHOT_DIR", ".ci/screenshots"))
 ROOM_NAME = "Matrix Extended E2E"
 MESSAGE_RE = re.compile(r"matrix-extended-ha-e2e-[0-9a-f]+")
+LOCATION_TEXT = "Matrix Extended E2E Location"
+VOICE_TEXT = "Matrix Extended E2E Voice"
 
 
 def _state() -> tuple[dict[str, str], dict[str, str]]:
@@ -126,9 +128,23 @@ def run(mode: str) -> None:
                 _screenshot(page, "02-element-decrypted-ha-message.png")
                 print("Element decrypted the Home Assistant E2EE message")
                 return
+            if mode == "verify-rich":
+                location = page.get_by_text(LOCATION_TEXT, exact=True).last
+                location.wait_for(state="visible", timeout=60000)
+                location.scroll_into_view_if_needed()
+                voice = page.locator(".mx_MVoiceMessageBody").last
+                voice.wait_for(state="visible", timeout=60000)
+                voice.scroll_into_view_if_needed()
+                page.wait_for_timeout(1000)
+                _screenshot(page, "03-element-location-and-voice.png")
+                voice_text = page.get_by_text(VOICE_TEXT, exact=True).last
+                if voice_text.count() and voice_text.is_visible(timeout=1000):
+                    print("Element rendered native voice with the E2E caption")
+                print("Element rendered encrypted Matrix location and native voice")
+                return
             if mode == "final":
                 page.wait_for_timeout(1500)
-                _screenshot(page, "03-element-final-reaction-state.png")
+                _screenshot(page, "04-element-final-reaction-state.png")
                 print("Element final room state captured")
                 return
             raise ValueError(f"unknown mode: {mode}")
@@ -140,8 +156,12 @@ def run(mode: str) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) != 2 or sys.argv[1] not in {"login", "verify-message", "final"}:
-        print("usage: element-e2e.py {login|verify-message|final}", file=sys.stderr)
+    modes = {"login", "verify-message", "verify-rich", "final"}
+    if len(sys.argv) != 2 or sys.argv[1] not in modes:
+        print(
+            "usage: element-e2e.py {login|verify-message|verify-rich|final}",
+            file=sys.stderr,
+        )
         return 2
     run(sys.argv[1])
     return 0

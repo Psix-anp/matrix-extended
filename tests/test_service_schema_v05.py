@@ -35,19 +35,27 @@ def test_send_service_supports_response_markdown_mentions_and_action_controls() 
 
 
 def test_retention_options_are_wired_into_runtime_and_purge_service() -> None:
-    source = (COMP / "__init__.py").read_text()
+    setup = (COMP / "__init__.py").read_text()
     for marker in (
         "CONF_INCOMING_MEDIA_RETENTION_DAYS",
         "CONF_INCOMING_MEDIA_MAX_MB",
         "DEFAULT_INCOMING_MEDIA_RETENTION_DAYS",
         "DEFAULT_INCOMING_MEDIA_MAX_MB",
-        "SERVICE_PURGE_MEDIA",
-        "purge_media_directory",
         "media_retention_days=",
         "media_max_bytes=",
-        "SupportsResponse.OPTIONAL",
+        "install_v05_services",
     ):
-        assert marker in source
+        assert marker in setup
+
+    services = (COMP / "v05_services.py").read_text()
+    for marker in (
+        "SERVICE_PURGE_MEDIA",
+        "purge_media_directory",
+        "SupportsResponse.OPTIONAL",
+        "removed_files",
+        "removed_bytes",
+    ):
+        assert marker in services
 
 
 def test_services_yaml_documents_v05_fields() -> None:

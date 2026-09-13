@@ -220,3 +220,24 @@ def test_thumbnail_info_requires_an_actual_thumbnail() -> None:
         thumbnail_mxc_uri="mxc://example/thumb",
     )
     assert "thumbnail_info" not in with_thumb["info"]
+
+
+def test_voice_audio_uses_native_matrix_voice_metadata() -> None:
+    mod = load_module()
+    waveform = [0, 64, 128, 256, 512, 768, 1024, 768, 512, 256]
+    content = mod.build_media_content(
+        media_type="audio",
+        mxc_uri="mxc://example/voice",
+        filename="voice.ogg",
+        content_type="audio/ogg",
+        size=2048,
+        duration_ms=3100,
+        voice=True,
+        waveform=waveform,
+    )
+    assert content["msgtype"] == "m.audio"
+    assert content["org.matrix.msc3245.voice"] == {}
+    assert content["org.matrix.msc1767.audio"] == {
+        "duration": 3100,
+        "waveform": waveform,
+    }

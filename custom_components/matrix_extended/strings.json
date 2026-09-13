@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Connect Matrix",
-        "description": "The password is used only once to obtain a Matrix access token and is not stored. End-to-end encryption is recommended and enabled by default.",
+        "description": "Matrix Extended is developed and maintained by Psix-anp (@Psix-anp). The password is used only once to obtain a Matrix access token and is not stored. End-to-end encryption is recommended and enabled by default.",
         "data": {
           "homeserver": "Homeserver URL",
           "user_id": "Matrix user ID",
@@ -30,39 +30,17 @@
     }
   },
   "entity": {
-    "binary_sensor": {
-      "connected": {
-        "name": "Connection"
-      }
-    },
+    "binary_sensor": {"connected": {"name": "Connection"}},
     "sensor": {
-      "user_id": {
-        "name": "User ID"
-      },
-      "device_id": {
-        "name": "Device ID"
-      },
-      "default_room": {
-        "name": "Default room"
-      },
-      "default_room_encryption": {
-        "name": "Default room encryption"
-      },
-      "last_send": {
-        "name": "Last successful send"
-      },
-      "last_error": {
-        "name": "Last error"
-      },
-      "last_receive": {
-        "name": "Last incoming event"
-      }
+      "user_id": {"name": "User ID"},
+      "device_id": {"name": "Device ID"},
+      "default_room": {"name": "Default room"},
+      "default_room_encryption": {"name": "Default room encryption"},
+      "last_send": {"name": "Last successful send"},
+      "last_error": {"name": "Last error"},
+      "last_receive": {"name": "Last incoming event"}
     },
-    "select": {
-      "default_room": {
-        "name": "Default room"
-      }
-    }
+    "select": {"default_room": {"name": "Default room"}}
   },
   "options": {
     "step": {
@@ -81,8 +59,6 @@
         }
       }
     },
-    "error": {
-      "invalid_routes": "Invalid notification routing profile structure"
-    }
+    "error": {"invalid_routes": "Invalid notification routing profile structure"}
   }
 }

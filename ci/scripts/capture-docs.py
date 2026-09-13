@@ -68,6 +68,22 @@ def wait_matrix_entry_loaded(token: str, timeout: float = 90) -> dict[str, Any]:
     raise TimeoutError(f"Matrix Extended entry did not load; last_state={last}")
 
 
+def _finish_onboarding(token: str) -> None:
+    """Complete the authenticated onboarding steps so frontend routes are usable."""
+    request_json("POST", "/api/onboarding/core_config", token=token, json_body={})
+    request_json("POST", "/api/onboarding/analytics", token=token, json_body={})
+    request_json(
+        "POST",
+        "/api/onboarding/integration",
+        token=token,
+        json_body={"client_id": CLIENT_ID, "redirect_uri": CLIENT_ID},
+    )
+    status = request_json("GET", "/api/onboarding")
+    unfinished = [item["step"] for item in status if not item.get("done")]
+    if unfinished:
+        raise RuntimeError(f"Home Assistant onboarding is incomplete: {unfinished}")
+
+
 def setup_fixture() -> None:
     matrix_env = json.loads(Path(".ci/matrix-env.json").read_text())
     matrix_passwords = json.loads(Path(".ci/matrix-passwords.json").read_text())
@@ -95,6 +111,7 @@ def setup_fixture() -> None:
         },
     )
     token = token_data["access_token"]
+    _finish_onboarding(token)
 
     flow = request_json(
         "POST",

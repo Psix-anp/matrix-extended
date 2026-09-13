@@ -8,6 +8,8 @@ on:
     paths:
       - .github/workflows/capture-android.yml
       - ci/maestro/**
+      - ci/scripts/capture-element-x.sh
+      - ci/scripts/prepare-doc-media.sh
       - ci/scripts/send-doc-messages.py
       - ci/scripts/capture-docs.py
       - custom_components/matrix_extended/**
@@ -48,6 +50,9 @@ jobs:
       - name: Prepare Home Assistant config
         run: ci/scripts/prepare-ha.sh
 
+      - name: Generate image, video, and voice fixtures
+        run: bash ci/scripts/prepare-doc-media.sh
+
       - name: Start Home Assistant 2026.9.2
         run: docker compose -f compose.test.yml up -d homeassistant
 
@@ -85,35 +90,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
-          script: |
-            exec bash -euo pipefail <<'BASH'
-            mkdir -p docs/images .ci/android-debug
-            debug_capture() {
-              adb exec-out screencap -p > .ci/android-debug/failure.png 2>/dev/null || true
-              adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
-              adb pull /sdcard/window.xml .ci/android-debug/window.xml >/dev/null 2>&1 || true
-              adb logcat -d -t 500 > .ci/android-debug/logcat.txt 2>/dev/null || true
-            }
-            trap debug_capture ERR
-
-            adb install -r "$GITHUB_WORKSPACE/.ci/element-x.apk"
-            adb shell pm grant io.element.android.x android.permission.POST_NOTIFICATIONS || true
-
-            MATRIX_PASSWORD="$(python -c 'import json; print(json.load(open(".ci/matrix-passwords.json"))["user_password"])')"
-            "$HOME/.maestro/bin/maestro" test ci/maestro/element-x-login.yaml \
-              -e MATRIX_URL=http://10.0.2.2:8008 \
-              -e MATRIX_USERNAME=ha_user \
-              -e MATRIX_PASSWORD="$MATRIX_PASSWORD"
-
-            python ci/scripts/send-doc-messages.py
-            sleep 5
-            adb exec-out screencap -p > docs/images/matrix-extended-element-x-inbox.png
-
-            "$HOME/.maestro/bin/maestro" test ci/maestro/element-x-room.yaml
-            sleep 2
-            adb exec-out screencap -p > docs/images/matrix-extended-element-x-chat.png
-            trap - ERR
-            BASH
+          script: bash ci/scripts/capture-element-x.sh
 
       - name: Upload Android screenshots
         if: success()

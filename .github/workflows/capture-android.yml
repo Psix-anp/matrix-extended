@@ -50,6 +50,12 @@ jobs:
       - name: Prepare Home Assistant config
         run: ci/scripts/prepare-ha.sh
 
+      - name: Install ffmpeg for documentation fixtures
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -n 1
+
       - name: Generate image, video, and voice fixtures
         run: bash ci/scripts/prepare-doc-media.sh
 

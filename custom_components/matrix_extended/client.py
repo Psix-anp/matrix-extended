@@ -397,17 +397,24 @@ class MatrixClient:
         rooms: list[PreparedRoom],
         event_type: str,
         content: dict[str, Any],
+        *,
+        tx_ids: list[str] | None = None,
     ) -> list[str | None]:
         """Send an arbitrary Matrix room event to already prepared rooms."""
+        if tx_ids is not None and len(tx_ids) != len(rooms):
+            raise ValueError("tx_ids must match prepared rooms")
         results: list[str | None] = []
-        for room in rooms:
+        for index, room in enumerate(rooms):
+            send_kwargs: dict[str, Any] = {
+                "room_id": room.room_id,
+                "message_type": event_type,
+                "content": content,
+                "ignore_unverified_devices": True,
+            }
+            if tx_ids is not None:
+                send_kwargs["tx_id"] = tx_ids[index]
             try:
-                response = await self._client.room_send(
-                    room_id=room.room_id,
-                    message_type=event_type,
-                    content=content,
-                    ignore_unverified_devices=True,
-                )
+                response = await self._client.room_send(**send_kwargs)
             except Exception as err:
                 raise MatrixConnectionError(str(err)) from err
             if isinstance(response, ErrorResponse):
@@ -421,10 +428,12 @@ class MatrixClient:
         self,
         rooms: list[PreparedRoom],
         content: dict[str, Any],
+        *,
+        tx_ids: list[str] | None = None,
     ) -> list[str | None]:
         """Send m.room.message content to already-resolved rooms."""
         return await self.async_send_event_prepared(
-            rooms, "m.room.message", content
+            rooms, "m.room.message", content, tx_ids=tx_ids
         )
 
     async def async_send_event(

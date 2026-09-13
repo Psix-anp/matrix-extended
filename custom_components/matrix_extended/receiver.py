@@ -43,6 +43,7 @@ from .const import (
 )
 from .incoming import extract_relations, extract_replacement, safe_filename
 from .retention import cleanup_media_directory
+from .voice_assist import VoiceAssistCoordinator
 
 _TEXT_EVENTS = (RoomMessageText, RoomMessageNotice, RoomMessageEmote)
 _MEDIA_EVENTS = (
@@ -105,6 +106,9 @@ class MatrixInboundReceiver:
         self._media_retention_days = int(media_retention_days)
         self._media_max_bytes = int(media_max_bytes)
         self._command_executor = CommandExecutor(hass, account)
+        self._voice_assist = VoiceAssistCoordinator(
+            hass, account, entry_id=entry_id
+        )
 
     def register(self) -> None:
         """Register all supported callbacks before starting live sync."""
@@ -206,6 +210,7 @@ class MatrixInboundReceiver:
                     "account_id": self._entry_id,
                     "room_id": room.room_id,
                     "sender": event.sender,
+                    "event_id": event.event_id,
                     "command_id": result.command_id,
                     "trigger": command.trigger,
                     "handler_type": result.handler_type,
@@ -317,6 +322,25 @@ class MatrixInboundReceiver:
                 payload["download_error"] = str(err)
         self._account.status.mark_receive()
         self._hass.bus.async_fire(EVENT_MEDIA, payload)
+
+        # Only MSC3245 native voice messages with a successfully downloaded local
+        # file can reach automatic Assist. The account inbound allowlist already
+        # passed above; voice-specific allowlists can only narrow that access.
+        if self._voice_assist.allows(
+            sender=event.sender,
+            room_id=room.room_id,
+            media_payload=payload,
+        ):
+            self._hass.async_create_task(
+                self._voice_assist.async_process(
+                    media_payload=payload,
+                    sender=event.sender,
+                    room_id=room.room_id,
+                    source_event_id=event.event_id,
+                    thread_id=payload["thread_id"],
+                ),
+                f"matrix_extended_voice_assist_{self._entry_id}",
+            )
 
     async def async_handle_location(self, room: Any, event: Any) -> None:
         """Forward stable m.location events represented as RoomMessageUnknown."""

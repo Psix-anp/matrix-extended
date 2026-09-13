@@ -1,0 +1,48 @@
+appId: io.element.android.x
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Sign in manually"
+    timeout: 30000
+- tapOn: "Sign in manually"
+- extendedWaitUntil:
+    visible: "Enter your account provider"
+    timeout: 30000
+- tapOn:
+    id: "change_server-server"
+- eraseText: 100
+- inputText: ${MATRIX_URL}
+- hideKeyboard
+- tapOn:
+    id: "login-continue"
+- runFlow:
+    when:
+      visible: "Allow"
+    commands:
+      - tapOn: "Allow"
+- extendedWaitUntil:
+    visible: "You’re about to sign in to.*"
+    timeout: 30000
+- tapOn:
+    id: "login-email_username"
+- inputText: ${MATRIX_USERNAME}
+- tapOn:
+    id: "login-password"
+- inputText: ${MATRIX_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "login-continue"
+- runFlow:
+    when:
+      visible: "Not now"
+    commands:
+      - tapOn: "Not now"
+- runFlow:
+    when:
+      visible: "Skip"
+    commands:
+      - tapOn: "Skip"
+- extendedWaitUntil:
+    visible: "Chats"
+    timeout: 60000

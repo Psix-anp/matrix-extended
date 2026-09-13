@@ -20,6 +20,7 @@ ROOM_NAME = "Matrix Extended E2E"
 MESSAGE_RE = re.compile(r"matrix-extended-ha-e2e-[0-9a-f]+")
 LOCATION_TEXT = "Matrix Extended E2E Location"
 VOICE_TEXT = "Matrix Extended E2E Voice"
+SHOWCASE_MAP_SETTLE_MS = 5000
 
 
 def _state() -> tuple[dict[str, str], dict[str, str]]:
@@ -58,6 +59,7 @@ def _prepare_showcase_screenshot(page: Page) -> None:
         map_error.wait_for(state="hidden", timeout=30000)
     except PlaywrightTimeoutError as err:
         raise RuntimeError("Element location map did not finish loading") from err
+    page.wait_for_timeout(SHOWCASE_MAP_SETTLE_MS)
     page.add_style_tag(
         content='.mx_EventTile [data-testid="e2e-padlock"] { display: none !important; }'
     )

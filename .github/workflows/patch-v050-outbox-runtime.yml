@@ -1,0 +1,325 @@
+name: Patch v0.5 persistent outbox runtime
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.ref == 'feature/v050-persistent-outbox'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/v050-persistent-outbox
+      - name: Apply focused outbox runtime patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          client_path = Path('custom_components/matrix_extended/client.py')
+          client = client_path.read_text()
+          old_fields = '''    notification_registry: Any = None\n    notification_store: Any = None\n    entry_id: str = ""\n    default_room_id: str = ""\n'''
+          new_fields = '''    notification_registry: Any = None\n    notification_store: Any = None\n    outbox: Any = None\n    outbox_task: Any = None\n    entry_id: str = ""\n    default_room_id: str = ""\n'''
+          if old_fields not in client:
+              raise SystemExit('MatrixAccount field block not found')
+          client_path.write_text(client.replace(old_fields, new_fields, 1))
+
+          init_path = Path('custom_components/matrix_extended/__init__.py')
+          text = init_path.read_text()
+          text = text.replace(
+              'from functools import partial\nfrom pathlib import Path\nimport secrets\n',
+              'import asyncio\nfrom contextlib import suppress\nfrom functools import partial\nimport logging\nfrom pathlib import Path\nimport secrets\n',
+              1,
+          )
+          text = text.replace(
+              'from .notifications import NotificationKeyRegistry\n',
+              'from .notifications import NotificationKeyRegistry\nfrom .outbox import PersistentOutbox, matrix_transaction_id\n',
+              1,
+          )
+          text = text.replace(
+              'PLATFORMS = [Platform.NOTIFY, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SELECT]\n',
+              'PLATFORMS = [Platform.NOTIFY, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SELECT]\n_OUTBOX_RETRY_SECONDS = 5.0\n_LOGGER = logging.getLogger(__name__)\n',
+              1,
+          )
+
+          start = text.index('async def _async_handle_send')
+          end = text.index('\n\nasync def _async_handle_reply', start)
+          new_send_block = r'''def _send_payload(account: MatrixAccount, call: ServiceCall) -> dict[str, Any]:
+              targets = resolve_targets(
+                  explicit_targets=call.data.get(ATTR_TARGET),
+                  route=call.data.get(ATTR_ROUTE),
+                  default_room=account.default_room,
+                  routing_profiles=account.routing_profiles or {},
+              )
+              payload = {
+                  "targets": targets,
+                  "notification_key": call.data.get(ATTR_NOTIFICATION_KEY),
+                  "message": call.data[ATTR_MESSAGE],
+                  "format": call.data[ATTR_FORMAT],
+                  "thread_id": call.data.get(ATTR_THREAD_ID),
+                  "media": call.data[ATTR_MEDIA],
+                  "actions": call.data[ATTR_ACTIONS],
+              }
+              if not payload["message"] and not payload["media"]:
+                  raise HomeAssistantError("matrix_extended.send needs a message and/or media")
+              if payload["actions"] and not payload["message"]:
+                  raise HomeAssistantError("reaction actions require a text message")
+              if payload["notification_key"] and not payload["message"]:
+                  raise HomeAssistantError("notification_key requires a text message")
+              return payload
+
+
+          def _tx_ids(delivery_id: str, event_key: str, rooms: list[PreparedRoom]) -> list[str]:
+              return [
+                  matrix_transaction_id(delivery_id, event_key, room.room_id)
+                  for room in rooms
+              ]
+
+
+          async def _async_execute_send(
+              hass: HomeAssistant,
+              account: MatrixAccount,
+              payload: dict[str, Any],
+              *,
+              delivery_id: str,
+          ) -> None:
+              targets: list[str] = list(payload["targets"])
+              notification_key: str | None = payload.get("notification_key")
+              message: str = payload["message"]
+              media_items: list[dict[str, Any]] = payload["media"]
+              actions: list[dict[str, Any]] = payload["actions"]
+              thread_id: str | None = payload.get("thread_id")
+
+              prepared_rooms = await account.client.async_prepare_rooms(targets)
+              for target, room in zip(targets, prepared_rooms, strict=True):
+                  if target == account.default_room:
+                      account.status.set_default_room_encryption(room.encrypted)
+
+              if message:
+                  formatted_body = message if payload["format"] == FORMAT_HTML else None
+                  event_ids: list[str | None] = []
+                  registry_changed = False
+                  if notification_key and account.notification_registry:
+                      for room in prepared_rooms:
+                          original_event_id = account.notification_registry.get(
+                              notification_key, room.room_id
+                          )
+                          event_key = f"notification:{notification_key}"
+                          room_tx_ids = _tx_ids(delivery_id, event_key, [room])
+                          if original_event_id:
+                              await account.client.async_send_prepared(
+                                  [room],
+                                  build_edit_content(
+                                      message,
+                                      event_id=original_event_id,
+                                      formatted_body=formatted_body,
+                                  ),
+                                  tx_ids=room_tx_ids,
+                              )
+                              event_ids.append(original_event_id)
+                          else:
+                              sent = await account.client.async_send_prepared(
+                                  [room],
+                                  build_text_content(
+                                      message,
+                                      formatted_body=formatted_body,
+                                      thread_id=thread_id,
+                                  ),
+                                  tx_ids=room_tx_ids,
+                              )
+                              event_id = sent[0]
+                              event_ids.append(event_id)
+                              if event_id:
+                                  account.notification_registry.set(
+                                      notification_key, room.room_id, event_id
+                                  )
+                                  registry_changed = True
+                      if registry_changed and account.notification_store:
+                          await account.notification_store.async_save(
+                              account.notification_registry.dump()
+                          )
+                  else:
+                      event_ids = await account.client.async_send_prepared(
+                          prepared_rooms,
+                          build_text_content(
+                              message, formatted_body=formatted_body, thread_id=thread_id
+                          ),
+                          tx_ids=_tx_ids(delivery_id, "text", prepared_rooms),
+                      )
+                  if actions and account.action_registry:
+                      for room, event_id in zip(prepared_rooms, event_ids, strict=True):
+                          if event_id:
+                              account.action_registry.register(
+                                  room_id=room.room_id,
+                                  event_id=event_id,
+                                  actions=actions,
+                              )
+                      await account.action_registry.async_save()
+
+              resolver = MediaResolver(hass)
+              room_groups = _rooms_by_encryption(prepared_rooms)
+              for media_index, item in enumerate(media_items):
+                  media = await resolver.async_resolve(item)
+                  thumbnail = None
+                  if thumbnail_source := item.get("thumbnail"):
+                      thumbnail = await resolver.async_resolve(thumbnail_source, force_type="image")
+
+                  for encrypted, rooms in room_groups.items():
+                      thumbnail_upload = None
+                      if thumbnail is not None:
+                          thumbnail_upload = await account.client.async_upload(
+                              thumbnail.data,
+                              filename=thumbnail.filename,
+                              content_type=thumbnail.content_type,
+                              encrypt=encrypted,
+                          )
+                      media_upload = await account.client.async_upload(
+                          media.data,
+                          filename=media.filename,
+                          content_type=media.content_type,
+                          encrypt=encrypted,
+                      )
+                      content = build_media_content(
+                          media_type=media.media_type,
+                          mxc_uri=None if encrypted else media_upload.mxc_uri,
+                          encrypted_file=media_upload.encrypted_file if encrypted else None,
+                          filename=media.filename,
+                          content_type=media.content_type,
+                          size=media.size,
+                          caption=item.get("caption"),
+                          formatted_caption=item.get("formatted_caption"),
+                          width=media.width,
+                          height=media.height,
+                          duration_ms=media.duration_ms,
+                          thumbnail_mxc_uri=(
+                              None
+                              if encrypted or thumbnail_upload is None
+                              else thumbnail_upload.mxc_uri
+                          ),
+                          thumbnail_encrypted_file=(
+                              thumbnail_upload.encrypted_file
+                              if encrypted and thumbnail_upload is not None
+                              else None
+                          ),
+                          thumbnail_info=thumbnail.image_info() if thumbnail else None,
+                          thread_id=thread_id,
+                      )
+                      await account.client.async_send_prepared(
+                          rooms,
+                          content,
+                          tx_ids=_tx_ids(
+                              delivery_id, f"media-{media_index}", rooms
+                          ),
+                      )
+              account.status.mark_send_success()
+
+
+          async def _async_outbox_worker(hass: HomeAssistant, account: MatrixAccount) -> None:
+              while True:
+                  if account.outbox is None:
+                      await asyncio.sleep(_OUTBOX_RETRY_SECONDS)
+                      continue
+                  pending = account.outbox.pending()
+                  if not pending:
+                      await asyncio.sleep(_OUTBOX_RETRY_SECONDS)
+                      continue
+                  item = pending[0]
+                  try:
+                      await _async_execute_send(
+                          hass,
+                          account,
+                          item.payload,
+                          delivery_id=item.delivery_id,
+                      )
+                  except asyncio.CancelledError:
+                      raise
+                  except MatrixConnectionError as err:
+                      account.status.mark_error(str(err))
+                      await asyncio.sleep(_OUTBOX_RETRY_SECONDS)
+                  except MatrixEncryptionRequiredError as err:
+                      account.status.mark_error(str(err), connected=True)
+                      _LOGGER.warning(
+                          "Dropping queued Matrix send %s after encryption-policy failure: %s",
+                          item.delivery_id,
+                          err,
+                      )
+                      await account.outbox.async_remove(item.delivery_id)
+                  except (MatrixExtendedError, HomeAssistantError, ValueError) as err:
+                      account.status.mark_error(str(err))
+                      _LOGGER.warning(
+                          "Dropping queued Matrix send %s after permanent failure: %s",
+                          item.delivery_id,
+                          err,
+                      )
+                      await account.outbox.async_remove(item.delivery_id)
+                  else:
+                      await account.outbox.async_remove(item.delivery_id)
+
+
+          async def _async_handle_send(hass: HomeAssistant, call: ServiceCall) -> None:
+              account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
+              payload = _send_payload(account, call)
+              delivery_id = secrets.token_hex(16)
+              try:
+                  await _async_execute_send(
+                      hass,
+                      account,
+                      payload,
+                      delivery_id=delivery_id,
+                  )
+              except MatrixEncryptionRequiredError as err:
+                  account.status.mark_error(str(err), connected=True)
+                  raise
+              except MatrixConnectionError as err:
+                  account.status.mark_error(str(err))
+                  if account.outbox is None:
+                      raise
+                  await account.outbox.async_enqueue(payload, delivery_id=delivery_id)
+              except MatrixExtendedError as err:
+                  account.status.mark_error(str(err))
+                  raise
+          '''
+          # The raw block is indented in this patch script only for YAML readability.
+          import textwrap
+          new_send_block = textwrap.dedent(new_send_block)
+          text = text[:start] + new_send_block.rstrip() + text[end:]
+
+          action_line = '    action_registry = ReactionActionRegistry(stored_actions, store=action_store)\n'
+          outbox_setup = '''    outbox_store: Store[dict[str, Any]] = Store(\n        hass, 1, f"{DOMAIN}.outbox_{entry.entry_id}", private=True\n    )\n    stored_outbox = await outbox_store.async_load() or {}\n    outbox = PersistentOutbox(stored_outbox, store=outbox_store)\n    await outbox.async_save()\n'''
+          if action_line not in text:
+              raise SystemExit('action registry setup line not found')
+          text = text.replace(action_line, action_line + outbox_setup, 1)
+
+          account_line = '        action_registry=action_registry,\n'
+          if account_line not in text:
+              raise SystemExit('account action registry field not found')
+          text = text.replace(
+              account_line,
+              account_line + '        outbox=outbox,\n',
+              1,
+          )
+
+          data_line = '    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = account\n'
+          task_setup = '''    account.outbox_task = hass.async_create_task(\n        _async_outbox_worker(hass, account),\n        f"matrix_extended_outbox_{entry.entry_id}",\n    )\n'''
+          if data_line not in text:
+              raise SystemExit('account registration line not found')
+          text = text.replace(data_line, data_line + task_setup, 1)
+
+          unload_old = '''    if account is not None:\n        await account.client.async_close()\n    return True\n'''
+          unload_new = '''    if account is not None:\n        if account.outbox_task is not None:\n            account.outbox_task.cancel()\n            with suppress(asyncio.CancelledError):\n                await account.outbox_task\n            account.outbox_task = None\n        await account.client.async_close()\n    return True\n'''
+          if unload_old not in text:
+              raise SystemExit('unload block not found')
+          text = text.replace(unload_old, unload_new, 1)
+          init_path.write_text(text)
+          PY
+          rm .github/workflows/patch-v050-outbox-runtime.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add custom_components/matrix_extended/client.py custom_components/matrix_extended/__init__.py .github/workflows/patch-v050-outbox-runtime.yml
+          git commit -m 'feat: persist and replay sends after Matrix outages'
+          git push origin HEAD:feature/v050-persistent-outbox

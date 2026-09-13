@@ -76,3 +76,9 @@ def test_showcase_screenshot_dismisses_sections_tip_and_hides_only_ci_trust_warn
     assert ".mx_EventTile_e2eIcon_warning" not in text
     assert "Unable to load map" in text
     assert "wait_for(state=\"hidden\"" in text
+
+
+def test_showcase_waits_for_map_tiles_to_paint_before_screenshot() -> None:
+    text = ELEMENT_E2E.read_text()
+    assert "SHOWCASE_MAP_SETTLE_MS = 5000" in text
+    assert "page.wait_for_timeout(SHOWCASE_MAP_SETTLE_MS)" in text

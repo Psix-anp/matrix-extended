@@ -24,6 +24,14 @@ def test_ha_e2e_sends_encrypted_location_and_native_voice() -> None:
     assert "Matrix Extended E2E Voice" in text
 
 
+def test_ha_e2e_waits_for_both_encrypted_rich_events_across_sync_batches() -> None:
+    text = HA_E2E.read_text()
+    assert "def _wait_for_encrypted_events(" in text
+    assert "expected_count=2" in text
+    assert "since = sync[\"next_batch\"]" in text
+    assert "total += _encrypted_event_count(" in text
+
+
 def test_element_e2e_verifies_location_and_voice_rendering() -> None:
     text = ELEMENT_E2E.read_text()
     assert 'LOCATION_TEXT = "Matrix Extended E2E Location"' in text

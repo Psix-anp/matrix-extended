@@ -139,7 +139,95 @@ def main() -> int:
             "notification_key": "docs-backup-progress",
         },
     )
-    print("Documentation messages sent through matrix_extended.send")
+    send(
+        token,
+        {
+            "target": [room_id],
+            "media": [
+                {
+                    "url": "http://127.0.0.1:8123/local/matrix-demo-image.jpg",
+                    "type": "image",
+                    "filename": "front-door.jpg",
+                    "caption": "📷 Снимок с камеры",
+                    "width": 640,
+                    "height": 360,
+                }
+            ],
+        },
+    )
+    send(
+        token,
+        {
+            "target": [room_id],
+            "media": [
+                {
+                    "url": "http://127.0.0.1:8123/local/matrix-demo-video.mp4",
+                    "type": "video",
+                    "filename": "front-door.mp4",
+                    "caption": "🎬 Видео с камеры",
+                    "width": 640,
+                    "height": 360,
+                    "duration_ms": 3000,
+                    "thumbnail": {
+                        "url": "http://127.0.0.1:8123/local/matrix-demo-image.jpg",
+                        "type": "image",
+                        "filename": "front-door-preview.jpg",
+                        "width": 640,
+                        "height": 360,
+                    },
+                }
+            ],
+        },
+    )
+    send(
+        token,
+        {
+            "target": [room_id],
+            "media": [
+                {
+                    "url": "http://127.0.0.1:8123/local/matrix-demo-voice.ogg",
+                    "type": "audio",
+                    "filename": "voice.ogg",
+                    "caption": "🎙️ Голосовое сообщение",
+                    "duration_ms": 3100,
+                    "voice": True,
+                    "waveform": [
+                        80,
+                        160,
+                        260,
+                        420,
+                        680,
+                        920,
+                        720,
+                        480,
+                        300,
+                        180,
+                        120,
+                        240,
+                        460,
+                        760,
+                        1024,
+                        860,
+                        620,
+                        400,
+                        220,
+                        140,
+                        200,
+                        360,
+                        580,
+                        840,
+                        700,
+                        500,
+                        320,
+                        180,
+                        120,
+                        80,
+                    ],
+                }
+            ],
+        },
+    )
+    print("Documentation text, image, video, and native voice messages sent through matrix_extended.send")
     return 0
 
 

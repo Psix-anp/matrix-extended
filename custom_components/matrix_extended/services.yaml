@@ -202,3 +202,13 @@ redact:
       name: Reason
       selector:
         text:
+
+purge_media:
+  name: Purge downloaded Matrix media
+  description: Delete downloaded incoming media files for one Matrix Extended account. Returns removed_files and removed_bytes when response data is requested.
+  fields:
+    account:
+      name: Account
+      description: Config entry ID. Omit when only one Matrix Extended account is loaded.
+      selector:
+        text:

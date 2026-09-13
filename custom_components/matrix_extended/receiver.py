@@ -181,7 +181,7 @@ class MatrixInboundReceiver:
                 }
             )
             event_type = EVENT_REPLY if payload["reply_to"] else EVENT_MESSAGE
-            registry = self._account.command_registry
+            registry = getattr(self._account, "command_registry", None)
             if registry is not None:
                 command = registry.match(
                     message,

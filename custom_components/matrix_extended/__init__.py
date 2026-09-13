@@ -322,6 +322,7 @@ def _fire_delivery(
     error: str | None = None,
 ) -> dict[str, Any]:
     payload = _delivery_payload(account, delivery_id, status, events, error)
+    account.status.mark_delivery(status)
     hass.bus.async_fire(EVENT_DELIVERY, payload)
     return payload
 

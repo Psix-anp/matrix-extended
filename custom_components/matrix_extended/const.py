@@ -24,6 +24,7 @@ DEFAULT_INCOMING_MEDIA_RETENTION_DAYS: Final = 7
 DEFAULT_INCOMING_MEDIA_MAX_MB: Final = 256
 
 SERVICE_SEND: Final = "send"
+SERVICE_SEND_LOCATION: Final = "send_location"
 SERVICE_REPLY: Final = "reply"
 SERVICE_REACT: Final = "react"
 SERVICE_EDIT: Final = "edit"
@@ -61,6 +62,7 @@ EVENT_MESSAGE: Final = "matrix_extended_message"
 EVENT_REPLY: Final = "matrix_extended_reply"
 EVENT_REACTION: Final = "matrix_extended_reaction"
 EVENT_MEDIA: Final = "matrix_extended_media"
+EVENT_LOCATION: Final = "matrix_extended_location"
 EVENT_EDIT: Final = "matrix_extended_edit"
 EVENT_REDACTION: Final = "matrix_extended_redaction"
 EVENT_DELIVERY: Final = "matrix_extended_delivery"

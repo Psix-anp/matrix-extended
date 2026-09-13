@@ -732,7 +732,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await client.async_close()
         raise ConfigEntryNotReady(str(err)) from err
 
-    status.mark_connected(default_room_encryption=default_room_encrypted)
+    status.mark_connected(default_room_encrypted=default_room_encrypted)
     notification_store: Store[dict[str, dict[str, str]]] = Store(
         hass, 1, f"{DOMAIN}.notification_keys_{entry.entry_id}", private=True
     )

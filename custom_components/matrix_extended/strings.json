@@ -30,7 +30,10 @@
     }
   },
   "entity": {
-    "binary_sensor": {"connected": {"name": "Connection"}},
+    "binary_sensor": {
+      "connected": {"name": "Connection"},
+      "e2ee_ready": {"name": "E2EE ready"}
+    },
     "sensor": {
       "user_id": {"name": "User ID"},
       "device_id": {"name": "Device ID"},
@@ -38,7 +41,10 @@
       "default_room_encryption": {"name": "Default room encryption"},
       "last_send": {"name": "Last successful send"},
       "last_error": {"name": "Last error"},
-      "last_receive": {"name": "Last incoming event"}
+      "last_receive": {"name": "Last incoming event"},
+      "outbox_size": {"name": "Outbox size"},
+      "last_delivery_status": {"name": "Last delivery status"},
+      "last_command": {"name": "Last command"}
     },
     "select": {"default_room": {"name": "Default room"}}
   },

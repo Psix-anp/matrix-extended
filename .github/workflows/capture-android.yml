@@ -94,6 +94,7 @@ jobs:
           api-level: 35
           arch: x86_64
           profile: pixel_6
+          disk-size: 4096M
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
           script: bash ci/scripts/capture-element-x.sh

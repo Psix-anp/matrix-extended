@@ -203,12 +203,19 @@ def capture() -> None:
         page = context.new_page()
         _login(page, auth["username"], auth["password"])
 
-        # Integration overview: the screenshot must contain the real integration card.
-        page.goto(f"{HA_URL}/config/integrations", wait_until="domcontentloaded")
+        # Integration overview: HA 2026.x uses the Devices & Services dashboard route.
+        page.goto(
+            f"{HA_URL}/config/integrations/dashboard",
+            wait_until="domcontentloaded",
+        )
         page.wait_for_timeout(2500)
         matrix = page.get_by_text("Matrix Extended", exact=False)
         if matrix.count() == 0:
-            raise RuntimeError("Matrix Extended card was not rendered on integrations page")
+            body = page.locator("body").inner_text()[:2000]
+            raise RuntimeError(
+                "Matrix Extended card was not rendered on integrations dashboard; "
+                f"url={page.url!r} body={body!r}"
+            )
         matrix.first.scroll_into_view_if_needed()
         _shot(page, "matrix-extended-integrations.png")
 

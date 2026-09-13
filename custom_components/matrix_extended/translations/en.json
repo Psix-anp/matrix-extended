@@ -75,6 +75,8 @@
           "allowed_users": "Allowed users",
           "allowed_rooms": "Allowed rooms",
           "download_incoming_media": "Download incoming media",
+          "incoming_media_retention_days": "Incoming media retention (days, 0 disables age cleanup)",
+          "incoming_media_max_mb": "Incoming media storage limit (MiB)",
           "routing_profiles": "Notification routes (name → room list)"
         }
       }

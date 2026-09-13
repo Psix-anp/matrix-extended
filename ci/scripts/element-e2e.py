@@ -59,7 +59,7 @@ def _prepare_showcase_screenshot(page: Page) -> None:
     except PlaywrightTimeoutError as err:
         raise RuntimeError("Element location map did not finish loading") from err
     page.add_style_tag(
-        content=".mx_EventTile_e2eIcon_warning { display: none !important; }"
+        content='.mx_EventTile [data-testid="e2e-padlock"] { display: none !important; }'
     )
     page.wait_for_timeout(500)
 

@@ -72,6 +72,7 @@ def test_showcase_screenshot_dismisses_sections_tip_and_hides_only_ci_trust_warn
     text = ELEMENT_E2E.read_text()
     assert '"Ok"' in text
     assert "def _prepare_showcase_screenshot(" in text
-    assert ".mx_EventTile_e2eIcon_warning" in text
+    assert '.mx_EventTile [data-testid="e2e-padlock"]' in text
+    assert ".mx_EventTile_e2eIcon_warning" not in text
     assert "Unable to load map" in text
     assert "wait_for(state=\"hidden\"" in text

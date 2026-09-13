@@ -19,13 +19,13 @@ def test_v03_services_are_declared() -> None:
 
 
 def test_v03_has_listener_and_incoming_event_names() -> None:
-    init = (COMP / "__init__.py").read_text()
     client = (COMP / "client.py").read_text()
+    receiver = (COMP / "receiver.py").read_text()
+    const = (COMP / "const.py").read_text()
     assert "async_start_listener" in client
-    assert "EVENT_MESSAGE" in init
-    assert "EVENT_REPLY" in init
-    assert "EVENT_REACTION" in init
-    assert "EVENT_MEDIA" in init
+    for event_name in ("EVENT_MESSAGE", "EVENT_REPLY", "EVENT_REACTION", "EVENT_MEDIA"):
+        assert event_name in const
+        assert event_name in receiver
 
 
 def test_v03_config_exposes_incoming_allowlists() -> None:

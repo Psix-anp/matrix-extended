@@ -30,6 +30,44 @@ def test_extract_relations_reads_reply_and_thread() -> None:
     assert mod.extract_relations(source) == ("$parent", "$thread")
 
 
+def test_extract_replacement_reads_original_event_and_new_content() -> None:
+    mod = load()
+    new_content = {
+        "msgtype": "m.notice",
+        "body": "updated",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<b>updated</b>",
+    }
+    source = {
+        "content": {
+            "m.relates_to": {"rel_type": "m.replace", "event_id": "$original"},
+            "m.new_content": new_content,
+        }
+    }
+    assert mod.extract_replacement(source) == ("$original", new_content)
+
+
+def test_extract_replacement_rejects_malformed_relation() -> None:
+    mod = load()
+    assert mod.extract_replacement({"content": {}}) == (None, None)
+    assert mod.extract_replacement(
+        {
+            "content": {
+                "m.relates_to": {"rel_type": "m.replace", "event_id": 7},
+                "m.new_content": {"body": "bad"},
+            }
+        }
+    ) == (None, None)
+    assert mod.extract_replacement(
+        {
+            "content": {
+                "m.relates_to": {"rel_type": "m.replace", "event_id": "$event"},
+                "m.new_content": "bad",
+            }
+        }
+    ) == (None, None)
+
+
 def test_authorization_requires_both_user_and_room_when_configured() -> None:
     mod = load()
     policy = mod.IncomingPolicy(

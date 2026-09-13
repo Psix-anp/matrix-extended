@@ -20,6 +20,7 @@ def load_receiver():
     nio = types.ModuleType("nio")
     for name in (
         "ReactionEvent",
+        "RedactionEvent",
         "RoomEncryptedAudio",
         "RoomEncryptedFile",
         "RoomEncryptedImage",
@@ -30,6 +31,7 @@ def load_receiver():
         "RoomMessageImage",
         "RoomMessageNotice",
         "RoomMessageText",
+        "RoomMessageUnknown",
         "RoomMessageVideo",
     ):
         setattr(nio, name, type(name, (), {}))
@@ -199,10 +201,12 @@ def test_register_wires_all_callback_groups(tmp_path) -> None:
         download_media=False,
     )
     receiver.register()
-    assert len(account.client.callbacks) == 3
+    assert len(account.client.callbacks) == 5
     assert account.client.callbacks[0][1] == mod._TEXT_EVENTS
     assert account.client.callbacks[1][1] is mod.ReactionEvent
     assert account.client.callbacks[2][1] == mod._MEDIA_EVENTS
+    assert account.client.callbacks[3][1] is mod.RedactionEvent
+    assert account.client.callbacks[4][1] is mod.RoomMessageUnknown
 
 
 def test_allowed_requires_policy_and_passes_sender_room_transaction(tmp_path) -> None:
@@ -287,7 +291,7 @@ async def test_reaction_without_action_and_with_action(tmp_path) -> None:
     payload = hass.bus.events[-1][1]
     assert payload["action_executed"] is True
     assert payload["action_service"] == "light.turn_on"
-    assert registry.calls == [{"room_id": "!home:example", "event_id": "$target", "reaction": "✅"}]
+    assert registry.calls == [{"room_id": "!home:example", "event_id": "$target", "reaction": "✅", "sender": "@user:example"}]
     assert hass.services.calls[-1] == ("light", "turn_on", {"brightness_pct": 50}, False, None)
 
 

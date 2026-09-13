@@ -221,3 +221,106 @@ def test_restore_ignores_invalid_persisted_actions() -> None:
         event_id="$message",
         reaction="bad",
     ) is None
+
+
+def test_action_user_allowlist_does_not_consume_for_unauthorized_sender() -> None:
+    mod = load()
+    registry = mod.ReactionActionRegistry(now=lambda: 100.0)
+    registry.register(
+        room_id="!room:example",
+        event_id="$message",
+        actions=[
+            {
+                "reaction": "🔓",
+                "service": "lock.unlock",
+                "allowed_users": ["@owner:example.org"],
+                "max_uses": 2,
+                "expires_in": 60,
+            }
+        ],
+    )
+    assert registry.consume(
+        room_id="!room:example",
+        event_id="$message",
+        reaction="🔓",
+        sender="@guest:example.org",
+    ) is None
+    assert registry.consume(
+        room_id="!room:example",
+        event_id="$message",
+        reaction="🔓",
+        sender="@owner:example.org",
+    ) is not None
+    assert registry.consume(
+        room_id="!room:example",
+        event_id="$message",
+        reaction="🔓",
+        sender="@owner:example.org",
+    ) is not None
+    assert registry.consume(
+        room_id="!room:example",
+        event_id="$message",
+        reaction="🔓",
+        sender="@owner:example.org",
+    ) is None
+
+
+def test_action_expiry_is_persisted_and_pruned() -> None:
+    mod = load()
+    clock = [100.0]
+    registry = mod.ReactionActionRegistry(now=lambda: clock[0])
+    registry.register(
+        room_id="!room:example",
+        event_id="$message",
+        actions=[
+            {
+                "reaction": "✅",
+                "service": "light.turn_on",
+                "expires_in": 10,
+                "max_uses": 3,
+            }
+        ],
+    )
+    stored = registry.dump()
+    action_data = stored["!room:example"]["$message"]["✅"]
+    assert action_data["expires_at"] == 110.0
+    assert action_data["remaining_uses"] == 3
+
+    clock[0] = 111.0
+    assert registry.consume(
+        room_id="!room:example",
+        event_id="$message",
+        reaction="✅",
+    ) is None
+    assert registry.dump() == {}
+
+
+def test_registry_restores_legacy_actions_with_safe_defaults() -> None:
+    mod = load()
+    registry = mod.ReactionActionRegistry(
+        {
+            "!room:example": {
+                "$message": {
+                    "✅": {"service": "light.turn_on", "target": {}, "data": {}}
+                }
+            }
+        },
+        now=lambda: 100.0,
+    )
+    stored = registry.dump()["!room:example"]["$message"]["✅"]
+    assert stored["expires_at"] == 3700.0
+    assert stored["remaining_uses"] == 1
+    assert stored["allowed_users"] == []
+
+
+def test_registry_validates_action_control_bounds() -> None:
+    mod = load()
+    registry = mod.ReactionActionRegistry(now=lambda: 100.0)
+    for action, error in (
+        ({"reaction": "✅", "service": "light.turn_on", "expires_in": 0}, "expires_in"),
+        ({"reaction": "✅", "service": "light.turn_on", "expires_in": 604801}, "expires_in"),
+        ({"reaction": "✅", "service": "light.turn_on", "max_uses": 0}, "max_uses"),
+        ({"reaction": "✅", "service": "light.turn_on", "max_uses": 101}, "max_uses"),
+    ):
+        with pytest.raises(ValueError, match=error):
+            registry.register(room_id="!room:example", event_id="$message", actions=[action])

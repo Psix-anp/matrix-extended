@@ -16,6 +16,17 @@ services:
       timeout: 2s
       retries: 30
 
+  element:
+    image: vectorim/element-web:v1.12.26
+    restart: "no"
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./ci/element/config.json:/app/config.json:ro
+    depends_on:
+      synapse:
+        condition: service_healthy
+
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:2026.9.2
     restart: "no"

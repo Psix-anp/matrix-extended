@@ -29,7 +29,7 @@ class FakeStore:
 async def test_registry_store_tracks_registration_and_one_shot_consumption() -> None:
     mod = load()
     store = FakeStore()
-    registry = mod.ReactionActionRegistry(store=store)
+    registry = mod.ReactionActionRegistry(store=store, now=lambda: 100.0)
     registry.register(
         room_id="!room:example",
         event_id="$message",
@@ -50,6 +50,9 @@ async def test_registry_store_tracks_registration_and_one_shot_consumption() -> 
                     "service": "counter.increment",
                     "target": {"entity_id": "counter.matrix_reaction"},
                     "data": {},
+                    "expires_at": 3700.0,
+                    "remaining_uses": 1,
+                    "allowed_users": [],
                 }
             }
         }

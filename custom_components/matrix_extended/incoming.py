@@ -66,6 +66,23 @@ def extract_relations(source: Mapping[str, Any]) -> tuple[str | None, str | None
     return reply_to, thread_id
 
 
+def extract_replacement(
+    source: Mapping[str, Any],
+) -> tuple[str | None, Mapping[str, Any] | None]:
+    """Extract the replaced event ID and replacement content for m.replace."""
+    content = source.get("content")
+    if not isinstance(content, Mapping):
+        return None, None
+    relates = content.get("m.relates_to")
+    if not isinstance(relates, Mapping) or relates.get("rel_type") != "m.replace":
+        return None, None
+    event_id = relates.get("event_id")
+    new_content = content.get("m.new_content")
+    if not isinstance(event_id, str) or not isinstance(new_content, Mapping):
+        return None, None
+    return event_id, new_content
+
+
 def safe_filename(filename: str | None) -> str:
     """Return a path-safe filename without allowing directory traversal."""
     value = (filename or "").replace("\\", "/").split("/")[-1].strip()

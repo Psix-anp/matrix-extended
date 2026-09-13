@@ -18,6 +18,9 @@ HA_URL = os.environ.get("HA_URL", "http://127.0.0.1:8123").rstrip("/")
 MATRIX_HOST_URL = os.environ.get("MATRIX_HOST_URL", "http://127.0.0.1:8008").rstrip("/")
 MATRIX_HA_URL = os.environ.get("MATRIX_HA_URL", "http://synapse:8008").rstrip("/")
 CLIENT_ID = os.environ.get("HA_CLIENT_ID", "http://127.0.0.1:8123/")
+LOCATION_TEXT = "Matrix Extended E2E Location"
+VOICE_TEXT = "Matrix Extended E2E Voice"
+VOICE_PATH = "/config/matrix-e2e-media/matrix-e2e-voice.wav"
 
 
 def _request_json(
@@ -62,19 +65,53 @@ def find_matrix_entry(entries: Any) -> dict[str, Any]:
     raise LookupError("Matrix Extended config entry not found")
 
 
-def find_encrypted_event(sync: dict[str, Any], room_id: str, sender: str) -> dict[str, Any]:
-    """Find an encrypted room event from the expected sender."""
-    events = (
+def _room_timeline(sync: dict[str, Any], room_id: str) -> list[dict[str, Any]]:
+    return (
         sync.get("rooms", {})
         .get("join", {})
         .get(room_id, {})
         .get("timeline", {})
         .get("events", [])
     )
-    for event in events:
+
+
+def find_encrypted_event(sync: dict[str, Any], room_id: str, sender: str) -> dict[str, Any]:
+    """Find an encrypted room event from the expected sender."""
+    for event in _room_timeline(sync, room_id):
         if event.get("type") == "m.room.encrypted" and event.get("sender") == sender:
             return event
     raise LookupError(f"no encrypted event from {sender} in {room_id}")
+
+
+def _encrypted_event_count(sync: dict[str, Any], room_id: str, sender: str) -> int:
+    return sum(
+        1
+        for event in _room_timeline(sync, room_id)
+        if event.get("type") == "m.room.encrypted" and event.get("sender") == sender
+    )
+
+
+def _wait_for_encrypted_events(
+    token: str,
+    *,
+    since: str,
+    room_id: str,
+    sender: str,
+    expected_count: int,
+    timeout: float = 20,
+) -> int:
+    """Accumulate encrypted events across incremental sync batches."""
+    deadline = time.monotonic() + timeout
+    total = 0
+    while time.monotonic() < deadline:
+        sync = _matrix_sync(token, since=since, timeout_ms=3000)
+        since = sync["next_batch"]
+        total += _encrypted_event_count(sync, room_id, sender)
+        if total >= expected_count:
+            return total
+    raise TimeoutError(
+        f"expected {expected_count} encrypted events from {sender} in {room_id}; got {total}"
+    )
 
 
 def _wait_entry_loaded(token: str, *, timeout: float = 60) -> dict[str, Any]:
@@ -293,6 +330,59 @@ def setup_send_reload() -> None:
     print(f"Home Assistant Matrix E2E ready: entry={entry_id} encrypted_event={event.get('event_id', '<none>')}")
 
 
+def send_rich() -> None:
+    state = json.loads(Path(".ci/ha-env.json").read_text())
+    matrix_env = json.loads(Path(".ci/matrix-env.json").read_text())
+    before = _matrix_sync(matrix_env["user_access_token"])
+
+    _request_json(
+        HA_URL,
+        "POST",
+        "/api/services/matrix_extended/send_location",
+        token=state["access_token"],
+        json_body={
+            "target": [matrix_env["room_id"]],
+            "latitude": 52.3676,
+            "longitude": 4.9041,
+            "description": LOCATION_TEXT,
+        },
+        timeout=60,
+    )
+    _request_json(
+        HA_URL,
+        "POST",
+        "/api/services/matrix_extended/send",
+        token=state["access_token"],
+        json_body={
+            "target": [matrix_env["room_id"]],
+            "media": [
+                {
+                    "path": VOICE_PATH,
+                    "type": "audio",
+                    "filename": "matrix-e2e-voice.wav",
+                    "caption": VOICE_TEXT,
+                    "duration_ms": 600,
+                    "voice": True,
+                }
+            ],
+        },
+        timeout=60,
+    )
+
+    encrypted = _wait_for_encrypted_events(
+        matrix_env["user_access_token"],
+        since=before["next_batch"],
+        room_id=matrix_env["room_id"],
+        sender=matrix_env["bot_user_id"],
+        expected_count=2,
+        timeout=20,
+    )
+    print(
+        "Home Assistant rich Matrix E2E sent: "
+        f"location={LOCATION_TEXT!r} voice={VOICE_TEXT!r} encrypted_events={encrypted}"
+    )
+
+
 def verify_restart() -> None:
     state = json.loads(Path(".ci/ha-env.json").read_text())
     matrix_env = json.loads(Path(".ci/matrix-env.json").read_text())
@@ -334,11 +424,17 @@ def verify_restart() -> None:
 
 
 def main() -> int:
-    if len(sys.argv) != 2 or sys.argv[1] not in {"setup-send-reload", "verify-restart"}:
-        print("usage: ha-e2e.py {setup-send-reload|verify-restart}", file=sys.stderr)
+    modes = {"setup-send-reload", "send-rich", "verify-restart"}
+    if len(sys.argv) != 2 or sys.argv[1] not in modes:
+        print(
+            "usage: ha-e2e.py {setup-send-reload|send-rich|verify-restart}",
+            file=sys.stderr,
+        )
         return 2
     if sys.argv[1] == "setup-send-reload":
         setup_send_reload()
+    elif sys.argv[1] == "send-rich":
+        send_rich()
     else:
         verify_restart()
     return 0

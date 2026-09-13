@@ -1,0 +1,18 @@
+{
+  "default_server_config": {
+    "m.homeserver": {
+      "base_url": "http://127.0.0.1:8008",
+      "server_name": "matrix.test"
+    }
+  },
+  "disable_custom_urls": true,
+  "disable_guests": true,
+  "brand": "Matrix Extended E2E",
+  "default_theme": "dark",
+  "map_style_url": "https://tiles.openfreemap.org/styles/liberty",
+  "room_directory": {
+    "servers": [
+      "matrix.test"
+    ]
+  }
+}

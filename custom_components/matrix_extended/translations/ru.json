@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Подключение Matrix",
-        "description": "Пароль используется один раз для получения access token Matrix и не сохраняется. Сквозное шифрование рекомендуется и включено по умолчанию.",
+        "description": "Matrix Extended разрабатывается и поддерживается Psix-anp (@Psix-anp). Пароль используется один раз для получения access token Matrix и не сохраняется. Сквозное шифрование рекомендуется и включено по умолчанию.",
         "data": {
           "homeserver": "URL homeserver",
           "user_id": "Matrix ID пользователя",
@@ -25,44 +25,20 @@
       "invalid_room": "Некорректный alias или ID комнаты",
       "invalid_routes": "Некорректная структура маршрутов уведомлений"
     },
-    "abort": {
-      "already_configured": "Этот Matrix-аккаунт уже настроен"
-    }
+    "abort": {"already_configured": "Этот Matrix-аккаунт уже настроен"}
   },
   "entity": {
-    "binary_sensor": {
-      "connected": {
-        "name": "Соединение"
-      }
-    },
+    "binary_sensor": {"connected": {"name": "Соединение"}},
     "sensor": {
-      "user_id": {
-        "name": "ID пользователя"
-      },
-      "device_id": {
-        "name": "ID устройства"
-      },
-      "default_room": {
-        "name": "Комната по умолчанию"
-      },
-      "default_room_encryption": {
-        "name": "Шифрование комнаты по умолчанию"
-      },
-      "last_send": {
-        "name": "Последняя успешная отправка"
-      },
-      "last_error": {
-        "name": "Последняя ошибка"
-      },
-      "last_receive": {
-        "name": "Последнее входящее событие"
-      }
+      "user_id": {"name": "ID пользователя"},
+      "device_id": {"name": "ID устройства"},
+      "default_room": {"name": "Комната по умолчанию"},
+      "default_room_encryption": {"name": "Шифрование комнаты по умолчанию"},
+      "last_send": {"name": "Последняя успешная отправка"},
+      "last_error": {"name": "Последняя ошибка"},
+      "last_receive": {"name": "Последнее входящее событие"}
     },
-    "select": {
-      "default_room": {
-        "name": "Комната по умолчанию"
-      }
-    }
+    "select": {"default_room": {"name": "Комната по умолчанию"}}
   },
   "options": {
     "step": {
@@ -75,12 +51,12 @@
           "allowed_users": "Разрешённые пользователи",
           "allowed_rooms": "Разрешённые комнаты",
           "download_incoming_media": "Скачивать входящие медиа",
+          "incoming_media_retention_days": "Хранить входящие медиа, дней (0 — не удалять по возрасту)",
+          "incoming_media_max_mb": "Лимит хранилища входящих медиа, МиБ",
           "routing_profiles": "Маршруты уведомлений (имя → список комнат)"
         }
       }
     },
-    "error": {
-      "invalid_routes": "Некорректная структура маршрутов уведомлений"
-    }
+    "error": {"invalid_routes": "Некорректная структура маршрутов уведомлений"}
   }
 }

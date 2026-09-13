@@ -8,6 +8,7 @@ on:
     paths:
       - .github/workflows/capture-docs.yml
       - ci/scripts/capture-docs.py
+      - custom_components/matrix_extended/brand/icon.png
 
 permissions:
   contents: write

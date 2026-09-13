@@ -1,0 +1,12 @@
+appId: io.element.android.x
+---
+- extendedWaitUntil:
+    visible: "Matrix Extended E2E"
+    timeout: 60000
+- tapOn: "Matrix Extended E2E"
+- extendedWaitUntil:
+    visible: ".*Входная дверь открыта.*"
+    timeout: 60000
+- extendedWaitUntil:
+    visible: ".*Резервная копия: 100%.*"
+    timeout: 30000

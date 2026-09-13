@@ -1,0 +1,37 @@
+name: Patch v0.5 transaction ids
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.ref == 'feature/v050-persistent-outbox'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/v050-persistent-outbox
+      - name: Apply focused client patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('custom_components/matrix_extended/client.py')
+          text = path.read_text()
+          old = '''    async def async_send_event_prepared(\n        self,\n        rooms: list[PreparedRoom],\n        event_type: str,\n        content: dict[str, Any],\n    ) -> list[str | None]:\n        """Send an arbitrary Matrix room event to already prepared rooms."""\n        results: list[str | None] = []\n        for room in rooms:\n            try:\n                response = await self._client.room_send(\n                    room_id=room.room_id,\n                    message_type=event_type,\n                    content=content,\n                    ignore_unverified_devices=True,\n                )\n            except Exception as err:\n                raise MatrixConnectionError(str(err)) from err\n            if isinstance(response, ErrorResponse):\n                raise MatrixSendError(\n                    f"Matrix send failed for {room.room_id}: {_error_text(response)}"\n                )\n            results.append(getattr(response, "event_id", None))\n        return results\n\n    async def async_send_prepared(\n        self,\n        rooms: list[PreparedRoom],\n        content: dict[str, Any],\n    ) -> list[str | None]:\n        """Send m.room.message content to already-resolved rooms."""\n        return await self.async_send_event_prepared(\n            rooms, "m.room.message", content\n        )\n'''
+          new = '''    async def async_send_event_prepared(\n        self,\n        rooms: list[PreparedRoom],\n        event_type: str,\n        content: dict[str, Any],\n        *,\n        tx_ids: list[str] | None = None,\n    ) -> list[str | None]:\n        """Send an arbitrary Matrix room event to already prepared rooms."""\n        if tx_ids is not None and len(tx_ids) != len(rooms):\n            raise ValueError("tx_ids must match prepared rooms")\n        results: list[str | None] = []\n        for index, room in enumerate(rooms):\n            send_kwargs: dict[str, Any] = {\n                "room_id": room.room_id,\n                "message_type": event_type,\n                "content": content,\n                "ignore_unverified_devices": True,\n            }\n            if tx_ids is not None:\n                send_kwargs["tx_id"] = tx_ids[index]\n            try:\n                response = await self._client.room_send(**send_kwargs)\n            except Exception as err:\n                raise MatrixConnectionError(str(err)) from err\n            if isinstance(response, ErrorResponse):\n                raise MatrixSendError(\n                    f"Matrix send failed for {room.room_id}: {_error_text(response)}"\n                )\n            results.append(getattr(response, "event_id", None))\n        return results\n\n    async def async_send_prepared(\n        self,\n        rooms: list[PreparedRoom],\n        content: dict[str, Any],\n        *,\n        tx_ids: list[str] | None = None,\n    ) -> list[str | None]:\n        """Send m.room.message content to already-resolved rooms."""\n        return await self.async_send_event_prepared(\n            rooms, "m.room.message", content, tx_ids=tx_ids\n        )\n'''
+          if old not in text:
+              raise SystemExit('expected client send block not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          rm .github/workflows/patch-v050-txid.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add custom_components/matrix_extended/client.py .github/workflows/patch-v050-txid.yml
+          git commit -m 'feat: support stable Matrix transaction ids'
+          git push origin HEAD:feature/v050-persistent-outbox

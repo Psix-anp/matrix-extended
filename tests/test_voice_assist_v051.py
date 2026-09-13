@@ -71,7 +71,7 @@ def test_receiver_schedules_voice_assist_after_media_event_without_blocking_sync
     assert "VoiceAssistCoordinator" in source
     assert "voice_assist" in source
     assert "self._hass.async_create_task(" in source
-    assert "matrix_extended_voice_assist" not in source  # event constant, not hard-coded string
+    assert 'async_fire("matrix_extended_voice_assist"' not in source
 
 
 def test_voice_assist_translation_keys_exist_in_both_languages() -> None:

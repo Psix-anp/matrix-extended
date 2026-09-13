@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -13,6 +14,7 @@ def load_commands():
     spec = importlib.util.spec_from_file_location("matrix_extended_commands_v051_test", COMMANDS)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -97,42 +99,18 @@ def test_registry_exact_match_requires_leading_bang_and_command_allowlists() -> 
     registry = mod.CommandRegistry()
     command = registry.register(service_definition())
 
-    assert registry.match(
-        " !GARAGE   open ",
-        sender="@owner:example.org",
-        room_id="!home:example.org",
-    ) == command
-    assert registry.match(
-        "garage open",
-        sender="@owner:example.org",
-        room_id="!home:example.org",
-    ) is None
-    assert registry.match(
-        "!garage open now",
-        sender="@owner:example.org",
-        room_id="!home:example.org",
-    ) is None
-    assert registry.match(
-        "!garage open",
-        sender="@intruder:example.org",
-        room_id="!home:example.org",
-    ) is None
-    assert registry.match(
-        "!garage open",
-        sender="@owner:example.org",
-        room_id="!other:example.org",
-    ) is None
+    assert registry.match(" !GARAGE   open ", sender="@owner:example.org", room_id="!home:example.org") == command
+    assert registry.match("garage open", sender="@owner:example.org", room_id="!home:example.org") is None
+    assert registry.match("!garage open now", sender="@owner:example.org", room_id="!home:example.org") is None
+    assert registry.match("!garage open", sender="@other:example.org", room_id="!home:example.org") is None
+    assert registry.match("!garage open", sender="@owner:example.org", room_id="!other:example.org") is None
 
 
 def test_disabled_command_never_matches() -> None:
     mod = load_commands()
     registry = mod.CommandRegistry()
     registry.register(service_definition(enabled=False))
-    assert registry.match(
-        "!garage open",
-        sender="@owner:example.org",
-        room_id="!home:example.org",
-    ) is None
+    assert registry.match("!garage open", sender="@owner:example.org", room_id="!home:example.org") is None
 
 
 def test_service_and_camera_models_are_immutable_and_typed() -> None:
@@ -140,7 +118,6 @@ def test_service_and_camera_models_are_immutable_and_typed() -> None:
     registry = mod.CommandRegistry()
     service = registry.register(service_definition())
     camera = registry.register(camera_definition())
-
     assert isinstance(service.handler, mod.ServiceCommandHandler)
     assert service.handler.service == "script.turn_on"
     assert service.handler.target == {"entity_id": "script.open_garage"}
@@ -154,21 +131,10 @@ def test_same_id_replaces_definition_and_releases_old_phrases() -> None:
     mod = load_commands()
     registry = mod.CommandRegistry()
     registry.register(service_definition())
-    replacement = registry.register(
-        service_definition(trigger="garage unlock", aliases=["unlock garage"])
-    )
-
+    replacement = registry.register(service_definition(trigger="garage unlock", aliases=["unlock garage"]))
     assert registry.count == 1
-    assert registry.match(
-        "!garage open",
-        sender="@owner:example.org",
-        room_id="!home:example.org",
-    ) is None
-    assert registry.match(
-        "!garage unlock",
-        sender="@owner:example.org",
-        room_id="!home:example.org",
-    ) == replacement
+    assert registry.match("!garage open", sender="@owner:example.org", room_id="!home:example.org") is None
+    assert registry.match("!garage unlock", sender="@owner:example.org", room_id="!home:example.org") == replacement
 
 
 def test_unregister_returns_removed_flag() -> None:
@@ -185,15 +151,10 @@ def test_dump_restore_round_trip_preserves_handlers_and_policy() -> None:
     registry = mod.CommandRegistry()
     registry.register(service_definition())
     registry.register(camera_definition(progress=False))
-
     restored = mod.CommandRegistry(registry.dump())
     assert restored.dump() == registry.dump()
     assert restored.count == 2
-    camera = restored.match(
-        "!gate camera",
-        sender="@any:example.org",
-        room_id="!any:example.org",
-    )
+    camera = restored.match("!gate camera", sender="@any:example.org", room_id="!any:example.org")
     assert camera is not None
     assert camera.progress is False
     assert isinstance(camera.handler, mod.CameraSnapshotCommandHandler)
@@ -201,21 +162,13 @@ def test_dump_restore_round_trip_preserves_handlers_and_policy() -> None:
 
 def test_malformed_stored_entries_are_skipped_fail_closed() -> None:
     mod = load_commands()
-    restored = mod.CommandRegistry(
-        {
-            "commands": [
-                service_definition(),
-                {"id": "bad", "trigger": "bad", "handler": {"type": "service"}},
-                camera_definition(id="bad_camera", handler={"type": "camera_snapshot", "entity_id": "light.not_camera"}),
-            ]
-        }
-    )
+    restored = mod.CommandRegistry({"commands": [
+        service_definition(),
+        {"id": "bad", "trigger": "bad", "handler": {"type": "service"}},
+        camera_definition(id="bad_camera", handler={"type": "camera_snapshot", "entity_id": "light.not_camera"}),
+    ]})
     assert restored.count == 1
-    assert restored.match(
-        "!bad",
-        sender="@owner:example.org",
-        room_id="!home:example.org",
-    ) is None
+    assert restored.match("!bad", sender="@owner:example.org", room_id="!home:example.org") is None
 
 
 def test_runtime_registration_rejects_invalid_handler_shapes() -> None:

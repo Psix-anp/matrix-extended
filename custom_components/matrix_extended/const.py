@@ -27,6 +27,9 @@ ATTR_ACCOUNT: Final = "account"
 ATTR_TARGET: Final = "target"
 ATTR_MESSAGE: Final = "message"
 ATTR_FORMAT: Final = "format"
+ATTR_MSGTYPE: Final = "msgtype"
+ATTR_MENTION_USERS: Final = "mention_users"
+ATTR_MENTION_ROOM: Final = "mention_room"
 ATTR_THREAD_ID: Final = "thread_id"
 ATTR_MEDIA: Final = "media"
 ATTR_ROOM: Final = "room"
@@ -40,6 +43,8 @@ ATTR_NOTIFICATION_KEY: Final = "notification_key"
 
 FORMAT_TEXT: Final = "text"
 FORMAT_HTML: Final = "html"
+FORMAT_MARKDOWN: Final = "markdown"
+MESSAGE_TYPES: Final = {"text", "notice", "emote"}
 MEDIA_TYPES: Final = {"auto", "image", "video", "audio", "file"}
 
 MAX_MEDIA_BYTES: Final = 128 * 1024 * 1024
@@ -52,3 +57,4 @@ EVENT_REACTION: Final = "matrix_extended_reaction"
 EVENT_MEDIA: Final = "matrix_extended_media"
 EVENT_EDIT: Final = "matrix_extended_edit"
 EVENT_REDACTION: Final = "matrix_extended_redaction"
+EVENT_DELIVERY: Final = "matrix_extended_delivery"

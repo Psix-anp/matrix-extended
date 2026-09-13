@@ -93,7 +93,7 @@ def test_media_requires_exactly_one_plain_or_encrypted_source(encrypted_file: di
 
 def test_manifest_installs_matrix_nio_e2e_dependencies_explicitly() -> None:
     manifest = json.loads(MANIFEST_PATH.read_text())
-    assert manifest["version"] == "0.4.2"
+    assert manifest["version"] == "0.5.0"
     requirements = set(manifest["requirements"])
     assert "matrix-nio==0.26.0" in requirements
     assert "atomicwrites~=1.4" in requirements

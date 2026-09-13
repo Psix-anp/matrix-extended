@@ -33,6 +33,78 @@ def test_text_html_thread_content() -> None:
     }
 
 
+def test_text_supports_notice_and_mentions() -> None:
+    mod = load_module()
+    content = mod.build_text_content(
+        "Alarm",
+        msgtype="notice",
+        mentions=mod.build_mentions(
+            [" @alice:example.org ", "@alice:example.org", "@bob:example.org"],
+            room=True,
+        ),
+    )
+    assert content["msgtype"] == "m.notice"
+    assert content["m.mentions"] == {
+        "user_ids": ["@alice:example.org", "@bob:example.org"],
+        "room": True,
+    }
+
+
+def test_emote_is_supported_and_invalid_msgtype_rejected() -> None:
+    mod = load_module()
+    assert mod.build_text_content("waves", msgtype="emote")["msgtype"] == "m.emote"
+    with pytest.raises(ValueError, match="msgtype"):
+        mod.build_text_content("bad", msgtype="location")
+
+
+def test_markdown_renderer_escapes_html_and_formats_safe_subset() -> None:
+    mod = load_module()
+    rendered = mod.render_markdown(
+        "<script>x</script> **Bold** *italic* `a < b` [HA](https://home-assistant.io)\nnext"
+    )
+    assert "<script>" not in rendered
+    assert "&lt;script&gt;x&lt;/script&gt;" in rendered
+    assert "<strong>Bold</strong>" in rendered
+    assert "<em>italic</em>" in rendered
+    assert "<code>a &lt; b</code>" in rendered
+    assert '<a href="https://home-assistant.io">HA</a>' in rendered
+    assert "<br>next" in rendered
+
+
+def test_markdown_renderer_does_not_create_unsafe_links() -> None:
+    mod = load_module()
+    rendered = mod.render_markdown("[bad](javascript:alert(1))")
+    assert "javascript:" not in rendered
+    assert "[bad]" in rendered
+
+
+def test_build_mentions_omits_empty_metadata_and_rejects_empty_ids() -> None:
+    mod = load_module()
+    assert mod.build_mentions([], room=False) == {}
+    with pytest.raises(ValueError, match="Matrix user ID"):
+        mod.build_mentions(["   "])
+
+
+def test_reply_and_edit_preserve_msgtype() -> None:
+    mod = load_module()
+    reply = mod.build_reply_content(
+        "Acknowledged",
+        reply_to="$original",
+        msgtype="notice",
+        mentions={"user_ids": ["@alice:example.org"]},
+    )
+    assert reply["msgtype"] == "m.notice"
+    assert reply["m.mentions"] == {"user_ids": ["@alice:example.org"]}
+
+    edit = mod.build_edit_content(
+        "updated",
+        event_id="$original",
+        msgtype="emote",
+    )
+    assert edit["msgtype"] == "m.emote"
+    assert edit["m.new_content"]["msgtype"] == "m.emote"
+
+
 def test_image_caption_preserves_original_filename() -> None:
     mod = load_module()
     content = mod.build_media_content(

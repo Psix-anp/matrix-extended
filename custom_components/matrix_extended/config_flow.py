@@ -22,11 +22,15 @@ from .const import (
     CONF_DOWNLOAD_INCOMING_MEDIA,
     CONF_HOMESERVER,
     CONF_INCOMING_ENABLED,
+    CONF_INCOMING_MEDIA_MAX_MB,
+    CONF_INCOMING_MEDIA_RETENTION_DAYS,
     CONF_REQUIRE_E2EE,
     CONF_ROUTING_PROFILES,
     CONF_STORE_KEY,
     CONF_USER_ID,
     CONF_VERIFY_SSL,
+    DEFAULT_INCOMING_MEDIA_MAX_MB,
+    DEFAULT_INCOMING_MEDIA_RETENTION_DAYS,
     DOMAIN,
 )
 
@@ -166,6 +170,12 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                         CONF_ALLOWED_USERS: _list(user_input[CONF_ALLOWED_USERS]),
                         CONF_ALLOWED_ROOMS: _list(user_input[CONF_ALLOWED_ROOMS]),
                         CONF_DOWNLOAD_INCOMING_MEDIA: user_input[CONF_DOWNLOAD_INCOMING_MEDIA],
+                        CONF_INCOMING_MEDIA_RETENTION_DAYS: int(
+                            user_input[CONF_INCOMING_MEDIA_RETENTION_DAYS]
+                        ),
+                        CONF_INCOMING_MEDIA_MAX_MB: int(
+                            user_input[CONF_INCOMING_MEDIA_MAX_MB]
+                        ),
                         CONF_ROUTING_PROFILES: routing_profiles,
                     },
                 )
@@ -195,6 +205,33 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                     CONF_DOWNLOAD_INCOMING_MEDIA,
                     default=value(CONF_DOWNLOAD_INCOMING_MEDIA, True),
                 ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_INCOMING_MEDIA_RETENTION_DAYS,
+                    default=value(
+                        CONF_INCOMING_MEDIA_RETENTION_DAYS,
+                        DEFAULT_INCOMING_MEDIA_RETENTION_DAYS,
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0,
+                        max=365,
+                        step=1,
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Optional(
+                    CONF_INCOMING_MEDIA_MAX_MB,
+                    default=value(
+                        CONF_INCOMING_MEDIA_MAX_MB, DEFAULT_INCOMING_MEDIA_MAX_MB
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=16,
+                        max=4096,
+                        step=1,
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
                 vol.Optional(
                     CONF_ROUTING_PROFILES,
                     default=value(CONF_ROUTING_PROFILES, {}),

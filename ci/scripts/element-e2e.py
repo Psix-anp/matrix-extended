@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 from urllib.parse import quote
 
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
@@ -15,6 +16,9 @@ from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sy
 ELEMENT_URL = os.environ.get("ELEMENT_URL", "http://127.0.0.1:8080").rstrip("/")
 PROFILE_DIR = Path(os.environ.get("ELEMENT_PROFILE_DIR", ".ci/element-profile"))
 SCREENSHOT_DIR = Path(os.environ.get("ELEMENT_SCREENSHOT_DIR", ".ci/screenshots"))
+PROFILE_REOPEN_SETTLE_SECONDS = float(
+    os.environ.get("ELEMENT_PROFILE_REOPEN_SETTLE_SECONDS", "2.0")
+)
 ROOM_NAME = "Matrix Extended E2E"
 MESSAGE_RE = re.compile(r"matrix-extended-ha-e2e-[0-9a-f]+")
 LOCATION_TEXT = "Matrix Extended E2E Location"
@@ -103,6 +107,13 @@ def run(mode: str) -> None:
     matrix_env, passwords = _state()
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # The previous Playwright process can exit before Chromium/Element has fully
+    # released and flushed the persistent IndexedDB crypto/profile state. A very
+    # fast reopen then loads Element without restoring the authenticated client,
+    # so no Matrix /sync starts even though the page itself is healthy.
+    if mode != "login":
+        time.sleep(PROFILE_REOPEN_SETTLE_SECONDS)
 
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(

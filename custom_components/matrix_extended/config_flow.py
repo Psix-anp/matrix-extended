@@ -29,6 +29,14 @@ from .const import (
     CONF_STORE_KEY,
     CONF_USER_ID,
     CONF_VERIFY_SSL,
+    CONF_VOICE_ASSIST_ALLOWED_ROOMS,
+    CONF_VOICE_ASSIST_ALLOWED_USERS,
+    CONF_VOICE_ASSIST_CONVERSATION_AGENT,
+    CONF_VOICE_ASSIST_ENABLED,
+    CONF_VOICE_ASSIST_LANGUAGE,
+    CONF_VOICE_ASSIST_REPLY_MODE,
+    CONF_VOICE_ASSIST_STT_ENTITY,
+    CONF_VOICE_ASSIST_TTS_ENTITY,
     DEFAULT_INCOMING_MEDIA_MAX_MB,
     DEFAULT_INCOMING_MEDIA_RETENTION_DAYS,
     DOMAIN,
@@ -147,7 +155,7 @@ class MatrixExtendedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
-    """Edit inbound security, media and routing settings without re-authentication."""
+    """Edit inbound security, media, routing, and voice Assist settings."""
 
     def __init__(self, entry: config_entries.ConfigEntry) -> None:
         self._entry = entry
@@ -177,6 +185,30 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                             user_input[CONF_INCOMING_MEDIA_MAX_MB]
                         ),
                         CONF_ROUTING_PROFILES: routing_profiles,
+                        CONF_VOICE_ASSIST_ENABLED: bool(
+                            user_input.get(CONF_VOICE_ASSIST_ENABLED, False)
+                        ),
+                        CONF_VOICE_ASSIST_STT_ENTITY: user_input.get(
+                            CONF_VOICE_ASSIST_STT_ENTITY
+                        ),
+                        CONF_VOICE_ASSIST_LANGUAGE: user_input.get(
+                            CONF_VOICE_ASSIST_LANGUAGE
+                        ),
+                        CONF_VOICE_ASSIST_CONVERSATION_AGENT: user_input.get(
+                            CONF_VOICE_ASSIST_CONVERSATION_AGENT
+                        ),
+                        CONF_VOICE_ASSIST_REPLY_MODE: user_input.get(
+                            CONF_VOICE_ASSIST_REPLY_MODE, "text"
+                        ),
+                        CONF_VOICE_ASSIST_TTS_ENTITY: user_input.get(
+                            CONF_VOICE_ASSIST_TTS_ENTITY
+                        ),
+                        CONF_VOICE_ASSIST_ALLOWED_USERS: _list(
+                            user_input.get(CONF_VOICE_ASSIST_ALLOWED_USERS, [])
+                        ),
+                        CONF_VOICE_ASSIST_ALLOWED_ROOMS: _list(
+                            user_input.get(CONF_VOICE_ASSIST_ALLOWED_ROOMS, [])
+                        ),
                     },
                 )
 
@@ -236,6 +268,59 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                     CONF_ROUTING_PROFILES,
                     default=value(CONF_ROUTING_PROFILES, {}),
                 ): selector.ObjectSelector(),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_ENABLED,
+                    default=value(CONF_VOICE_ASSIST_ENABLED, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_STT_ENTITY,
+                    description={
+                        "suggested_value": value(CONF_VOICE_ASSIST_STT_ENTITY, None)
+                    },
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="stt")
+                ),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_LANGUAGE,
+                    description={
+                        "suggested_value": value(CONF_VOICE_ASSIST_LANGUAGE, None)
+                    },
+                ): selector.TextSelector(selector.TextSelectorConfig()),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_CONVERSATION_AGENT,
+                    description={
+                        "suggested_value": value(
+                            CONF_VOICE_ASSIST_CONVERSATION_AGENT, None
+                        )
+                    },
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="conversation")
+                ),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_REPLY_MODE,
+                    default=value(CONF_VOICE_ASSIST_REPLY_MODE, "text"),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=["text", "voice", "both"],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_TTS_ENTITY,
+                    description={
+                        "suggested_value": value(CONF_VOICE_ASSIST_TTS_ENTITY, None)
+                    },
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="tts")
+                ),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_ALLOWED_USERS,
+                    default=value(CONF_VOICE_ASSIST_ALLOWED_USERS, []),
+                ): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_ALLOWED_ROOMS,
+                    default=value(CONF_VOICE_ASSIST_ALLOWED_ROOMS, []),
+                ): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
             }
         )
         return self.async_show_form(

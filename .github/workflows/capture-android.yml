@@ -55,6 +55,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
           ffmpeg -version | head -n 1
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
 
       - name: Generate image, video, and voice fixtures
         run: bash ci/scripts/prepare-doc-media.sh
@@ -80,6 +82,11 @@ jobs:
         run: |
           curl -Ls https://get.maestro.mobile.dev | bash
           "$HOME/.maestro/bin/maestro" --version
+
+      - name: Free runner disk for Android AVD
+        run: |
+          sudo rm -rf /opt/ghc /usr/local/.ghcup /usr/share/dotnet /opt/hostedtoolcache/CodeQL || true
+          df -h /
 
       - name: Enable Android emulator acceleration
         run: |

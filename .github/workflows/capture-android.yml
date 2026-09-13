@@ -21,6 +21,8 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      MAESTRO_CLI_NO_ANALYTICS: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -68,6 +70,13 @@ jobs:
           curl -Ls https://get.maestro.mobile.dev | bash
           "$HOME/.maestro/bin/maestro" --version
 
+      - name: Enable Android emulator acceleration
+        run: |
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+            ls -l /dev/kvm
+          fi
+
       - name: Run Element X on Android emulator and capture messages
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -75,9 +84,9 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
           script: |
-            set -euo pipefail
+            exec bash -euo pipefail <<'BASH'
             mkdir -p docs/images .ci/android-debug
             debug_capture() {
               adb exec-out screencap -p > .ci/android-debug/failure.png 2>/dev/null || true
@@ -104,6 +113,7 @@ jobs:
             sleep 2
             adb exec-out screencap -p > docs/images/matrix-extended-element-x-chat.png
             trap - ERR
+            BASH
 
       - name: Upload Android screenshots
         if: success()

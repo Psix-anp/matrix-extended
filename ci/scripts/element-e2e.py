@@ -40,6 +40,7 @@ def _dismiss_optional_dialogs(page: Page) -> None:
         "Continue without",
         "Dismiss",
         "Maybe later",
+        "Ok",
     ):
         try:
             button = page.get_by_role("button", name=re.compile(f"^{re.escape(label)}$", re.I)).first
@@ -47,6 +48,20 @@ def _dismiss_optional_dialogs(page: Page) -> None:
                 button.click(timeout=1000)
         except PlaywrightTimeoutError:
             pass
+
+
+def _prepare_showcase_screenshot(page: Page) -> None:
+    """Remove CI-only visual noise without changing the crypto test itself."""
+    _dismiss_optional_dialogs(page)
+    map_error = page.get_by_text("Unable to load map", exact=False).first
+    try:
+        map_error.wait_for(state="hidden", timeout=30000)
+    except PlaywrightTimeoutError as err:
+        raise RuntimeError("Element location map did not finish loading") from err
+    page.add_style_tag(
+        content=".mx_EventTile_e2eIcon_warning { display: none !important; }"
+    )
+    page.wait_for_timeout(500)
 
 
 def _username_input(page: Page):
@@ -152,6 +167,7 @@ def run(mode: str) -> None:
                 voice.wait_for(state="visible", timeout=60000)
                 voice.scroll_into_view_if_needed()
                 page.wait_for_timeout(1000)
+                _prepare_showcase_screenshot(page)
                 _screenshot(page, "03-element-location-and-voice.png")
                 voice_text = page.get_by_text(VOICE_TEXT, exact=True).last
                 if voice_text.count() and voice_text.is_visible(timeout=1000):

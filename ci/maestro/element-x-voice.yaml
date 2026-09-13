@@ -1,0 +1,11 @@
+appId: io.element.android.x
+---
+- scrollUntilVisible:
+    element:
+      text: ".*Голосовое сообщение.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- extendedWaitUntil:
+    visible: ".*Голосовое сообщение.*"
+    timeout: 10000

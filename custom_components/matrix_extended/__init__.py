@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 from functools import partial
+import logging
 from pathlib import Path
 import secrets
 from typing import Any
@@ -78,11 +81,14 @@ from .content import (
 from .incoming import IncomingPolicy
 from .media import MediaResolver
 from .notifications import NotificationKeyRegistry
+from .outbox import PersistentOutbox, matrix_transaction_id
 from .routing import normalize_routing_profiles, resolve_targets
 from .receiver import MatrixInboundReceiver
 from .status import MatrixRuntimeStatus
 
 PLATFORMS = [Platform.NOTIFY, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SELECT]
+_OUTBOX_RETRY_SECONDS = 5.0
+_LOGGER = logging.getLogger(__name__)
 
 _MEDIA_BASE_SCHEMA = vol.Schema(
     {
@@ -206,138 +212,240 @@ def _room_for_call(account: MatrixAccount, call: ServiceCall) -> str:
     return call.data.get(ATTR_ROOM) or account.default_room
 
 
-async def _async_handle_send(hass: HomeAssistant, call: ServiceCall) -> None:
-    account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
+def _send_payload(account: MatrixAccount, call: ServiceCall) -> dict[str, Any]:
     targets = resolve_targets(
         explicit_targets=call.data.get(ATTR_TARGET),
         route=call.data.get(ATTR_ROUTE),
         default_room=account.default_room,
         routing_profiles=account.routing_profiles or {},
     )
-    notification_key: str | None = call.data.get(ATTR_NOTIFICATION_KEY)
-    message: str = call.data[ATTR_MESSAGE]
-    media_items: list[dict[str, Any]] = call.data[ATTR_MEDIA]
-    actions: list[dict[str, Any]] = call.data[ATTR_ACTIONS]
-    thread_id: str | None = call.data.get(ATTR_THREAD_ID)
-
-    if not message and not media_items:
+    payload = {
+        "targets": targets,
+        "notification_key": call.data.get(ATTR_NOTIFICATION_KEY),
+        "message": call.data[ATTR_MESSAGE],
+        "format": call.data[ATTR_FORMAT],
+        "thread_id": call.data.get(ATTR_THREAD_ID),
+        "media": call.data[ATTR_MEDIA],
+        "actions": call.data[ATTR_ACTIONS],
+    }
+    if not payload["message"] and not payload["media"]:
         raise HomeAssistantError("matrix_extended.send needs a message and/or media")
-    if actions and not message:
+    if payload["actions"] and not payload["message"]:
         raise HomeAssistantError("reaction actions require a text message")
-    if notification_key and not message:
+    if payload["notification_key"] and not payload["message"]:
         raise HomeAssistantError("notification_key requires a text message")
+    return payload
 
-    try:
-        prepared_rooms = await account.client.async_prepare_rooms(targets)
-        for target, room in zip(targets, prepared_rooms, strict=True):
-            if target == account.default_room:
-                account.status.set_default_room_encryption(room.encrypted)
 
-        if message:
-            formatted_body = message if call.data[ATTR_FORMAT] == FORMAT_HTML else None
-            event_ids: list[str | None] = []
-            registry_changed = False
-            if notification_key and account.notification_registry:
-                for room in prepared_rooms:
-                    original_event_id = account.notification_registry.get(
-                        notification_key, room.room_id
-                    )
-                    if original_event_id:
-                        await account.client.async_send_prepared(
-                            [room],
-                            build_edit_content(
-                                message,
-                                event_id=original_event_id,
-                                formatted_body=formatted_body,
-                            ),
-                        )
-                        event_ids.append(original_event_id)
-                    else:
-                        sent = await account.client.async_send_prepared(
-                            [room],
-                            build_text_content(
-                                message,
-                                formatted_body=formatted_body,
-                                thread_id=thread_id,
-                            ),
-                        )
-                        event_id = sent[0]
-                        event_ids.append(event_id)
-                        if event_id:
-                            account.notification_registry.set(
-                                notification_key, room.room_id, event_id
-                            )
-                            registry_changed = True
-                if registry_changed and account.notification_store:
-                    await account.notification_store.async_save(
-                        account.notification_registry.dump()
-                    )
-            else:
-                event_ids = await account.client.async_send_prepared(
-                    prepared_rooms,
-                    build_text_content(
-                        message, formatted_body=formatted_body, thread_id=thread_id
-                    ),
+def _tx_ids(delivery_id: str, event_key: str, rooms: list[PreparedRoom]) -> list[str]:
+    return [
+        matrix_transaction_id(delivery_id, event_key, room.room_id)
+        for room in rooms
+    ]
+
+
+async def _async_execute_send(
+    hass: HomeAssistant,
+    account: MatrixAccount,
+    payload: dict[str, Any],
+    *,
+    delivery_id: str,
+) -> None:
+    targets: list[str] = list(payload["targets"])
+    notification_key: str | None = payload.get("notification_key")
+    message: str = payload["message"]
+    media_items: list[dict[str, Any]] = payload["media"]
+    actions: list[dict[str, Any]] = payload["actions"]
+    thread_id: str | None = payload.get("thread_id")
+
+    prepared_rooms = await account.client.async_prepare_rooms(targets)
+    for target, room in zip(targets, prepared_rooms, strict=True):
+        if target == account.default_room:
+            account.status.set_default_room_encryption(room.encrypted)
+
+    if message:
+        formatted_body = message if payload["format"] == FORMAT_HTML else None
+        event_ids: list[str | None] = []
+        registry_changed = False
+        if notification_key and account.notification_registry:
+            for room in prepared_rooms:
+                original_event_id = account.notification_registry.get(
+                    notification_key, room.room_id
                 )
-            if actions and account.action_registry:
-                for room, event_id in zip(prepared_rooms, event_ids, strict=True):
-                    if event_id:
-                        account.action_registry.register(
-                            room_id=room.room_id,
-                            event_id=event_id,
-                            actions=actions,
-                        )
-                await account.action_registry.async_save()
-
-        resolver = MediaResolver(hass)
-        room_groups = _rooms_by_encryption(prepared_rooms)
-        for item in media_items:
-            media = await resolver.async_resolve(item)
-            thumbnail = None
-            if thumbnail_source := item.get("thumbnail"):
-                thumbnail = await resolver.async_resolve(thumbnail_source, force_type="image")
-
-            for encrypted, rooms in room_groups.items():
-                thumbnail_upload = None
-                if thumbnail is not None:
-                    thumbnail_upload = await account.client.async_upload(
-                        thumbnail.data,
-                        filename=thumbnail.filename,
-                        content_type=thumbnail.content_type,
-                        encrypt=encrypted,
+                event_key = f"notification:{notification_key}"
+                room_tx_ids = _tx_ids(delivery_id, event_key, [room])
+                if original_event_id:
+                    await account.client.async_send_prepared(
+                        [room],
+                        build_edit_content(
+                            message,
+                            event_id=original_event_id,
+                            formatted_body=formatted_body,
+                        ),
+                        tx_ids=room_tx_ids,
                     )
-                media_upload = await account.client.async_upload(
-                    media.data,
-                    filename=media.filename,
-                    content_type=media.content_type,
+                    event_ids.append(original_event_id)
+                else:
+                    sent = await account.client.async_send_prepared(
+                        [room],
+                        build_text_content(
+                            message,
+                            formatted_body=formatted_body,
+                            thread_id=thread_id,
+                        ),
+                        tx_ids=room_tx_ids,
+                    )
+                    event_id = sent[0]
+                    event_ids.append(event_id)
+                    if event_id:
+                        account.notification_registry.set(
+                            notification_key, room.room_id, event_id
+                        )
+                        registry_changed = True
+            if registry_changed and account.notification_store:
+                await account.notification_store.async_save(
+                    account.notification_registry.dump()
+                )
+        else:
+            event_ids = await account.client.async_send_prepared(
+                prepared_rooms,
+                build_text_content(
+                    message, formatted_body=formatted_body, thread_id=thread_id
+                ),
+                tx_ids=_tx_ids(delivery_id, "text", prepared_rooms),
+            )
+        if actions and account.action_registry:
+            for room, event_id in zip(prepared_rooms, event_ids, strict=True):
+                if event_id:
+                    account.action_registry.register(
+                        room_id=room.room_id,
+                        event_id=event_id,
+                        actions=actions,
+                    )
+            await account.action_registry.async_save()
+
+    resolver = MediaResolver(hass)
+    room_groups = _rooms_by_encryption(prepared_rooms)
+    for media_index, item in enumerate(media_items):
+        media = await resolver.async_resolve(item)
+        thumbnail = None
+        if thumbnail_source := item.get("thumbnail"):
+            thumbnail = await resolver.async_resolve(thumbnail_source, force_type="image")
+
+        for encrypted, rooms in room_groups.items():
+            thumbnail_upload = None
+            if thumbnail is not None:
+                thumbnail_upload = await account.client.async_upload(
+                    thumbnail.data,
+                    filename=thumbnail.filename,
+                    content_type=thumbnail.content_type,
                     encrypt=encrypted,
                 )
-                content = build_media_content(
-                    media_type=media.media_type,
-                    mxc_uri=None if encrypted else media_upload.mxc_uri,
-                    encrypted_file=media_upload.encrypted_file if encrypted else None,
-                    filename=media.filename,
-                    content_type=media.content_type,
-                    size=media.size,
-                    caption=item.get("caption"),
-                    formatted_caption=item.get("formatted_caption"),
-                    width=media.width,
-                    height=media.height,
-                    duration_ms=media.duration_ms,
-                    thumbnail_mxc_uri=(None if encrypted or thumbnail_upload is None else thumbnail_upload.mxc_uri),
-                    thumbnail_encrypted_file=(thumbnail_upload.encrypted_file if encrypted and thumbnail_upload is not None else None),
-                    thumbnail_info=thumbnail.image_info() if thumbnail else None,
-                    thread_id=thread_id,
-                )
-                await account.client.async_send_prepared(rooms, content)
-        account.status.mark_send_success()
+            media_upload = await account.client.async_upload(
+                media.data,
+                filename=media.filename,
+                content_type=media.content_type,
+                encrypt=encrypted,
+            )
+            content = build_media_content(
+                media_type=media.media_type,
+                mxc_uri=None if encrypted else media_upload.mxc_uri,
+                encrypted_file=media_upload.encrypted_file if encrypted else None,
+                filename=media.filename,
+                content_type=media.content_type,
+                size=media.size,
+                caption=item.get("caption"),
+                formatted_caption=item.get("formatted_caption"),
+                width=media.width,
+                height=media.height,
+                duration_ms=media.duration_ms,
+                thumbnail_mxc_uri=(
+                    None
+                    if encrypted or thumbnail_upload is None
+                    else thumbnail_upload.mxc_uri
+                ),
+                thumbnail_encrypted_file=(
+                    thumbnail_upload.encrypted_file
+                    if encrypted and thumbnail_upload is not None
+                    else None
+                ),
+                thumbnail_info=thumbnail.image_info() if thumbnail else None,
+                thread_id=thread_id,
+            )
+            await account.client.async_send_prepared(
+                rooms,
+                content,
+                tx_ids=_tx_ids(
+                    delivery_id, f"media-{media_index}", rooms
+                ),
+            )
+    account.status.mark_send_success()
+
+
+async def _async_outbox_worker(hass: HomeAssistant, account: MatrixAccount) -> None:
+    while True:
+        if account.outbox is None:
+            await asyncio.sleep(_OUTBOX_RETRY_SECONDS)
+            continue
+        pending = account.outbox.pending()
+        if not pending:
+            await asyncio.sleep(_OUTBOX_RETRY_SECONDS)
+            continue
+        item = pending[0]
+        try:
+            await _async_execute_send(
+                hass,
+                account,
+                item.payload,
+                delivery_id=item.delivery_id,
+            )
+        except asyncio.CancelledError:
+            raise
+        except MatrixConnectionError as err:
+            account.status.mark_error(str(err))
+            await asyncio.sleep(_OUTBOX_RETRY_SECONDS)
+        except MatrixEncryptionRequiredError as err:
+            account.status.mark_error(str(err), connected=True)
+            _LOGGER.warning(
+                "Dropping queued Matrix send %s after encryption-policy failure: %s",
+                item.delivery_id,
+                err,
+            )
+            await account.outbox.async_remove(item.delivery_id)
+        except (MatrixExtendedError, HomeAssistantError, ValueError) as err:
+            account.status.mark_error(str(err))
+            _LOGGER.warning(
+                "Dropping queued Matrix send %s after permanent failure: %s",
+                item.delivery_id,
+                err,
+            )
+            await account.outbox.async_remove(item.delivery_id)
+        else:
+            await account.outbox.async_remove(item.delivery_id)
+
+
+async def _async_handle_send(hass: HomeAssistant, call: ServiceCall) -> None:
+    account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
+    payload = _send_payload(account, call)
+    delivery_id = secrets.token_hex(16)
+    try:
+        await _async_execute_send(
+            hass,
+            account,
+            payload,
+            delivery_id=delivery_id,
+        )
     except MatrixEncryptionRequiredError as err:
         account.status.mark_error(str(err), connected=True)
         raise
+    except MatrixConnectionError as err:
+        account.status.mark_error(str(err))
+        if account.outbox is None:
+            raise
+        await account.outbox.async_enqueue(payload, delivery_id=delivery_id)
     except MatrixExtendedError as err:
         account.status.mark_error(str(err))
         raise
-
 
 async def _async_handle_reply(hass: HomeAssistant, call: ServiceCall) -> None:
     account = _select_account(hass, call.data.get(ATTR_ACCOUNT))
@@ -474,6 +582,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     stored_actions = await action_store.async_load() or {}
     action_registry = ReactionActionRegistry(stored_actions, store=action_store)
+    outbox_store: Store[dict[str, Any]] = Store(
+        hass, 1, f"{DOMAIN}.outbox_{entry.entry_id}", private=True
+    )
+    stored_outbox = await outbox_store.async_load() or {}
+    outbox = PersistentOutbox(stored_outbox, store=outbox_store)
+    await outbox.async_save()
     rooms = client.rooms_snapshot()
     default_room_id = await client.async_resolve_room(data[CONF_DEFAULT_ROOM])
     account = MatrixAccount(
@@ -484,6 +598,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         homeserver=data[CONF_HOMESERVER],
         status=status,
         action_registry=action_registry,
+        outbox=outbox,
         incoming_policy=IncomingPolicy(
             allowed_users=_entry_value(entry, CONF_ALLOWED_USERS, [data[CONF_USER_ID]]),
             allowed_rooms=allowed_rooms,
@@ -498,6 +613,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         default_room_id=default_room_id,
     )
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = account
+    account.outbox_task = hass.async_create_task(
+        _async_outbox_worker(hass, account),
+        f"matrix_extended_outbox_{entry.entry_id}",
+    )
 
     if _entry_value(entry, CONF_INCOMING_ENABLED, True):
         incoming_dir = hass.config.path(DOMAIN, "incoming", entry.entry_id)
@@ -524,5 +643,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
     account: MatrixAccount | None = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     if account is not None:
+        if account.outbox_task is not None:
+            account.outbox_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await account.outbox_task
+            account.outbox_task = None
         await account.client.async_close()
     return True

@@ -1,0 +1,143 @@
+name: Capture Android Matrix screenshots
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - docs/v050-screenshots
+    paths:
+      - .github/workflows/capture-android.yml
+      - ci/maestro/**
+      - ci/scripts/send-doc-messages.py
+      - ci/scripts/capture-docs.py
+      - custom_components/matrix_extended/**
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    name: Real Element X Android screenshots
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Generate disposable Synapse config
+        run: ci/scripts/prepare-synapse.sh
+
+      - name: Start Synapse 1.160.0
+        run: |
+          E2E_UID="$(id -u)" E2E_GID="$(id -g)" docker compose -f compose.test.yml up -d synapse
+
+      - name: Wait for Matrix Client API
+        run: python ci/scripts/wait-http.py http://127.0.0.1:8008/_matrix/client/versions 90
+
+      - name: Bootstrap Matrix users and encrypted room
+        run: |
+          MATRIX_REGISTRATION_SHARED_SECRET="$(cat .ci/synapse-shared-secret)" \
+            python ci/scripts/bootstrap-matrix.py
+
+      - name: Prepare Home Assistant config
+        run: ci/scripts/prepare-ha.sh
+
+      - name: Start Home Assistant 2026.9.2
+        run: docker compose -f compose.test.yml up -d homeassistant
+
+      - name: Wait for Home Assistant
+        run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
+
+      - name: Configure Matrix Extended documentation fixture
+        run: python ci/scripts/capture-docs.py setup
+
+      - name: Download verified Element X Android v26.09.1
+        run: |
+          mkdir -p .ci
+          curl -fL --retry 3 \
+            -o .ci/element-x.apk \
+            https://github.com/element-hq/element-x-android/releases/download/v26.09.1/app-fdroid-x86_64-release-signed.apk
+          echo "dd913f14d8e25b980d2a4e8a3735dba997595fbfeb920fc8ca81dd9a154deda5  .ci/element-x.apk" | sha256sum -c -
+
+      - name: Install Maestro
+        run: |
+          curl -Ls https://get.maestro.mobile.dev | bash
+          "$HOME/.maestro/bin/maestro" --version
+
+      - name: Run Element X on Android emulator and capture messages
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -euo pipefail
+            mkdir -p docs/images .ci/android-debug
+            debug_capture() {
+              adb exec-out screencap -p > .ci/android-debug/failure.png 2>/dev/null || true
+              adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+              adb pull /sdcard/window.xml .ci/android-debug/window.xml >/dev/null 2>&1 || true
+              adb logcat -d -t 500 > .ci/android-debug/logcat.txt 2>/dev/null || true
+            }
+            trap debug_capture ERR
+
+            adb install -r "$GITHUB_WORKSPACE/.ci/element-x.apk"
+            adb shell pm grant io.element.android.x android.permission.POST_NOTIFICATIONS || true
+
+            MATRIX_PASSWORD="$(python -c 'import json; print(json.load(open(".ci/matrix-passwords.json"))["user_password"])')"
+            "$HOME/.maestro/bin/maestro" test ci/maestro/element-x-login.yaml \
+              -e MATRIX_URL=http://10.0.2.2:8008 \
+              -e MATRIX_USERNAME=ha_user \
+              -e MATRIX_PASSWORD="$MATRIX_PASSWORD"
+
+            python ci/scripts/send-doc-messages.py
+            sleep 5
+            adb exec-out screencap -p > docs/images/matrix-extended-element-x-inbox.png
+
+            "$HOME/.maestro/bin/maestro" test ci/maestro/element-x-room.yaml
+            sleep 2
+            adb exec-out screencap -p > docs/images/matrix-extended-element-x-chat.png
+            trap - ERR
+
+      - name: Upload Android screenshots
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-extended-element-x-screenshots
+          path: docs/images/matrix-extended-element-x-*.png
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload Android diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-extended-element-x-diagnostics
+          path: .ci/android-debug
+          if-no-files-found: warn
+
+      - name: Commit Android screenshots to documentation branch
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/images/matrix-extended-element-x-*.png
+          git diff --cached --quiet && exit 0
+          git commit -m "docs: capture Matrix Extended in Element X Android"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Stack diagnostics on failure
+        if: failure()
+        run: |
+          docker compose -f compose.test.yml ps
+          docker compose -f compose.test.yml logs --no-color --tail=200 homeassistant synapse
+
+      - name: Stop disposable stack
+        if: always()
+        run: docker compose -f compose.test.yml down -v --remove-orphans

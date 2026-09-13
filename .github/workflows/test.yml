@@ -75,7 +75,7 @@ jobs:
           python -m pip install playwright==1.62.0
           python -m playwright install --with-deps chromium
       - name: Start Element Web 1.12.26
-        run: docker compose -f compose.test.yml up -d element
+        run: docker compose -f compose.test.yml up -d --no-deps element
       - name: Wait for Element Web
         run: python ci/scripts/wait-http.py http://127.0.0.1:8080/config.json 90
       - name: Login Element recipient before HA sends E2EE data

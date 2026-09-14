@@ -9,9 +9,11 @@ from typing import Any
 
 import voluptuous as vol
 
+from homeassistant.const import MATCH_ALL
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.util import language as language_util
 
 from .client import MatrixAccount, MatrixExtendedError, PreparedRoom
 from .const import (
@@ -95,6 +97,44 @@ def _rooms_by_encryption(
     for room in rooms:
         grouped.setdefault(room.encrypted, []).append(room)
     return grouped
+
+
+def _resolve_tts_language(
+    hass: HomeAssistant,
+    engine: str,
+    requested_language: str | None,
+) -> str | None:
+    """Resolve a requested locale to a dialect supported by the TTS engine."""
+    if not requested_language:
+        return None
+
+    from homeassistant.components.tts.helper import get_engine_instance  # noqa: PLC0415
+
+    engine_instance = get_engine_instance(hass, engine)
+    if engine_instance is None:
+        raise HomeAssistantError(f"TTS engine not found: {engine}")
+
+    supported = engine_instance.supported_languages
+    if supported == MATCH_ALL:
+        return requested_language
+
+    supported_list = list(supported or [])
+    if requested_language in supported_list:
+        return requested_language
+
+    matches = language_util.matches(
+        requested_language,
+        supported_list,
+        country=getattr(hass.config, "country", None),
+    )
+    if matches:
+        return matches[0]
+
+    supported_text = ", ".join(supported_list) or "none"
+    raise HomeAssistantError(
+        f"Language '{requested_language}' is not supported by {engine}; "
+        f"supported languages: {supported_text}"
+    )
 
 
 def _location_from_call(
@@ -218,11 +258,16 @@ async def _async_send_voice(
     if not text:
         raise HomeAssistantError("send_voice text must not be empty")
 
+    engine = tts.async_resolve_engine(hass, call.data.get("tts_engine"))
+    if engine is None:
+        raise HomeAssistantError("No Home Assistant TTS engine is available")
+    language = _resolve_tts_language(hass, engine, call.data.get("language"))
+
     media_source_id = generate_media_source_id(
         hass,
         text,
-        engine=call.data.get("tts_engine"),
-        language=call.data.get("language"),
+        engine=engine,
+        language=language,
         options=dict(call.data.get("tts_options") or {}),
         cache=True,
     )
@@ -268,7 +313,8 @@ async def _async_send_voice(
                 delivery_event_record(
                     room_id=room.room_id,
                     event_id=event_id,
-                    kind="voice",
+                    kind="media",
+                    media_index=0,
                 )
                 for room, event_id in zip(group, event_ids, strict=True)
                 if event_id

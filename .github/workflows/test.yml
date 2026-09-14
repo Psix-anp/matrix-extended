@@ -135,6 +135,8 @@ jobs:
         run: python ci/scripts/verify-ha-entities.py
       - name: Verify Element decrypts text and renders rich Matrix events
         run: python ci/scripts/element-e2e.py verify-message-rich
+      - name: Verify graphical send_media executes in real Home Assistant
+        run: python ci/scripts/verify-v053.py send-media
       - name: Arm persistent outbox verification
         run: python ci/scripts/ha-reconnect.py arm-outbox
       - name: Stop Synapse while Home Assistant stays running
@@ -155,6 +157,8 @@ jobs:
         run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
       - name: Verify config entry after Home Assistant restart
         run: python ci/scripts/ha-e2e.py verify-restart
+      - name: Verify rich last incoming event sensor after Matrix reaction
+        run: python ci/scripts/verify-v053.py last-receive
       - name: Verify Matrix Extended did not block or leak background tasks
         run: |
           docker compose -f compose.test.yml logs --no-color homeassistant > .ci/home-assistant.log

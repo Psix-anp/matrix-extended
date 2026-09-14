@@ -114,17 +114,27 @@ class MatrixLastSendSensor(MatrixDynamicSensor):
 
 
 class MatrixLastReceiveSensor(MatrixDynamicSensor):
-    """Timestamp of the most recent authorized incoming Matrix event."""
+    """Most recent authorized incoming Matrix event kind and metadata."""
 
     _attr_translation_key = "last_receive"
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(self, entry: ConfigEntry, account: MatrixAccount) -> None:
         super().__init__(entry, account, "last_receive")
 
     @property
-    def native_value(self) -> Any:
-        return self._account.status.last_receive
+    def native_value(self) -> str | None:
+        return self._account.status.last_receive_type
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        received_at = self._account.status.last_receive
+        payload = self._account.status.last_receive_payload
+        if received_at is None and not payload:
+            return None
+        attributes = dict(payload)
+        if received_at is not None:
+            attributes["received_at"] = received_at.isoformat()
+        return attributes
 
 
 class MatrixLastErrorSensor(MatrixDynamicSensor):

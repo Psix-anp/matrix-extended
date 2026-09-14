@@ -86,9 +86,13 @@ async def _async_send_media(hass: HomeAssistant, call: ServiceCall) -> None:
 
 def install_media_picker_service(hass: HomeAssistant) -> None:
     """Register the graphical media-picker service."""
+
+    async def handler(call: ServiceCall) -> None:
+        await _async_send_media(hass, call)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_SEND_MEDIA,
-        _async_send_media,
+        handler,
         schema=SEND_MEDIA_SCHEMA,
     )

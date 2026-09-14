@@ -4,9 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_DIR="${HA_CONFIG_DIR:-$ROOT/.ci/ha-config}"
 MEDIA_DIR="$CONFIG_DIR/matrix-e2e-media"
+LOCAL_MEDIA_DIR="$CONFIG_DIR/media"
 
 rm -rf "$CONFIG_DIR"
-mkdir -p "$CONFIG_DIR/custom_components" "$MEDIA_DIR"
+mkdir -p "$CONFIG_DIR/custom_components" "$MEDIA_DIR" "$LOCAL_MEDIA_DIR"
 cp -a "$ROOT/custom_components/matrix_extended" "$CONFIG_DIR/custom_components/matrix_extended"
 
 python - "$MEDIA_DIR/matrix-e2e-voice.wav" <<'PY'
@@ -29,11 +30,14 @@ with wave.open(str(path), "wb") as output:
     output.setframerate(rate)
     output.writeframes(bytes(frames))
 PY
+cp "$MEDIA_DIR/matrix-e2e-voice.wav" "$LOCAL_MEDIA_DIR/matrix-e2e-voice.wav"
 
 cat > "$CONFIG_DIR/configuration.yaml" <<'YAML'
 homeassistant:
   allowlist_external_dirs:
     - /config/matrix-e2e-media
+  media_dirs:
+    local: /config/media
 
 default_config:
 

@@ -77,15 +77,12 @@ send_media:
       selector: {text: {}}
     media_picker:
       name: Choose media
-      description: Open the Home Assistant media browser and choose one media item.
+      description: Open the Home Assistant media browser and choose one media item from any Media Source provider, including Frigate and Local Media.
       required: true
       selector:
         media:
           accept:
-            - image/*
-            - audio/*
-            - video/*
-            - application/*
+            - "*"
     caption:
       name: Caption
       description: Optional Matrix caption for the selected media.

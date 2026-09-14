@@ -37,11 +37,21 @@ homeassistant:
 
 default_config:
 
+demo:
+
 counter:
   matrix_reaction:
     name: Matrix reaction executions
     initial: 0
     step: 1
+
+input_boolean:
+  matrix_command_target:
+    name: Matrix command target
+    initial: false
+  matrix_denied_target:
+    name: Matrix denied command target
+    initial: false
 
 logger:
   default: info

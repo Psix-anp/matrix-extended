@@ -1,0 +1,130 @@
+name: Publish Matrix Extended release
+
+on:
+  workflow_run:
+    workflows: ["Matrix Extended tests"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: matrix-extended-release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the exact tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Validate version and changelog
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(python -c 'import json; print(json.load(open("custom_components/matrix_extended/manifest.json"))["version"])')"
+          tag="v${version}"
+          python - "$version" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          version = sys.argv[1]
+          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          pattern = re.compile(
+              rf"^## {re.escape(version)}(?:\s+—[^\n]*)?\n(?P<body>.*?)(?=^## |\Z)",
+              re.MULTILINE | re.DOTALL,
+          )
+          match = pattern.search(text)
+          if match is None or not match.group("body").strip():
+              raise SystemExit(f"CHANGELOG.md has no release notes for {version}")
+          PY
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether release already exists
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.release.outputs.tag }}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release $tag already exists; nothing to publish"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and verify install archive
+        if: steps.existing.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.release.outputs.version }}"
+          python ci/scripts/build-release.py
+          sha256sum "dist/matrix_extended-ha-install-v${version}.zip" > "dist/matrix_extended-ha-install-v${version}.zip.sha256"
+
+      - name: Compose release notes
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          TEST_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.release.outputs.version }}"
+          python - "$version" <<'PY'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          version = sys.argv[1]
+          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          pattern = re.compile(
+              rf"^## {re.escape(version)}(?:\s+—[^\n]*)?\n(?P<body>.*?)(?=^## |\Z)",
+              re.MULTILINE | re.DOTALL,
+          )
+          body = pattern.search(text).group("body").strip()
+          run_url = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['TEST_RUN_ID']}"
+          notes = (
+              f"{body}\n\n"
+              "### Verification\n\n"
+              "- Full Matrix Extended CI passed for this exact commit, including the real Home Assistant + Synapse + Element stack.\n"
+              "- Verified install ZIP gate passed before publication.\n"
+              f"- Tested commit: `{os.environ['TESTED_SHA']}`\n"
+              f"- CI run: {run_url}\n"
+          )
+          Path("dist/release-notes.md").write_text(notes, encoding="utf-8")
+          PY
+
+      - name: Publish GitHub Release
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.release.outputs.version }}"
+          tag="${{ steps.release.outputs.tag }}"
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "${{ github.event.workflow_run.head_sha }}" \
+            --title "Matrix Extended v${version}" \
+            --notes-file dist/release-notes.md \
+            --latest \
+            "dist/matrix_extended-ha-install-v${version}.zip" \
+            "dist/matrix_extended-ha-install-v${version}.zip.sha256"

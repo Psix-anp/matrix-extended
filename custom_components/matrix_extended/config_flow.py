@@ -190,9 +190,9 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         return normalize_routing_profiles(self._value(CONF_ROUTING_PROFILES, {}))
 
     def _finish(self, updates: dict[str, Any]) -> dict[str, Any]:
-        data = dict(self._entry.options)
-        data.update(updates)
-        return self.async_create_entry(title="", data=data)
+        options = dict(self._entry.options)
+        options.update(updates)
+        return self.async_create_entry(title="", data=options)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -206,7 +206,7 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
     async def async_step_general(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Edit default room, TLS and encryption policy."""
+        """Edit connection defaults and encryption policy."""
         errors: dict[str, str] = {}
         if user_input is not None:
             room = str(user_input[CONF_DEFAULT_ROOM]).strip()
@@ -225,25 +225,27 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             except Exception:
                 errors["base"] = "cannot_connect"
             else:
-                return self._finish(
-                    {
-                        CONF_DEFAULT_ROOM: room,
-                        CONF_VERIFY_SSL: verify_ssl,
-                        CONF_REQUIRE_E2EE: bool(user_input[CONF_REQUIRE_E2EE]),
-                    }
+                connection_data = dict(self._entry.data)
+                connection_data[CONF_DEFAULT_ROOM] = room
+                connection_data[CONF_VERIFY_SSL] = verify_ssl
+                self.hass.config_entries.async_update_entry(
+                    self._entry, data=connection_data
                 )
+                options = dict(self._entry.options)
+                options.pop(CONF_DEFAULT_ROOM, None)
+                options.pop(CONF_VERIFY_SSL, None)
+                options[CONF_REQUIRE_E2EE] = bool(user_input[CONF_REQUIRE_E2EE])
+                return self.async_create_entry(title="", data=options)
 
         schema = vol.Schema(
             {
                 vol.Required(
                     CONF_DEFAULT_ROOM,
-                    default=self._value(
-                        CONF_DEFAULT_ROOM, self._entry.data[CONF_DEFAULT_ROOM]
-                    ),
+                    default=self._entry.data[CONF_DEFAULT_ROOM],
                 ): selector.TextSelector(selector.TextSelectorConfig()),
                 vol.Optional(
                     CONF_VERIFY_SSL,
-                    default=self._value(CONF_VERIFY_SSL, True),
+                    default=self._entry.data.get(CONF_VERIFY_SSL, True),
                 ): selector.BooleanSelector(),
                 vol.Optional(
                     CONF_REQUIRE_E2EE,
@@ -293,7 +295,7 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                     CONF_ALLOWED_ROOMS,
                     default=self._value(
                         CONF_ALLOWED_ROOMS,
-                        [self._value(CONF_DEFAULT_ROOM, self._entry.data[CONF_DEFAULT_ROOM])],
+                        [self._entry.data[CONF_DEFAULT_ROOM]],
                     ),
                 ): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
             }

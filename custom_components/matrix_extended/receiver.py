@@ -204,16 +204,18 @@ class MatrixInboundReceiver:
                 source_event_id=event.event_id,
                 thread_id=payload["thread_id"],
             )
-            self._account.status.mark_command(
-                {
-                    "command_id": result.command_id,
-                    "sender": event.sender,
-                    "room_id": room.room_id,
-                    "handler_type": result.handler_type,
-                    "status": result.status,
-                    "error": result.error,
-                }
-            )
+            mark_command = getattr(self._account.status, "mark_command", None)
+            if callable(mark_command):
+                mark_command(
+                    {
+                        "command_id": result.command_id,
+                        "sender": event.sender,
+                        "room_id": room.room_id,
+                        "handler_type": result.handler_type,
+                        "status": result.status,
+                        "error": result.error,
+                    }
+                )
             self._hass.bus.async_fire(
                 EVENT_COMMAND,
                 {

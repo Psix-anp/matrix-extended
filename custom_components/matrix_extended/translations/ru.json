@@ -35,7 +35,8 @@
   },
   "entity": {
     "binary_sensor": {
-      "connected": {"name": "Соединение"}
+      "connected": {"name": "Соединение"},
+      "e2ee_ready": {"name": "Готовность E2EE"}
     },
     "sensor": {
       "user_id": {"name": "ID пользователя"},
@@ -65,7 +66,10 @@
           "edit": "Изменение",
           "redaction": "Удаление"
         }
-      }
+      },
+      "outbox_size": {"name": "Размер очереди отправки"},
+      "last_delivery_status": {"name": "Статус последней доставки"},
+      "last_command": {"name": "Последняя команда"}
     },
     "select": {
       "default_room": {"name": "Комната по умолчанию"}
@@ -80,6 +84,7 @@
           "general": "Основное",
           "incoming": "Входящие и безопасность",
           "media": "Входящие медиа",
+          "voice_assist": "Voice Assist",
           "routes": "Маршруты уведомлений"
         }
       },
@@ -121,6 +126,24 @@
         "data_description": {
           "incoming_media_retention_days": "0 отключает очистку по возрасту; лимит объёма продолжает действовать.",
           "incoming_media_max_mb": "Максимальный общий размер каталога входящих медиа Matrix Extended."
+        }
+      },
+      "voice_assist": {
+        "title": "Voice Assist",
+        "description": "Необязательная автоматическая цепочка для нативных голосовых Matrix: расшифровка и скачивание, STT, Home Assistant Conversation/Assist и ответ обратно в Matrix. Отдельные allowlist Voice Assist могут только дополнительно сузить обычные входящие allowlist.",
+        "data": {
+          "voice_assist_enabled": "Включить автоматический Voice Assist",
+          "voice_assist_stt_entity": "Сущность STT",
+          "voice_assist_language": "Язык",
+          "voice_assist_conversation_agent": "Conversation agent",
+          "voice_assist_reply_mode": "Режим ответа",
+          "voice_assist_tts_entity": "Сущность TTS",
+          "voice_assist_allowed_users": "Разрешённые пользователи",
+          "voice_assist_allowed_rooms": "Разрешённые комнаты"
+        },
+        "data_description": {
+          "voice_assist_allowed_users": "Необязательное дополнительное ограничение. Пусто — использовать обычный allowlist входящих пользователей.",
+          "voice_assist_allowed_rooms": "Необязательное дополнительное ограничение. Пусто — использовать обычный allowlist входящих комнат."
         }
       },
       "routes": {
@@ -256,6 +279,14 @@
       "name": "Очистить скачанные медиа Matrix",
       "description": "Удалить скачанные входящие Matrix-медиа выбранного аккаунта и вернуть количество файлов/байт.",
       "fields": {"account": {"name": "Аккаунт"}}
+    },
+    "register_command": {
+      "name": "Зарегистрировать безопасную Matrix-команду",
+      "description": "Зарегистрировать или заменить точную разрешённую Matrix-команду. Входящий текст Matrix не может переопределить сохранённое действие Home Assistant, цель или данные."
+    },
+    "unregister_command": {
+      "name": "Удалить безопасную Matrix-команду",
+      "description": "Удалить зарегистрированную безопасную Matrix-команду по стабильному ID."
     }
   },
   "selector": {

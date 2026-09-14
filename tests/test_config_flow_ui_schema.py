@@ -44,5 +44,6 @@ def test_options_flow_exposes_bounded_incoming_media_retention() -> None:
 def test_services_yaml_declares_manual_media_purge() -> None:
     text = SERVICES.read_text()
     assert "purge_media:" in text
-    assert "removed_files" in text
-    assert "removed_bytes" in text
+    assert "removed file and byte counts" in text
+    assert "config_entry:" in text
+    assert "integration: matrix_extended" in text

@@ -59,20 +59,22 @@ class MatrixRuntimeStatus:
         self.last_error = None
         self._notify()
 
-    def mark_receive(
-        self,
-        event_type: str | None = None,
-        payload: Mapping[str, Any] | None = None,
-    ) -> None:
-        """Record an authorized incoming Matrix event and its useful metadata."""
+    def mark_receive(self) -> None:
+        """Record the timestamp of an authorized incoming Matrix event."""
         self.connected = True
         self.last_receive = datetime.now(UTC)
-        if event_type is not None:
-            self.last_receive_type = str(event_type)
-        if payload is not None:
-            self.last_receive_payload = dict(payload)
         self.last_error = None
         self._notify()
+
+    def mark_receive_event(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        """Record an authorized incoming event with metadata for HA entities."""
+        self.last_receive_type = str(event_type)
+        self.last_receive_payload = dict(payload)
+        self.mark_receive()
 
     def mark_error(self, error: str, *, connected: bool = False) -> None:
         """Record a connection/send error."""

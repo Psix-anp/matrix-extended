@@ -55,8 +55,9 @@ def test_voice_assist_forwards_downloaded_content_type_to_stt_pipeline() -> None
 
 def test_options_flow_exposes_voice_assist_disabled_by_default() -> None:
     source = (COMP / "config_flow.py").read_text()
-    assert "CONF_VOICE_ASSIST_ENABLED" in source
-    assert "default=value(CONF_VOICE_ASSIST_ENABLED, False)" in source
+    assert '"voice_assist"' in source
+    assert "async def async_step_voice_assist(" in source
+    assert "default=self._value(CONF_VOICE_ASSIST_ENABLED, False)" in source
     for mode in ('"text"', '"voice"', '"both"'):
         assert mode in source
     for marker in (
@@ -83,7 +84,9 @@ def test_voice_assist_translation_keys_exist_in_both_languages() -> None:
     strings = json.loads((COMP / "strings.json").read_text())
     ru = json.loads((COMP / "translations" / "ru.json").read_text())
     for doc in (strings, ru):
-        init = doc["options"]["step"]["init"]["data"]
+        menu = doc["options"]["step"]["init"]["menu_options"]
+        assert "voice_assist" in menu
+        voice = doc["options"]["step"]["voice_assist"]["data"]
         for key in (
             "voice_assist_enabled",
             "voice_assist_stt_entity",
@@ -94,4 +97,4 @@ def test_voice_assist_translation_keys_exist_in_both_languages() -> None:
             "voice_assist_allowed_users",
             "voice_assist_allowed_rooms",
         ):
-            assert key in init
+            assert key in voice

@@ -23,9 +23,11 @@ duration = 0.6
 frames = bytearray()
 for index in range(int(rate * duration)):
     sample = int(6_000 * math.sin(2 * math.pi * 440 * index / rate))
-    frames.extend(struct.pack("<h", sample))
+    # HA 2026.9 demo STT advertises stereo input only. Generate two identical
+    # PCM16 channels so the real-stack fixture matches the provider contract.
+    frames.extend(struct.pack("<hh", sample, sample))
 with wave.open(str(path), "wb") as output:
-    output.setnchannels(1)
+    output.setnchannels(2)
     output.setsampwidth(2)
     output.setframerate(rate)
     output.writeframes(bytes(frames))
@@ -41,11 +43,21 @@ homeassistant:
 
 default_config:
 
+demo:
+
 counter:
   matrix_reaction:
     name: Matrix reaction executions
     initial: 0
     step: 1
+
+input_boolean:
+  matrix_command_target:
+    name: Matrix command target
+    initial: false
+  matrix_denied_target:
+    name: Matrix denied command target
+    initial: false
 
 logger:
   default: info

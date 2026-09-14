@@ -95,21 +95,21 @@ def _configure_voice_options(
         token=token,
         json_body={"handler": entry_id},
     )
-    if flow.get("type") != "form":
+    if flow.get("type") != "menu" or "voice_assist" not in flow.get("menu_options", []):
         raise RuntimeError(f"unexpected Matrix options flow start: {flow}")
+    voice_form = _request_json(
+        "POST",
+        f"/api/config/config_entries/options/flow/{flow['flow_id']}",
+        token=token,
+        json_body={"next_step_id": "voice_assist"},
+    )
+    if voice_form.get("type") != "form" or voice_form.get("step_id") != "voice_assist":
+        raise RuntimeError(f"Matrix voice options form failed: {voice_form}")
     result = _request_json(
         "POST",
         f"/api/config/config_entries/options/flow/{flow['flow_id']}",
         token=token,
         json_body={
-            "require_e2ee": True,
-            "incoming_enabled": True,
-            "allowed_users": [matrix_env["user_user_id"]],
-            "allowed_rooms": [matrix_env["room_id"]],
-            "download_incoming_media": True,
-            "incoming_media_retention_days": 7,
-            "incoming_media_max_mb": 256,
-            "routing_profiles": {},
             "voice_assist_enabled": True,
             "voice_assist_stt_entity": "stt.demo_stt",
             "voice_assist_language": "en",
@@ -120,7 +120,7 @@ def _configure_voice_options(
         timeout=60,
     )
     if result.get("type") != "create_entry":
-        raise RuntimeError(f"Matrix options flow failed: {result}")
+        raise RuntimeError(f"Matrix voice options save failed: {result}")
     _request_json(
         "POST",
         f"/api/config/config_entries/entry/{entry_id}/reload",
@@ -267,9 +267,9 @@ async def _exercise() -> None:
     ha_token = ha_env["access_token"]
     entry_id = ha_env["entry_id"]
 
-    # The built-in pinned HA demo integration supplies deterministic camera/STT
-    # entities without adding test code to Matrix Extended itself.
-    _wait_state(ha_token, "camera.demo_camera", "idle", timeout=60)
+    # HA 2026.9 demo camera is deliberately marked as streaming. Waiting for
+    # idle here made the old PR #8 E2E fail before it sent a single command.
+    _wait_state(ha_token, "camera.demo_camera", "streaming", timeout=60)
     _wait_state(ha_token, "stt.demo_stt", "unknown", timeout=60)
 
     _register_commands(ha_token, matrix_env)

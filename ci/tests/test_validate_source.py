@@ -55,15 +55,25 @@ def test_missing_required_runtime_file_is_rejected(tmp_path: Path) -> None:
     assert any("missing required file" in error and "receiver.py" in error for error in errors)
 
 
-def test_wrong_manifest_version_is_rejected(tmp_path: Path) -> None:
+def test_invalid_manifest_version_format_is_rejected(tmp_path: Path) -> None:
+    mod = load_validator()
+    repo = make_repo(tmp_path)
+    manifest_path = repo / "custom_components" / "matrix_extended" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["version"] = "next-release"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    errors = mod.validate_repository(repo)
+    assert any("manifest version is not a valid release version" in error for error in errors)
+
+
+def test_future_semver_does_not_require_validator_edit(tmp_path: Path) -> None:
     mod = load_validator()
     repo = make_repo(tmp_path)
     manifest_path = repo / "custom_components" / "matrix_extended" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["version"] = "9.9.9"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    errors = mod.validate_repository(repo)
-    assert any("manifest version must be 0.5.3" in error for error in errors)
+    assert mod.validate_repository(repo) == []
 
 
 def test_invalid_translation_json_is_rejected(tmp_path: Path) -> None:

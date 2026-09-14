@@ -48,6 +48,11 @@ def test_voice_assist_is_fail_closed_to_native_voice_and_safe_local_file() -> No
         assert marker in source
 
 
+def test_voice_assist_forwards_downloaded_content_type_to_stt_pipeline() -> None:
+    source = (COMP / "voice_assist.py").read_text()
+    assert 'content_type=media_payload.get("content_type")' in source
+
+
 def test_options_flow_exposes_voice_assist_disabled_by_default() -> None:
     source = (COMP / "config_flow.py").read_text()
     assert "CONF_VOICE_ASSIST_ENABLED" in source

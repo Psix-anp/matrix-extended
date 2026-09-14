@@ -28,7 +28,7 @@ def test_runtime_status_keeps_last_incoming_event_kind_and_payload() -> None:
         "encrypted": True,
     }
 
-    status.mark_receive("reaction", payload)
+    status.mark_receive_event("reaction", payload)
 
     assert status.last_receive is not None
     assert status.last_receive_type == "reaction"

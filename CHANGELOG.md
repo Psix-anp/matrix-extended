@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.5 — 2026-09-14
+
+Safe Matrix commands, encrypted camera snapshots and automatic Voice Assist.
+
+- Add fail-closed `matrix_extended.register_command` and `matrix_extended.unregister_command` actions for exact allowlisted Matrix commands with persisted definitions.
+- Keep Home Assistant action, target, data and camera entity stored server-side so incoming Matrix text can select a registered command but cannot override what it executes.
+- Add an encrypted `camera_snapshot` command handler that captures a configured `camera.*` entity and returns the image to Matrix.
+- Add optional automatic native Matrix voice processing: decrypt/download → Home Assistant STT → Conversation/Assist → Matrix reply.
+- Add separate Voice Assist user/room restrictions that can only narrow the normal incoming allowlists, plus `text`, `voice` and `both` reply modes.
+- Add a dedicated graphical **Voice Assist** section to the Home Assistant Options Flow.
+- Add E2EE readiness, outbox size, last delivery status and last command diagnostics with English and Russian translations.
+- Verify `services.yaml` with the real Home Assistant 2026.9.2 parser, including the new command actions.
+- Verify encrypted safe commands, camera snapshots and automatic Voice Assist on the full Home Assistant 2026.9.2 + Synapse 1.160.0 + Element 1.12.26 stack.
+- Re-verify encrypted send/reload, notify entities, Element rendering, `send_media`, Synapse outage recovery, persistent outbox, Home Assistant restart and background-task cleanup.
+
+### Compatibility notes
+
+- No breaking changes are required for existing automations.
+- Automatic Voice Assist remains opt-in and disabled by default.
+- Safe Matrix commands execute only pre-registered definitions and remain fail-closed for unregistered or disallowed input.
+
 ## 0.5.4 — 2026-09-14
 
 Graphical-first Home Assistant UX and public repository cleanup.
@@ -72,7 +93,7 @@ Automation, rich-message, voice and location release for Home Assistant 2026.9+.
 
 ### Location
 
-- Add `matrix_extended.send_location` for stable Matrix `m.location` messages from explicit coordinates or Home Assistant entities exposing latitude/longitude.
+- Add `matrix_extended.send_location` for stable Matrix `m.location` messages from explicit coordinates or a Home Assistant entity exposing latitude/longitude.
 - Add incoming `matrix_extended_location` events.
 - Support encrypted location delivery and location lifecycle records.
 

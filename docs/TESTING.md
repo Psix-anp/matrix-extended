@@ -1,5 +1,7 @@
 # Testing Matrix Extended
 
+**English** · [Русский](TESTING.ru.md)
+
 Matrix Extended uses mandatory release gates. A release is not merged or packaged from an unverified commit.
 
 ## 1. Fast regression gate

@@ -106,7 +106,7 @@ def verify_last_receive() -> None:
 
 def main() -> int:
     if len(sys.argv) != 2 or sys.argv[1] not in {"send-media", "last-receive"}:
-        print("usage: verify-v053.py {send-media|last-receive}", file=sys.stderr)
+        print("usage: verify-runtime.py {send-media|last-receive}", file=sys.stderr)
         return 2
     if sys.argv[1] == "send-media":
         verify_send_media()

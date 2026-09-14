@@ -9,6 +9,7 @@ CONFIG_FLOW = COMP / "config_flow.py"
 INIT = COMP / "__init__.py"
 SERVICES = COMP / "services.yaml"
 STRINGS = COMP / "strings.json"
+EN = COMP / "translations" / "en.json"
 RU = COMP / "translations" / "ru.json"
 MANIFEST = COMP / "manifest.json"
 README = ROOT / "README.md"
@@ -31,13 +32,16 @@ def test_options_flow_is_split_into_graphical_sections() -> None:
     assert "selector.ObjectSelector()" not in source
 
 
-def test_default_room_and_tls_are_editable_options_used_at_runtime() -> None:
+def test_default_room_and_tls_are_editable_connection_settings() -> None:
     flow = CONFIG_FLOW.read_text(encoding="utf-8")
     runtime = INIT.read_text(encoding="utf-8")
-    assert "CONF_DEFAULT_ROOM" in flow
-    assert "CONF_VERIFY_SSL" in flow
-    assert "_entry_value(entry, CONF_DEFAULT_ROOM" in runtime
-    assert "_entry_value(entry, CONF_VERIFY_SSL" in runtime
+    assert "connection_data[CONF_DEFAULT_ROOM] = room" in flow
+    assert "connection_data[CONF_VERIFY_SSL] = verify_ssl" in flow
+    assert "self.hass.config_entries.async_update_entry" in flow
+    # Runtime reads connection parameters from ConfigEntry.data, so GUI changes
+    # use the same source of truth as initial setup and the room select entity.
+    assert "data[CONF_DEFAULT_ROOM]" in runtime
+    assert "verify_ssl=data[CONF_VERIFY_SSL]" in runtime
 
 
 def test_routes_use_graphical_crud_instead_of_raw_json() -> None:
@@ -54,7 +58,6 @@ def test_action_editor_prefers_native_graphical_selectors() -> None:
     assert "integration: matrix_extended" in services
     assert "language: {}" in services
     assert "domain: tts" in services
-    # Complex media and reaction actions must render as structured forms, not raw YAML boxes.
     assert "label_field: filename" in services
     assert "label_field: reaction" in services
     assert "multiple: true" in services
@@ -62,10 +65,21 @@ def test_action_editor_prefers_native_graphical_selectors() -> None:
 
 def test_settings_and_actions_have_current_bilingual_help() -> None:
     strings = json.loads(STRINGS.read_text(encoding="utf-8"))
+    en = json.loads(EN.read_text(encoding="utf-8"))
     ru = json.loads(RU.read_text(encoding="utf-8"))
+    assert en == strings
     for payload in (strings, ru):
         options = payload["options"]["step"]
-        for step in ("init", "general", "incoming", "media", "routes", "route_add", "route_edit", "route_delete"):
+        for step in (
+            "init",
+            "general",
+            "incoming",
+            "media",
+            "routes",
+            "route_add",
+            "route_edit",
+            "route_delete",
+        ):
             assert step in options
             assert options[step].get("title")
             assert options[step].get("description")
@@ -84,11 +98,10 @@ def test_settings_and_actions_have_current_bilingual_help() -> None:
             assert payload["services"][action].get("description")
 
 
-def test_public_docs_track_current_version_and_gui_first_setup() -> None:
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    assert manifest["version"] == "0.5.4"
+def test_public_docs_track_manifest_version_and_gui_first_setup() -> None:
+    version = json.loads(MANIFEST.read_text(encoding="utf-8"))["version"]
     for path in (README, README_RU):
         text = path.read_text(encoding="utf-8")
-        assert "0.5.4" in text
+        assert version in text
         assert "Settings" in text or "Настройки" in text
         assert "YAML" in text

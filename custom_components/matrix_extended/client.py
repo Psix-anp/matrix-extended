@@ -80,6 +80,7 @@ class MatrixAccount:
     homeserver: str = ""
     status: Any = None
     action_registry: Any = None
+    command_registry: Any = None
     incoming_policy: Any = None
     rooms: list[Any] = None
     routing_profiles: dict[str, list[str]] = None

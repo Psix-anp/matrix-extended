@@ -20,7 +20,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up Matrix connection health."""
     account: MatrixAccount = hass.data[DOMAIN][config_entry.entry_id]
-    async_add_entities([MatrixConnectedBinarySensor(config_entry, account)])
+    async_add_entities(
+        [
+            MatrixConnectedBinarySensor(config_entry, account),
+            MatrixE2EEReadyBinarySensor(config_entry, account),
+        ]
+    )
 
 
 class MatrixConnectedBinarySensor(BinarySensorEntity):
@@ -45,6 +50,37 @@ class MatrixConnectedBinarySensor(BinarySensorEntity):
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to runtime status updates."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self._account.status.add_listener(self.async_write_ha_state)
+        )
+
+
+class MatrixE2EEReadyBinarySensor(BinarySensorEntity):
+    """Expose whether the connected account has an encrypted default room."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "e2ee_ready"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, entry: ConfigEntry, account: MatrixAccount) -> None:
+        self._account = account
+        self._attr_unique_id = f"{entry.entry_id}_e2ee_ready"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=f"Matrix {entry.title}",
+        )
+
+    @property
+    def is_on(self) -> bool:
+        """Return conservative E2EE readiness."""
+        return bool(
+            self._account.status.connected
+            and self._account.status.default_room_encrypted is True
+        )
+
+    async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self.async_on_remove(
             self._account.status.add_listener(self.async_write_ha_state)

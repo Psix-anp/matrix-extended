@@ -14,6 +14,17 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from .client import MatrixAccount
 from .const import DOMAIN
 
+_INCOMING_EVENT_TYPES = [
+    "message",
+    "reply",
+    "reaction",
+    "media",
+    "location",
+    "edit",
+    "redaction",
+]
+_ENCRYPTION_STATES = ["encrypted", "not_encrypted", "unknown"]
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -85,6 +96,8 @@ class MatrixEncryptionSensor(MatrixDynamicSensor):
     """Default-room encryption state."""
 
     _attr_translation_key = "default_room_encryption"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = _ENCRYPTION_STATES
 
     def __init__(self, entry: ConfigEntry, account: MatrixAccount) -> None:
         super().__init__(entry, account, "default_room_encryption")
@@ -117,6 +130,8 @@ class MatrixLastReceiveSensor(MatrixDynamicSensor):
     """Most recent authorized incoming Matrix event kind and metadata."""
 
     _attr_translation_key = "last_receive"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = _INCOMING_EVENT_TYPES
 
     def __init__(self, entry: ConfigEntry, account: MatrixAccount) -> None:
         super().__init__(entry, account, "last_receive")
@@ -146,10 +161,10 @@ class MatrixLastErrorSensor(MatrixDynamicSensor):
         super().__init__(entry, account, "last_error")
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> str:
         error = self._account.status.last_error
         if error is None:
-            return None
+            return "none"
         return error[:255]
 
     @property

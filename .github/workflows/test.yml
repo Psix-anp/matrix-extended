@@ -125,10 +125,14 @@ jobs:
           path = "/config/custom_components/matrix_extended/services.yaml"
           parsed = _SERVICES_SCHEMA(load_yaml_dict(path))
           assert "transcribe_voice" in parsed
+          assert "send_media" in parsed
+          assert "media_picker" in parsed["send_media"]["fields"]
           print("Matrix services.yaml validated by Home Assistant")
           PY
       - name: Configure Matrix Extended and verify encrypted send + reload
         run: python ci/scripts/ha-e2e.py setup-send-reload
+      - name: Verify default and room-specific Matrix notify entities
+        run: python ci/scripts/verify-ha-entities.py
       - name: Verify Element decrypts text and renders rich Matrix events
         run: python ci/scripts/element-e2e.py verify-message-rich
       - name: Arm persistent outbox verification

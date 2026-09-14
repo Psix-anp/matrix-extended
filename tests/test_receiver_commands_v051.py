@@ -82,9 +82,13 @@ class FakeHass:
 class FakeStatus:
     def __init__(self) -> None:
         self.receives = 0
+        self.commands = []
 
     def mark_receive(self):
         self.receives += 1
+
+    def mark_command(self, payload):
+        self.commands.append(dict(payload))
 
     def mark_error(self, _error):
         pass
@@ -193,6 +197,7 @@ async def test_exact_registered_command_executes_and_fires_diagnostic_event(tmp_
     assert payload["command_id"] == "garage_open"
     assert payload["status"] == "success"
     assert account.status.receives == 1
+    assert account.status.commands[-1]["command_id"] == "garage_open"
 
 
 @pytest.mark.asyncio

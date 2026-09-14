@@ -122,19 +122,19 @@ transcribe_voice:
         select: {options: [opus, pcm]}
     bit_rate:
       name: Input bit depth
-      default: 16
+      default: "16"
       selector:
-        select: {options: [8, 16, 24, 32]}
+        select: {options: ["8", "16", "24", "32"]}
     sample_rate:
       name: Input sample rate
-      default: 48000
+      default: "48000"
       selector:
-        select: {options: [8000, 11000, 16000, 18900, 22000, 32000, 37800, 44100, 48000]}
+        select: {options: ["8000", "11000", "16000", "18900", "22000", "32000", "37800", "44100", "48000"]}
     channels:
       name: Input channels
-      default: 1
+      default: "1"
       selector:
-        select: {options: [1, 2]}
+        select: {options: ["1", "2"]}
     assist:
       name: Run Home Assistant Assist
       description: Explicit opt-in. When enabled, the transcript is passed to Home Assistant Conversation/Assist.
@@ -260,7 +260,6 @@ purge_media:
     account:
       name: Account
       selector: {text: {}}
-
 
 register_command:
   name: Register safe Matrix command

@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import wave
 
 import voluptuous as vol
 
@@ -16,6 +17,10 @@ from homeassistant.helpers import config_validation as cv
 
 from .client import MatrixAccount
 from .const import ATTR_ACCOUNT, DOMAIN
+
+_WAV_CONTENT_TYPES = frozenset(
+    {"audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"}
+)
 
 TRANSCRIBE_SCHEMA = vol.Schema(
     {
@@ -103,6 +108,19 @@ def _stt_language(provider: Any, requested: str) -> str:
     raise HomeAssistantError(f"STT provider does not support language {requested}; supported={supported}")
 
 
+def _wav_metadata(path: Path) -> tuple[int, int, int]:
+    """Read PCM parameters directly from a WAV container."""
+    try:
+        with wave.open(str(path), "rb") as audio:
+            return (
+                int(audio.getsampwidth()) * 8,
+                int(audio.getframerate()),
+                int(audio.getnchannels()),
+            )
+    except (OSError, wave.Error) as err:
+        raise HomeAssistantError(f"Unable to read Matrix WAV metadata: {err}") from err
+
+
 async def _byte_stream(data: bytes) -> AsyncIterator[bytes]:
     for start in range(0, len(data), 4096):
         yield data[start : start + 4096]
@@ -154,6 +172,7 @@ async def async_process_voice_file(
     path: str,
     stt_entity: str | None = None,
     language: str | None = None,
+    content_type: str | None = None,
     audio_format: str = "ogg",
     codec: str = "opus",
     bit_rate: int = 16,
@@ -169,6 +188,14 @@ async def async_process_voice_file(
     resolved_path = await hass.async_add_executor_job(
         _resolve_incoming_voice_path, hass, account, path
     )
+    media_type = str(content_type or "").partition(";")[0].strip().lower()
+    if media_type in _WAV_CONTENT_TYPES:
+        audio_format = "wav"
+        codec = "pcm"
+        bit_rate, sample_rate, channels = await hass.async_add_executor_job(
+            _wav_metadata, resolved_path
+        )
+
     entity_id = stt_entity or stt.async_default_engine(hass)
     if not entity_id:
         raise HomeAssistantError("No Home Assistant STT entity is available")

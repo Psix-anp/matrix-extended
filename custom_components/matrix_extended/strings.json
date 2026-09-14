@@ -1,1 +1,267 @@
-{"title":"Matrix Extended","config":{"step":{"user":{"title":"Connect Matrix","description":"Matrix Extended is developed and maintained by Psix-anp (@Psix-anp). The password is used only once to obtain a Matrix access token and is not stored. End-to-end encryption is recommended and enabled by default.","data":{"homeserver":"Homeserver URL","user_id":"Matrix user ID","password":"Password","default_room":"Default room","verify_ssl":"Verify TLS certificate","require_e2ee":"Require end-to-end encryption for target rooms","incoming_enabled":"Enable incoming messages and reactions","allowed_users":"Allowed Matrix users","allowed_rooms":"Allowed Matrix rooms","download_incoming_media":"Download and decrypt incoming media"}}},"error":{"cannot_connect":"Unable to connect to the Matrix homeserver","invalid_auth":"Invalid Matrix credentials","invalid_room":"The default room alias or ID is invalid","invalid_routes":"Invalid notification routing profile structure"},"abort":{"already_configured":"This Matrix account is already configured"}},"entity":{"binary_sensor":{"connected":{"name":"Connection"}},"sensor":{"user_id":{"name":"User ID"},"device_id":{"name":"Device ID"},"default_room":{"name":"Default room"},"default_room_encryption":{"name":"Default room encryption"},"last_send":{"name":"Last successful send"},"last_error":{"name":"Last error"},"last_receive":{"name":"Last incoming event"}},"select":{"default_room":{"name":"Default room"}}},"options":{"step":{"init":{"title":"Matrix Extended options","description":"Inbound events require both user and room allowlists. Routes are an object such as {\"security\": [\"!room:server\"]}.","data":{"require_e2ee":"Require E2EE","incoming_enabled":"Enable incoming events","allowed_users":"Allowed users","allowed_rooms":"Allowed rooms","download_incoming_media":"Download incoming media","incoming_media_retention_days":"Incoming media retention (days, 0 disables age cleanup)","incoming_media_max_mb":"Incoming media storage limit (MiB)","routing_profiles":"Notification routes (name → room list)"}}},"error":{"invalid_routes":"Invalid notification routing profile structure"}},"services":{"send":{"name":"Send Matrix message","description":"Send text or advanced rich media to one or more Matrix rooms.","fields":{"account":{"name":"Account","description":"Config entry ID. Leave empty when only one Matrix Extended account is loaded."},"target":{"name":"Rooms","description":"Matrix room aliases or IDs. Leave empty to use the configured default room."},"route":{"name":"Route","description":"Named notification route. Cannot be used together with Rooms."},"notification_key":{"name":"Notification key","description":"Stable key for an updateable notification; later sends edit the original event."},"message":{"name":"Message","description":"Text to send."},"msgtype":{"name":"Message type","description":"Matrix message type."},"format":{"name":"Format","description":"Formatting used for the message body."},"mention_users":{"name":"Mention users","description":"Matrix user IDs added to native m.mentions metadata."},"mention_room":{"name":"Mention room","description":"Mention all users in the room using native Matrix room mention metadata."},"thread_id":{"name":"Thread ID","description":"Optional Matrix event ID of the thread root."},"media":{"name":"Advanced media","description":"Advanced media objects using entity_id, path, url, or media_source."},"actions":{"name":"Reaction actions","description":"Stored Home Assistant service calls that can be triggered by Matrix reactions."}}},"send_media":{"name":"Send Matrix media","description":"Choose media graphically in Home Assistant and send it to Matrix.","fields":{"account":{"name":"Account","description":"Config entry ID. Leave empty when only one Matrix Extended account is loaded."},"target":{"name":"Rooms","description":"Matrix room aliases or IDs. Leave empty to use the configured default room."},"route":{"name":"Route","description":"Named notification route. Cannot be used together with Rooms."},"media_picker":{"name":"Choose media","description":"Open the Home Assistant media browser and choose one media item."},"caption":{"name":"Caption","description":"Optional Matrix caption for the selected media."},"voice":{"name":"Voice message","description":"Mark selected audio as a native Matrix voice message."},"thread_id":{"name":"Thread ID","description":"Optional Matrix event ID of the thread root."}}},"send_voice":{"name":"Send Matrix voice message","description":"Generate speech with Home Assistant TTS and send it as a native Matrix voice message.","fields":{"account":{"name":"Account"},"target":{"name":"Rooms"},"route":{"name":"Route"},"text":{"name":"Text","description":"Text that Home Assistant TTS will synthesize."},"tts_engine":{"name":"TTS engine","description":"Optional Home Assistant TTS provider or entity. Leave empty to use the default engine."},"language":{"name":"Language","description":"Optional language code such as ru-RU."},"tts_options":{"name":"TTS options","description":"Provider-specific TTS options, for example voice selection."},"thread_id":{"name":"Thread ID"}}},"transcribe_voice":{"name":"Transcribe Matrix voice","description":"Transcribe a downloaded Matrix voice file through Home Assistant STT, with optional Assist processing.","fields":{"account":{"name":"Account"},"path":{"name":"Incoming voice path","description":"local_path from a matrix_extended_media event, or a filename relative to this account's incoming-media directory."},"stt_entity":{"name":"STT entity","description":"Home Assistant stt.* entity. Leave empty to use the default STT entity."},"language":{"name":"Language","description":"Language requested from the STT provider. Defaults to the Home Assistant language."},"audio_format":{"name":"Input audio format","description":"Container format of the input audio file."},"codec":{"name":"Input codec","description":"Codec of the input audio stream."},"bit_rate":{"name":"Input bit depth","description":"PCM sample bit depth."},"sample_rate":{"name":"Input sample rate","description":"Audio sample rate in Hz."},"channels":{"name":"Input channels","description":"Number of audio channels."},"assist":{"name":"Run Home Assistant Assist","description":"When enabled, pass the transcript to Home Assistant Conversation/Assist."},"conversation_agent":{"name":"Conversation agent","description":"Optional conversation.* agent used when Assist is enabled."},"conversation_id":{"name":"Conversation ID","description":"Optional existing Home Assistant conversation ID."}}},"send_location":{"name":"Send Matrix location","description":"Send a Matrix location from explicit coordinates or a Home Assistant entity.","fields":{"account":{"name":"Account"},"target":{"name":"Rooms"},"route":{"name":"Route"},"entity_id":{"name":"Location entity","description":"Entity with latitude and longitude attributes. Use this or explicit coordinates."},"latitude":{"name":"Latitude","description":"Latitude in decimal degrees."},"longitude":{"name":"Longitude","description":"Longitude in decimal degrees."},"description":{"name":"Description","description":"Optional text shown with the location."},"thread_id":{"name":"Thread ID"}}},"reply":{"name":"Reply to Matrix event","description":"Send a rich reply to an existing Matrix event.","fields":{"account":{"name":"Account"},"room":{"name":"Room"},"event_id":{"name":"Event ID"},"message":{"name":"Message"},"msgtype":{"name":"Message type"},"format":{"name":"Format"},"mention_users":{"name":"Mention users"},"mention_room":{"name":"Mention room"},"thread_id":{"name":"Thread ID"}}},"react":{"name":"React to Matrix event","description":"Add an emoji reaction to an existing Matrix event.","fields":{"account":{"name":"Account"},"room":{"name":"Room"},"event_id":{"name":"Event ID"},"reaction":{"name":"Reaction"}}},"edit":{"name":"Edit Matrix message","description":"Replace the content of a previously sent Matrix text message.","fields":{"account":{"name":"Account"},"room":{"name":"Room"},"event_id":{"name":"Event ID"},"message":{"name":"New message"},"msgtype":{"name":"Message type"},"format":{"name":"Format"}}},"redact":{"name":"Redact Matrix event","description":"Redact an existing event from a Matrix room.","fields":{"account":{"name":"Account"},"room":{"name":"Room"},"event_id":{"name":"Event ID"},"reason":{"name":"Reason"}}},"purge_media":{"name":"Purge downloaded Matrix media","description":"Delete downloaded incoming Matrix media for one Matrix Extended account.","fields":{"account":{"name":"Account"}}}},"selector":{"message_type":{"options":{"text":"Text","notice":"Notice","emote":"Action (/me)"}},"message_format":{"options":{"text":"Plain text","html":"HTML","markdown":"Markdown"}},"audio_format":{"options":{"ogg":"OGG","wav":"WAV"}},"audio_codec":{"options":{"opus":"Opus","pcm":"PCM"}}}}
+{
+  "title": "Matrix Extended",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Matrix",
+        "description": "Connect a Matrix account. The password is used only once to obtain an access token and is not stored. Keep end-to-end encryption enabled unless you intentionally use unencrypted rooms.",
+        "data": {
+          "homeserver": "Homeserver URL",
+          "user_id": "Matrix user ID",
+          "password": "Password",
+          "default_room": "Default room",
+          "verify_ssl": "Verify TLS certificate",
+          "require_e2ee": "Require end-to-end encryption for target rooms",
+          "incoming_enabled": "Enable incoming Matrix events",
+          "allowed_users": "Allowed Matrix users",
+          "allowed_rooms": "Allowed Matrix rooms",
+          "download_incoming_media": "Download and decrypt incoming media"
+        },
+        "data_description": {
+          "default_room": "Room ID (!...) or room alias (#...). Used when an action does not specify Rooms or Route.",
+          "allowed_users": "Fail-closed sender allowlist for incoming events.",
+          "allowed_rooms": "Fail-closed room allowlist for incoming events. Both user and room must match."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the Matrix homeserver",
+      "invalid_auth": "Invalid Matrix credentials",
+      "invalid_room": "The default room alias or ID is invalid"
+    },
+    "abort": {
+      "already_configured": "This Matrix account is already configured"
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connected": {"name": "Connection"}
+    },
+    "sensor": {
+      "user_id": {"name": "User ID"},
+      "device_id": {"name": "Device ID"},
+      "default_room": {"name": "Default room"},
+      "default_room_encryption": {
+        "name": "Default room encryption",
+        "state": {
+          "encrypted": "Encrypted",
+          "not_encrypted": "Not encrypted",
+          "unknown": "Unknown"
+        }
+      },
+      "last_send": {"name": "Last successful send"},
+      "last_error": {
+        "name": "Last error",
+        "state": {"none": "No errors"}
+      },
+      "last_receive": {
+        "name": "Last incoming event",
+        "state": {
+          "message": "Message",
+          "reply": "Reply",
+          "reaction": "Reaction",
+          "media": "Media",
+          "location": "Location",
+          "edit": "Edit",
+          "redaction": "Redaction"
+        }
+      }
+    },
+    "select": {
+      "default_room": {"name": "Default room"}
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Matrix Extended settings",
+        "description": "Choose a section. Matrix Extended settings are graphical; JSON or YAML is not required for integration setup.",
+        "menu_options": {
+          "general": "General",
+          "incoming": "Incoming & security",
+          "media": "Incoming media",
+          "routes": "Notification routes"
+        }
+      },
+      "general": {
+        "title": "General",
+        "description": "Change the default Matrix room, TLS validation and E2EE policy. Saving reloads the integration.",
+        "data": {
+          "default_room": "Default room",
+          "verify_ssl": "Verify TLS certificate",
+          "require_e2ee": "Require E2EE"
+        },
+        "data_description": {
+          "default_room": "Room ID (!...) or alias (#...). Aliases are validated before saving.",
+          "verify_ssl": "Keep enabled for normal HTTPS Matrix homeservers.",
+          "require_e2ee": "Reject sends to target rooms that are not encrypted."
+        }
+      },
+      "incoming": {
+        "title": "Incoming & security",
+        "description": "Control which incoming Matrix events Home Assistant may process. When incoming events are enabled, both allowlists must be non-empty.",
+        "data": {
+          "incoming_enabled": "Enable incoming events",
+          "allowed_users": "Allowed users",
+          "allowed_rooms": "Allowed rooms"
+        },
+        "data_description": {
+          "allowed_users": "Only events from these Matrix user IDs are processed.",
+          "allowed_rooms": "Only events from these Matrix rooms are processed. Both user and room must match."
+        }
+      },
+      "media": {
+        "title": "Incoming media",
+        "description": "Control downloading, retention and disk usage for incoming Matrix attachments.",
+        "data": {
+          "download_incoming_media": "Download and decrypt incoming media",
+          "incoming_media_retention_days": "Retention, days",
+          "incoming_media_max_mb": "Storage limit, MiB"
+        },
+        "data_description": {
+          "incoming_media_retention_days": "0 disables age-based cleanup. The storage limit still applies.",
+          "incoming_media_max_mb": "Maximum total size of the incoming-media directory."
+        }
+      },
+      "routes": {
+        "title": "Notification routes",
+        "description": "Manage named room groups graphically. Actions can use a route name instead of repeating Matrix room IDs.",
+        "menu_options": {
+          "route_add": "Add route",
+          "route_edit": "Edit route",
+          "route_delete": "Delete route"
+        }
+      },
+      "route_add": {
+        "title": "Add route",
+        "description": "Create a reusable notification route.",
+        "data": {"route_name": "Route name", "route_rooms": "Rooms"},
+        "data_description": {"route_rooms": "One or more Matrix room IDs or aliases."}
+      },
+      "route_edit": {
+        "title": "Edit route",
+        "description": "Choose the route to change.",
+        "data": {"route_name": "Route"}
+      },
+      "route_edit_details": {
+        "title": "Edit {route_name}",
+        "description": "Change the Matrix rooms used by route {route_name}.",
+        "data": {"route_rooms": "Rooms"}
+      },
+      "route_delete": {
+        "title": "Delete route",
+        "description": "Delete a saved route. Automations that reference the deleted route must be updated.",
+        "data": {"route_name": "Route", "route_confirm": "Confirm deletion"}
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to validate the Matrix room with the current connection settings",
+      "invalid_room": "The room alias or ID is invalid",
+      "required_when_incoming": "Required while incoming events are enabled",
+      "invalid_route_name": "Enter a route name",
+      "route_exists": "A route with this name already exists",
+      "route_needs_rooms": "Add at least one Matrix room",
+      "confirm_delete": "Confirm deletion to continue"
+    }
+  },
+  "services": {
+    "send": {
+      "name": "Send Matrix message",
+      "description": "Send text and structured rich media with E2EE, formatting, mentions, threads, updateable notifications and safe reaction actions.",
+      "fields": {
+        "account": {"name": "Account", "description": "Choose the Matrix Extended account."},
+        "target": {"name": "Rooms", "description": "Matrix room IDs or aliases. Empty uses the default room."},
+        "route": {"name": "Route", "description": "Named route from Matrix Extended settings. Do not use together with Rooms."},
+        "notification_key": {"name": "Notification key", "description": "Stable key used to edit the same Matrix event on later sends."},
+        "message": {"name": "Message", "description": "Text body; optional when only media is sent."},
+        "msgtype": {"name": "Message type", "description": "Matrix text, notice or emote type."},
+        "format": {"name": "Format", "description": "Plain text, HTML or Markdown."},
+        "mention_users": {"name": "Mention users", "description": "Matrix user IDs for native mentions."},
+        "mention_room": {"name": "Mention room", "description": "Add a native room-wide mention."},
+        "thread_id": {"name": "Thread ID", "description": "Matrix event ID of the thread root."},
+        "media": {"name": "Advanced media", "description": "Structured list of entities/cameras, paths, URLs or Media Source IDs with media metadata."},
+        "actions": {"name": "Reaction actions", "description": "Explicit Home Assistant actions that allowed Matrix reactions may trigger."}
+      }
+    },
+    "send_media": {
+      "name": "Send Matrix media",
+      "description": "Open the Home Assistant Media Browser and send an item from Local Media, Frigate or another Media Source provider.",
+      "fields": {
+        "account": {"name": "Account"}, "target": {"name": "Rooms"}, "route": {"name": "Route"},
+        "media_picker": {"name": "Choose media", "description": "Browse all Home Assistant Media Source providers."},
+        "caption": {"name": "Caption", "description": "Optional Matrix caption."},
+        "voice": {"name": "Voice message", "description": "Mark selected audio as a native Matrix voice message."},
+        "thread_id": {"name": "Thread ID"}
+      }
+    },
+    "send_voice": {
+      "name": "Send Matrix voice message",
+      "description": "Synthesize text with Home Assistant TTS and send it as a native Matrix voice message.",
+      "fields": {
+        "account": {"name": "Account"}, "target": {"name": "Rooms"}, "route": {"name": "Route"},
+        "text": {"name": "Text", "description": "Text to synthesize."},
+        "tts_engine": {"name": "TTS engine", "description": "Home Assistant tts.* entity; empty uses the default."},
+        "language": {"name": "Language", "description": "Requested language; compatible locale variants are matched automatically."},
+        "tts_options": {"name": "TTS options", "description": "Provider-specific advanced options."},
+        "thread_id": {"name": "Thread ID"}
+      }
+    },
+    "transcribe_voice": {
+      "name": "Transcribe Matrix voice",
+      "description": "Transcribe downloaded Matrix voice through Home Assistant STT and optionally pass the transcript to Assist.",
+      "fields": {
+        "account": {"name": "Account"},
+        "path": {"name": "Incoming voice path", "description": "local_path from matrix_extended_media or a filename in this account's incoming-media directory."},
+        "stt_entity": {"name": "STT entity", "description": "Home Assistant stt.* entity; empty uses the default."},
+        "language": {"name": "Language"}, "audio_format": {"name": "Input audio format"}, "codec": {"name": "Input codec"},
+        "bit_rate": {"name": "Input bit depth"}, "sample_rate": {"name": "Input sample rate"}, "channels": {"name": "Input channels"},
+        "assist": {"name": "Run Home Assistant Assist", "description": "Explicitly pass the transcript to Conversation/Assist."},
+        "conversation_agent": {"name": "Conversation agent"}, "conversation_id": {"name": "Conversation ID"}
+      }
+    },
+    "send_location": {
+      "name": "Send Matrix location",
+      "description": "Send Matrix location data from coordinates or a Home Assistant entity.",
+      "fields": {
+        "account": {"name": "Account"}, "target": {"name": "Rooms"}, "route": {"name": "Route"},
+        "entity_id": {"name": "Location entity", "description": "Entity with latitude and longitude attributes."},
+        "latitude": {"name": "Latitude"}, "longitude": {"name": "Longitude"}, "description": {"name": "Description"}, "thread_id": {"name": "Thread ID"}
+      }
+    },
+    "reply": {
+      "name": "Reply to Matrix event",
+      "description": "Reply to an existing Matrix event using its event ID.",
+      "fields": {
+        "account": {"name": "Account"}, "room": {"name": "Room"}, "event_id": {"name": "Event ID"}, "message": {"name": "Message"},
+        "msgtype": {"name": "Message type"}, "format": {"name": "Format"}, "mention_users": {"name": "Mention users"},
+        "mention_room": {"name": "Mention room"}, "thread_id": {"name": "Thread ID"}
+      }
+    },
+    "react": {
+      "name": "React to Matrix event",
+      "description": "Add an emoji or text reaction to an existing Matrix event.",
+      "fields": {"account": {"name": "Account"}, "room": {"name": "Room"}, "event_id": {"name": "Event ID"}, "reaction": {"name": "Reaction"}}
+    },
+    "edit": {
+      "name": "Edit Matrix message",
+      "description": "Replace a previously sent text-like Matrix event.",
+      "fields": {"account": {"name": "Account"}, "room": {"name": "Room"}, "event_id": {"name": "Event ID"}, "message": {"name": "New message"}, "msgtype": {"name": "Message type"}, "format": {"name": "Format"}}
+    },
+    "redact": {
+      "name": "Redact Matrix event",
+      "description": "Redact an existing event from a Matrix room.",
+      "fields": {"account": {"name": "Account"}, "room": {"name": "Room"}, "event_id": {"name": "Event ID"}, "reason": {"name": "Reason"}}
+    },
+    "purge_media": {
+      "name": "Purge downloaded Matrix media",
+      "description": "Delete downloaded incoming Matrix media for one account and return removed file/byte counts.",
+      "fields": {"account": {"name": "Account"}}
+    }
+  },
+  "selector": {
+    "message_type": {"options": {"text": "Text", "notice": "Notice", "emote": "Action (/me)"}},
+    "message_format": {"options": {"text": "Plain text", "html": "HTML", "markdown": "Markdown"}},
+    "audio_format": {"options": {"ogg": "OGG", "wav": "WAV"}},
+    "audio_codec": {"options": {"opus": "Opus", "pcm": "PCM"}}
+  }
+}

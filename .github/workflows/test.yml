@@ -127,8 +127,17 @@ jobs:
       - name: Stack diagnostics on failure
         if: failure()
         run: |
-          docker compose -f compose.test.yml ps
-          docker compose -f compose.test.yml logs --no-color --tail=300 homeassistant synapse element
+          mkdir -p .ci
+          docker compose -f compose.test.yml ps | tee .ci/failure-stack.log
+          docker compose -f compose.test.yml logs --no-color --tail=500 homeassistant synapse element | tee -a .ci/failure-stack.log
+      - name: Upload stack diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-real-stack-failure-diagnostics
+          path: .ci/failure-stack.log
+          if-no-files-found: error
+          retention-days: 14
       - name: Stop real stack
         if: always()
         run: docker compose -f compose.test.yml down -v --remove-orphans

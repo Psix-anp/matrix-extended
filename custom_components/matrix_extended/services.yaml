@@ -27,12 +27,16 @@ send:
       name: Message type
       default: text
       selector:
-        select: {options: [text, notice, emote]}
+        select:
+          options: [text, notice, emote]
+          translation_key: message_type
     format:
       name: Format
       default: text
       selector:
-        select: {options: [text, html, markdown]}
+        select:
+          options: [text, html, markdown]
+          translation_key: message_format
     mention_users:
       name: Mention users
       description: Matrix user IDs added to native m.mentions metadata.
@@ -46,13 +50,55 @@ send:
       name: Thread ID
       selector: {text: {}}
     media:
-      name: Media
-      description: Media objects using entity_id, path, url, or media_source. Set voice=true on audio to send a native Matrix voice marker.
+      name: Advanced media
+      description: Advanced media objects using entity_id, path, url, or media_source. Supports captions, thumbnails, dimensions and native voice markers.
       selector: {object: {}}
     actions:
       name: Reaction actions
       description: Explicit HA service calls bound to reactions. Supports expires_in, max_uses and allowed_users.
       selector: {object: {}}
+
+send_media:
+  name: Send Matrix media
+  description: Choose media graphically from Home Assistant and send it to Matrix. The advanced media object remains available in Send Matrix message.
+  fields:
+    account:
+      name: Account
+      description: Config entry ID. Omit when only one Matrix Extended account is loaded.
+      selector: {text: {}}
+    target:
+      name: Rooms
+      description: Matrix room aliases or IDs. Omit to use the configured default room.
+      selector:
+        text: {multiple: true}
+    route:
+      name: Route
+      description: Named routing profile. Cannot be used together with Rooms.
+      selector: {text: {}}
+    media_picker:
+      name: Choose media
+      description: Open the Home Assistant media browser and choose one media item.
+      required: true
+      selector:
+        media:
+          accept:
+            - image/*
+            - audio/*
+            - video/*
+            - application/*
+    caption:
+      name: Caption
+      description: Optional Matrix caption for the selected media.
+      selector:
+        text: {multiline: true}
+    voice:
+      name: Voice message
+      description: Mark selected audio as a native Matrix voice message.
+      default: false
+      selector: {boolean: {}}
+    thread_id:
+      name: Thread ID
+      selector: {text: {}}
 
 send_voice:
   name: Send Matrix voice message
@@ -114,12 +160,16 @@ transcribe_voice:
       name: Input audio format
       default: ogg
       selector:
-        select: {options: [ogg, wav]}
+        select:
+          options: [ogg, wav]
+          translation_key: audio_format
     codec:
       name: Input codec
       default: opus
       selector:
-        select: {options: [opus, pcm]}
+        select:
+          options: [opus, pcm]
+          translation_key: audio_codec
     bit_rate:
       name: Input bit depth
       default: "16"
@@ -199,12 +249,16 @@ reply:
       name: Message type
       default: text
       selector:
-        select: {options: [text, notice, emote]}
+        select:
+          options: [text, notice, emote]
+          translation_key: message_type
     format:
       name: Format
       default: text
       selector:
-        select: {options: [text, html, markdown]}
+        select:
+          options: [text, html, markdown]
+          translation_key: message_format
     mention_users:
       name: Mention users
       selector:
@@ -237,12 +291,16 @@ edit:
       name: Message type
       default: text
       selector:
-        select: {options: [text, notice, emote]}
+        select:
+          options: [text, notice, emote]
+          translation_key: message_type
     format:
       name: Format
       default: text
       selector:
-        select: {options: [text, html, markdown]}
+        select:
+          options: [text, html, markdown]
+          translation_key: message_format
 
 redact:
   name: Redact Matrix event

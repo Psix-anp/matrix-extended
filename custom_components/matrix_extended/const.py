@@ -19,6 +19,9 @@ CONF_DOWNLOAD_INCOMING_MEDIA: Final = "download_incoming_media"
 CONF_INCOMING_MEDIA_RETENTION_DAYS: Final = "incoming_media_retention_days"
 CONF_INCOMING_MEDIA_MAX_MB: Final = "incoming_media_max_mb"
 CONF_ROUTING_PROFILES: Final = "routing_profiles"
+CONF_ROUTE_NAME: Final = "route_name"
+CONF_ROUTE_ROOMS: Final = "route_rooms"
+CONF_ROUTE_CONFIRM: Final = "route_confirm"
 
 DEFAULT_INCOMING_MEDIA_RETENTION_DAYS: Final = 7
 DEFAULT_INCOMING_MEDIA_MAX_MB: Final = 256

@@ -1,1 +1,267 @@
-{"title":"Matrix Extended","config":{"step":{"user":{"title":"Подключение Matrix","description":"Matrix Extended разрабатывается и поддерживается Psix-anp (@Psix-anp). Пароль используется один раз для получения access token Matrix и не сохраняется. Сквозное шифрование рекомендуется и включено по умолчанию.","data":{"homeserver":"URL homeserver","user_id":"Matrix ID пользователя","password":"Пароль","default_room":"Комната по умолчанию","verify_ssl":"Проверять TLS-сертификат","require_e2ee":"Требовать сквозное шифрование для комнат назначения","incoming_enabled":"Принимать входящие сообщения и реакции","allowed_users":"Разрешённые Matrix пользователи","allowed_rooms":"Разрешённые Matrix комнаты","download_incoming_media":"Скачивать и расшифровывать входящие медиа"}}},"error":{"cannot_connect":"Не удалось подключиться к Matrix homeserver","invalid_auth":"Неверные данные авторизации Matrix","invalid_room":"Некорректный alias или ID комнаты","invalid_routes":"Некорректная структура маршрутов уведомлений"},"abort":{"already_configured":"Этот Matrix-аккаунт уже настроен"}},"entity":{"binary_sensor":{"connected":{"name":"Соединение"}},"sensor":{"user_id":{"name":"ID пользователя"},"device_id":{"name":"ID устройства"},"default_room":{"name":"Комната по умолчанию"},"default_room_encryption":{"name":"Шифрование комнаты по умолчанию"},"last_send":{"name":"Последняя успешная отправка"},"last_error":{"name":"Последняя ошибка"},"last_receive":{"name":"Последнее входящее событие"}},"select":{"default_room":{"name":"Комната по умолчанию"}}},"options":{"step":{"init":{"title":"Настройки Matrix Extended","description":"Входящие события обрабатываются только при совпадении пользователя и комнаты с allowlist. Маршруты задаются объектом, например {\"security\": [\"!room:server\"]}.","data":{"require_e2ee":"Требовать E2EE","incoming_enabled":"Принимать входящие события","allowed_users":"Разрешённые пользователи","allowed_rooms":"Разрешённые комнаты","download_incoming_media":"Скачивать входящие медиа","incoming_media_retention_days":"Хранить входящие медиа, дней (0 — не удалять по возрасту)","incoming_media_max_mb":"Лимит хранилища входящих медиа, МиБ","routing_profiles":"Маршруты уведомлений (имя → список комнат)"}}},"error":{"invalid_routes":"Некорректная структура маршрутов уведомлений"}},"services":{"send":{"name":"Отправить сообщение Matrix","description":"Отправить текст или расширенное медиа в одну или несколько комнат Matrix.","fields":{"account":{"name":"Аккаунт","description":"ID конфигурации. Оставьте пустым, если подключён один аккаунт Matrix Extended."},"target":{"name":"Комнаты","description":"Alias или ID комнат Matrix. Оставьте пустым для комнаты по умолчанию."},"route":{"name":"Маршрут","description":"Именованный маршрут уведомлений. Нельзя использовать вместе с полем «Комнаты»."},"notification_key":{"name":"Ключ уведомления","description":"Постоянный ключ обновляемого уведомления; следующие отправки изменяют исходное событие."},"message":{"name":"Сообщение","description":"Текст сообщения."},"msgtype":{"name":"Тип сообщения","description":"Тип сообщения Matrix."},"format":{"name":"Формат","description":"Форматирование текста сообщения."},"mention_users":{"name":"Упомянуть пользователей","description":"Matrix ID пользователей для нативных упоминаний m.mentions."},"mention_room":{"name":"Упомянуть комнату","description":"Упомянуть всех пользователей комнаты через нативное Matrix-упоминание."},"thread_id":{"name":"ID ветки","description":"ID корневого события Matrix для ветки."},"media":{"name":"Расширенное медиа","description":"Медиа-объекты с entity_id, path, url или media_source."},"actions":{"name":"Действия по реакциям","description":"Действия Home Assistant, запускаемые реакциями Matrix."}}},"send_media":{"name":"Отправить медиа Matrix","description":"Выбрать медиа графически в Home Assistant и отправить его в Matrix.","fields":{"account":{"name":"Аккаунт","description":"ID конфигурации. Оставьте пустым, если подключён один аккаунт Matrix Extended."},"target":{"name":"Комнаты","description":"Alias или ID комнат Matrix. Оставьте пустым для комнаты по умолчанию."},"route":{"name":"Маршрут","description":"Именованный маршрут уведомлений. Нельзя использовать вместе с полем «Комнаты»."},"media_picker":{"name":"Медиа — выбрать","description":"Открыть медиабраузер Home Assistant и выбрать один файл."},"caption":{"name":"Подпись","description":"Необязательная подпись к медиа в Matrix."},"voice":{"name":"Голосовое сообщение","description":"Пометить выбранное аудио как нативное голосовое сообщение Matrix."},"thread_id":{"name":"ID ветки","description":"ID корневого события Matrix для ветки."}}},"send_voice":{"name":"Отправить голосовое сообщение Matrix","description":"Синтезировать речь через TTS Home Assistant и отправить её как нативное голосовое сообщение Matrix.","fields":{"account":{"name":"Аккаунт"},"target":{"name":"Комнаты"},"route":{"name":"Маршрут"},"text":{"name":"Текст","description":"Текст для синтеза речи Home Assistant TTS."},"tts_engine":{"name":"Движок TTS","description":"Необязательный провайдер или сущность TTS Home Assistant. Пусто — использовать движок по умолчанию."},"language":{"name":"Язык","description":"Необязательный код языка, например ru-RU."},"tts_options":{"name":"Параметры TTS","description":"Параметры конкретного TTS-провайдера, например выбор голоса."},"thread_id":{"name":"ID ветки"}}},"transcribe_voice":{"name":"Распознать голосовое Matrix","description":"Распознать скачанное голосовое сообщение Matrix через STT Home Assistant с необязательной обработкой Assist.","fields":{"account":{"name":"Аккаунт"},"path":{"name":"Путь к голосовому файлу","description":"local_path из события matrix_extended_media или имя файла в каталоге входящих медиа этого аккаунта."},"stt_entity":{"name":"Сущность STT","description":"Сущность Home Assistant stt.*. Пусто — использовать STT по умолчанию."},"language":{"name":"Язык","description":"Язык распознавания. По умолчанию используется язык Home Assistant."},"audio_format":{"name":"Формат входного аудио","description":"Контейнер входного аудиофайла."},"codec":{"name":"Кодек входного аудио","description":"Кодек входного аудиопотока."},"bit_rate":{"name":"Разрядность","description":"Разрядность PCM."},"sample_rate":{"name":"Частота дискретизации","description":"Частота дискретизации аудио в Гц."},"channels":{"name":"Каналы","description":"Количество аудиоканалов."},"assist":{"name":"Запустить Home Assistant Assist","description":"Передать распознанный текст в Conversation/Assist Home Assistant."},"conversation_agent":{"name":"Агент диалога","description":"Необязательный агент conversation.* для Assist."},"conversation_id":{"name":"ID диалога","description":"Необязательный ID существующего диалога Home Assistant."}}},"send_location":{"name":"Отправить геопозицию Matrix","description":"Отправить геопозицию Matrix по координатам или из сущности Home Assistant.","fields":{"account":{"name":"Аккаунт"},"target":{"name":"Комнаты"},"route":{"name":"Маршрут"},"entity_id":{"name":"Сущность с координатами","description":"Сущность с атрибутами latitude и longitude. Используйте её или явные координаты."},"latitude":{"name":"Широта","description":"Широта в десятичных градусах."},"longitude":{"name":"Долгота","description":"Долгота в десятичных градусах."},"description":{"name":"Описание","description":"Необязательный текст рядом с геопозицией."},"thread_id":{"name":"ID ветки"}}},"reply":{"name":"Ответить на событие Matrix","description":"Отправить форматированный ответ на существующее событие Matrix.","fields":{"account":{"name":"Аккаунт"},"room":{"name":"Комната"},"event_id":{"name":"ID события"},"message":{"name":"Сообщение"},"msgtype":{"name":"Тип сообщения"},"format":{"name":"Формат"},"mention_users":{"name":"Упомянуть пользователей"},"mention_room":{"name":"Упомянуть комнату"},"thread_id":{"name":"ID ветки"}}},"react":{"name":"Поставить реакцию Matrix","description":"Добавить emoji-реакцию к существующему событию Matrix.","fields":{"account":{"name":"Аккаунт"},"room":{"name":"Комната"},"event_id":{"name":"ID события"},"reaction":{"name":"Реакция"}}},"edit":{"name":"Изменить сообщение Matrix","description":"Заменить содержимое ранее отправленного текстового сообщения Matrix.","fields":{"account":{"name":"Аккаунт"},"room":{"name":"Комната"},"event_id":{"name":"ID события"},"message":{"name":"Новое сообщение"},"msgtype":{"name":"Тип сообщения"},"format":{"name":"Формат"}}},"redact":{"name":"Удалить событие Matrix","description":"Выполнить redaction существующего события из комнаты Matrix.","fields":{"account":{"name":"Аккаунт"},"room":{"name":"Комната"},"event_id":{"name":"ID события"},"reason":{"name":"Причина"}}},"purge_media":{"name":"Очистить скачанные медиа Matrix","description":"Удалить скачанные входящие медиа для одного аккаунта Matrix Extended.","fields":{"account":{"name":"Аккаунт"}}}},"selector":{"message_type":{"options":{"text":"Текст","notice":"Уведомление","emote":"Действие (/me)"}},"message_format":{"options":{"text":"Обычный текст","html":"HTML","markdown":"Markdown"}},"audio_format":{"options":{"ogg":"OGG","wav":"WAV"}},"audio_codec":{"options":{"opus":"Opus","pcm":"PCM"}}}}
+{
+  "title": "Matrix Extended",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Подключение Matrix",
+        "description": "Подключите Matrix-аккаунт. Пароль используется только один раз для получения access token и не сохраняется. E2EE лучше оставить включённым, если вы намеренно не используете незашифрованные комнаты.",
+        "data": {
+          "homeserver": "URL homeserver",
+          "user_id": "Matrix ID пользователя",
+          "password": "Пароль",
+          "default_room": "Комната по умолчанию",
+          "verify_ssl": "Проверять TLS-сертификат",
+          "require_e2ee": "Требовать сквозное шифрование комнат назначения",
+          "incoming_enabled": "Принимать входящие события Matrix",
+          "allowed_users": "Разрешённые Matrix-пользователи",
+          "allowed_rooms": "Разрешённые Matrix-комнаты",
+          "download_incoming_media": "Скачивать и расшифровывать входящие медиа"
+        },
+        "data_description": {
+          "default_room": "ID комнаты (!...) или alias (#...). Используется, когда действие не задаёт «Комнаты» или «Маршрут».",
+          "allowed_users": "Закрытый allowlist отправителей входящих событий.",
+          "allowed_rooms": "Закрытый allowlist комнат. Для обработки должны совпасть и пользователь, и комната."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Не удалось подключиться к Matrix homeserver",
+      "invalid_auth": "Неверные данные авторизации Matrix",
+      "invalid_room": "Некорректный alias или ID комнаты"
+    },
+    "abort": {
+      "already_configured": "Этот Matrix-аккаунт уже настроен"
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connected": {"name": "Соединение"}
+    },
+    "sensor": {
+      "user_id": {"name": "ID пользователя"},
+      "device_id": {"name": "ID устройства"},
+      "default_room": {"name": "Комната по умолчанию"},
+      "default_room_encryption": {
+        "name": "Шифрование комнаты по умолчанию",
+        "state": {
+          "encrypted": "Зашифрована",
+          "not_encrypted": "Не зашифрована",
+          "unknown": "Не определено"
+        }
+      },
+      "last_send": {"name": "Последняя успешная отправка"},
+      "last_error": {
+        "name": "Последняя ошибка",
+        "state": {"none": "Ошибок нет"}
+      },
+      "last_receive": {
+        "name": "Последнее входящее событие",
+        "state": {
+          "message": "Сообщение",
+          "reply": "Ответ",
+          "reaction": "Реакция",
+          "media": "Медиа",
+          "location": "Геопозиция",
+          "edit": "Изменение",
+          "redaction": "Удаление"
+        }
+      }
+    },
+    "select": {
+      "default_room": {"name": "Комната по умолчанию"}
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Настройки Matrix Extended",
+        "description": "Выберите раздел. Основные настройки интеграции редактируются графически — JSON/YAML для настройки Matrix Extended не нужен.",
+        "menu_options": {
+          "general": "Основное",
+          "incoming": "Входящие и безопасность",
+          "media": "Входящие медиа",
+          "routes": "Маршруты уведомлений"
+        }
+      },
+      "general": {
+        "title": "Основное",
+        "description": "Измените комнату по умолчанию, проверку TLS и политику E2EE. После сохранения интеграция перезагрузится.",
+        "data": {
+          "default_room": "Комната по умолчанию",
+          "verify_ssl": "Проверять TLS-сертификат",
+          "require_e2ee": "Требовать E2EE"
+        },
+        "data_description": {
+          "default_room": "ID комнаты (!...) или alias (#...). Alias проверяется перед сохранением.",
+          "verify_ssl": "Для обычных HTTPS Matrix homeserver оставляйте включённым.",
+          "require_e2ee": "Запрещать отправку в комнаты назначения без сквозного шифрования."
+        }
+      },
+      "incoming": {
+        "title": "Входящие и безопасность",
+        "description": "Определяет, какие входящие события Matrix разрешено передавать в Home Assistant. При включённых входящих событиях оба allowlist должны быть заполнены.",
+        "data": {
+          "incoming_enabled": "Принимать входящие события",
+          "allowed_users": "Разрешённые пользователи",
+          "allowed_rooms": "Разрешённые комнаты"
+        },
+        "data_description": {
+          "allowed_users": "Обрабатываются только события от этих Matrix ID.",
+          "allowed_rooms": "Обрабатываются только события из этих Matrix-комнат. Должны совпасть и пользователь, и комната."
+        }
+      },
+      "media": {
+        "title": "Входящие медиа",
+        "description": "Управление скачиванием, сроком хранения и использованием диска для входящих вложений Matrix.",
+        "data": {
+          "download_incoming_media": "Скачивать и расшифровывать входящие медиа",
+          "incoming_media_retention_days": "Хранить, дней",
+          "incoming_media_max_mb": "Лимит хранилища, МиБ"
+        },
+        "data_description": {
+          "incoming_media_retention_days": "0 отключает очистку по возрасту; лимит объёма продолжает действовать.",
+          "incoming_media_max_mb": "Максимальный общий размер каталога входящих медиа Matrix Extended."
+        }
+      },
+      "routes": {
+        "title": "Маршруты уведомлений",
+        "description": "Графическое управление именованными группами комнат. В действиях можно указать имя маршрута вместо повторения Matrix room ID.",
+        "menu_options": {
+          "route_add": "Добавить маршрут",
+          "route_edit": "Изменить маршрут",
+          "route_delete": "Удалить маршрут"
+        }
+      },
+      "route_add": {
+        "title": "Добавить маршрут",
+        "description": "Создайте переиспользуемый маршрут уведомлений.",
+        "data": {"route_name": "Имя маршрута", "route_rooms": "Комнаты"},
+        "data_description": {"route_rooms": "Один или несколько ID/alias комнат Matrix."}
+      },
+      "route_edit": {
+        "title": "Изменить маршрут",
+        "description": "Выберите маршрут для изменения.",
+        "data": {"route_name": "Маршрут"}
+      },
+      "route_edit_details": {
+        "title": "Изменить {route_name}",
+        "description": "Измените Matrix-комнаты маршрута {route_name}.",
+        "data": {"route_rooms": "Комнаты"}
+      },
+      "route_delete": {
+        "title": "Удалить маршрут",
+        "description": "Удаляет сохранённый маршрут. Автоматизации со ссылкой на удалённый маршрут нужно будет изменить.",
+        "data": {"route_name": "Маршрут", "route_confirm": "Подтвердить удаление"}
+      }
+    },
+    "error": {
+      "cannot_connect": "Не удалось проверить Matrix-комнату с текущими параметрами соединения",
+      "invalid_room": "Некорректный alias или ID комнаты",
+      "required_when_incoming": "Обязательно при включённых входящих событиях",
+      "invalid_route_name": "Введите имя маршрута",
+      "route_exists": "Маршрут с таким именем уже существует",
+      "route_needs_rooms": "Добавьте хотя бы одну Matrix-комнату",
+      "confirm_delete": "Подтвердите удаление"
+    }
+  },
+  "services": {
+    "send": {
+      "name": "Отправить сообщение Matrix",
+      "description": "Отправить текст и структурированные rich media. Поддерживаются E2EE, Markdown/HTML, упоминания, ветки, обновляемые уведомления и безопасные действия по реакциям.",
+      "fields": {
+        "account": {"name": "Аккаунт", "description": "Выберите подключение Matrix Extended."},
+        "target": {"name": "Комнаты", "description": "ID или alias Matrix-комнат. Пусто — использовать комнату по умолчанию."},
+        "route": {"name": "Маршрут", "description": "Именованный маршрут из настроек Matrix Extended. Не используйте одновременно с полем «Комнаты»."},
+        "notification_key": {"name": "Ключ уведомления", "description": "Постоянный ключ: последующие отправки изменяют то же Matrix-событие."},
+        "message": {"name": "Сообщение", "description": "Текст; можно оставить пустым при отправке только медиа."},
+        "msgtype": {"name": "Тип сообщения", "description": "Текст, уведомление или /me."},
+        "format": {"name": "Формат", "description": "Обычный текст, HTML или Markdown."},
+        "mention_users": {"name": "Упомянуть пользователей", "description": "Matrix ID для нативных упоминаний."},
+        "mention_room": {"name": "Упомянуть комнату", "description": "Нативное упоминание всей комнаты."},
+        "thread_id": {"name": "ID ветки", "description": "ID корневого Matrix-события ветки."},
+        "media": {"name": "Расширенное медиа", "description": "Структурированный список сущностей/камер, путей, URL и Media Source с метаданными."},
+        "actions": {"name": "Действия по реакциям", "description": "Явно разрешённые действия Home Assistant, запускаемые разрешёнными реакциями Matrix."}
+      }
+    },
+    "send_media": {
+      "name": "Отправить медиа Matrix",
+      "description": "Открыть медиабраузер Home Assistant и отправить элемент из Local Media, Frigate или другого Media Source.",
+      "fields": {
+        "account": {"name": "Аккаунт"}, "target": {"name": "Комнаты"}, "route": {"name": "Маршрут"},
+        "media_picker": {"name": "Выбрать медиа", "description": "Просмотр всех провайдеров Home Assistant Media Source."},
+        "caption": {"name": "Подпись", "description": "Необязательная подпись к медиа."},
+        "voice": {"name": "Голосовое сообщение", "description": "Пометить выбранное аудио как нативное голосовое Matrix."},
+        "thread_id": {"name": "ID ветки"}
+      }
+    },
+    "send_voice": {
+      "name": "Отправить голосовое сообщение Matrix",
+      "description": "Синтезировать текст через Home Assistant TTS и отправить полученное аудио как нативное голосовое Matrix.",
+      "fields": {
+        "account": {"name": "Аккаунт"}, "target": {"name": "Комнаты"}, "route": {"name": "Маршрут"},
+        "text": {"name": "Текст", "description": "Текст для синтеза."},
+        "tts_engine": {"name": "Движок TTS", "description": "Сущность Home Assistant tts.*; пусто — движок по умолчанию."},
+        "language": {"name": "Язык", "description": "Запрошенный язык; совместимые варианты локали подбираются автоматически."},
+        "tts_options": {"name": "Параметры TTS", "description": "Расширенные параметры конкретного TTS-провайдера."},
+        "thread_id": {"name": "ID ветки"}
+      }
+    },
+    "transcribe_voice": {
+      "name": "Распознать голосовое Matrix",
+      "description": "Распознать скачанное голосовое через Home Assistant STT и, при явном включении, передать текст в Assist.",
+      "fields": {
+        "account": {"name": "Аккаунт"},
+        "path": {"name": "Путь к голосовому файлу", "description": "local_path из matrix_extended_media или имя файла в каталоге входящих медиа аккаунта."},
+        "stt_entity": {"name": "Сущность STT", "description": "Home Assistant stt.*; пусто — STT по умолчанию."},
+        "language": {"name": "Язык"}, "audio_format": {"name": "Формат входного аудио"}, "codec": {"name": "Кодек"},
+        "bit_rate": {"name": "Разрядность"}, "sample_rate": {"name": "Частота дискретизации"}, "channels": {"name": "Каналы"},
+        "assist": {"name": "Запустить Home Assistant Assist", "description": "Явно передать распознанный текст в Conversation/Assist."},
+        "conversation_agent": {"name": "Агент диалога"}, "conversation_id": {"name": "ID диалога"}
+      }
+    },
+    "send_location": {
+      "name": "Отправить геопозицию Matrix",
+      "description": "Отправить геопозицию Matrix по координатам или из сущности Home Assistant.",
+      "fields": {
+        "account": {"name": "Аккаунт"}, "target": {"name": "Комнаты"}, "route": {"name": "Маршрут"},
+        "entity_id": {"name": "Сущность с координатами", "description": "Сущность с атрибутами latitude и longitude."},
+        "latitude": {"name": "Широта"}, "longitude": {"name": "Долгота"}, "description": {"name": "Описание"}, "thread_id": {"name": "ID ветки"}
+      }
+    },
+    "reply": {
+      "name": "Ответить на событие Matrix",
+      "description": "Ответить на существующее Matrix-событие по его event ID.",
+      "fields": {
+        "account": {"name": "Аккаунт"}, "room": {"name": "Комната"}, "event_id": {"name": "ID события"}, "message": {"name": "Сообщение"},
+        "msgtype": {"name": "Тип сообщения"}, "format": {"name": "Формат"}, "mention_users": {"name": "Упомянуть пользователей"},
+        "mention_room": {"name": "Упомянуть комнату"}, "thread_id": {"name": "ID ветки"}
+      }
+    },
+    "react": {
+      "name": "Поставить реакцию Matrix",
+      "description": "Добавить emoji или текстовую реакцию к существующему Matrix-событию.",
+      "fields": {"account": {"name": "Аккаунт"}, "room": {"name": "Комната"}, "event_id": {"name": "ID события"}, "reaction": {"name": "Реакция"}}
+    },
+    "edit": {
+      "name": "Изменить сообщение Matrix",
+      "description": "Заменить ранее отправленное текстовое Matrix-событие.",
+      "fields": {"account": {"name": "Аккаунт"}, "room": {"name": "Комната"}, "event_id": {"name": "ID события"}, "message": {"name": "Новое сообщение"}, "msgtype": {"name": "Тип сообщения"}, "format": {"name": "Формат"}}
+    },
+    "redact": {
+      "name": "Удалить событие Matrix",
+      "description": "Выполнить Matrix redaction существующего события.",
+      "fields": {"account": {"name": "Аккаунт"}, "room": {"name": "Комната"}, "event_id": {"name": "ID события"}, "reason": {"name": "Причина"}}
+    },
+    "purge_media": {
+      "name": "Очистить скачанные медиа Matrix",
+      "description": "Удалить скачанные входящие Matrix-медиа выбранного аккаунта и вернуть количество файлов/байт.",
+      "fields": {"account": {"name": "Аккаунт"}}
+    }
+  },
+  "selector": {
+    "message_type": {"options": {"text": "Текст", "notice": "Уведомление", "emote": "Действие (/me)"}},
+    "message_format": {"options": {"text": "Обычный текст", "html": "HTML", "markdown": "Markdown"}},
+    "audio_format": {"options": {"ogg": "OGG", "wav": "WAV"}},
+    "audio_codec": {"options": {"opus": "Opus", "pcm": "PCM"}}
+  }
+}

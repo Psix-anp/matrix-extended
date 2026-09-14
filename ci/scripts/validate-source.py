@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import sys
 
-EXPECTED_VERSION = "0.5.3"
 COMPONENT = Path("custom_components/matrix_extended")
+VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?$")
 REQUIRED = {
     "__init__.py",
     "manifest.json",
@@ -30,6 +31,7 @@ FORBIDDEN_FILES = {
 
 
 def validate_repository(root: Path) -> list[str]:
+    """Validate files that must stay clean in a distributable repository."""
     root = root.resolve()
     errors: list[str] = []
     component = root / COMPONENT
@@ -43,13 +45,19 @@ def validate_repository(root: Path) -> list[str]:
         if any(part in FORBIDDEN_DIRS for part in relative.parts):
             errors.append(f"forbidden generated artifact: {relative}")
             continue
-        if path.is_file() and (path.suffix in FORBIDDEN_SUFFIXES or path.name in FORBIDDEN_FILES):
+        if path.is_file() and (
+            path.suffix in FORBIDDEN_SUFFIXES or path.name in FORBIDDEN_FILES
+        ):
             errors.append(f"forbidden generated artifact: {relative}")
 
     json_paths = [
         component / "manifest.json",
         component / "strings.json",
-        *(sorted((component / "translations").glob("*.json")) if (component / "translations").is_dir() else []),
+        *(
+            sorted((component / "translations").glob("*.json"))
+            if (component / "translations").is_dir()
+            else []
+        ),
         root / "hacs.json",
     ]
     parsed: dict[Path, object] = {}
@@ -63,10 +71,10 @@ def validate_repository(root: Path) -> list[str]:
 
     manifest_path = component / "manifest.json"
     manifest = parsed.get(manifest_path)
-    if isinstance(manifest, dict) and manifest.get("version") != EXPECTED_VERSION:
-        errors.append(
-            f"manifest version must be {EXPECTED_VERSION}, got {manifest.get('version')!r}"
-        )
+    if isinstance(manifest, dict):
+        version = manifest.get("version")
+        if not isinstance(version, str) or not VERSION_RE.fullmatch(version):
+            errors.append(f"manifest version is not a valid release version: {version!r}")
 
     return errors
 
@@ -78,7 +86,10 @@ def main() -> int:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
         return 1
-    print(f"source validation ok: Matrix Extended {EXPECTED_VERSION}")
+    manifest = json.loads(
+        (root / COMPONENT / "manifest.json").read_text(encoding="utf-8")
+    )
+    print(f"source validation ok: Matrix Extended {manifest['version']}")
     return 0
 
 

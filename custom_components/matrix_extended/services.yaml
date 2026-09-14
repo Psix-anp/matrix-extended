@@ -1,28 +1,35 @@
 send:
   name: Send Matrix message
-  description: Send text and rich media to one or more Matrix rooms. Supports E2EE, Markdown, native mentions, threads, updateable notifications, reaction actions and optional delivery response data.
+  description: Send text and rich media to one or more Matrix rooms. Supports E2EE, Markdown, native mentions, threads, updateable notifications, reaction actions and optional delivery response data. The graphical editor covers common and advanced fields; YAML remains fully supported.
   fields:
     account:
       name: Account
-      description: Config entry ID. Omit when only one Matrix Extended account is loaded.
-      selector: {text: {}}
+      description: Matrix Extended configuration entry. Omit in YAML only when exactly one account is loaded.
+      selector:
+        config_entry:
+          integration: matrix_extended
     target:
       name: Rooms
       description: Matrix room aliases or IDs. Omit to use the configured default room.
       selector:
-        text: {multiple: true}
+        text:
+          multiple: true
     route:
       name: Route
-      description: Named routing profile. Cannot be used together with Rooms.
-      selector: {text: {}}
+      description: Named routing profile configured in Matrix Extended settings. Cannot be used together with Rooms.
+      selector:
+        text: {}
     notification_key:
       name: Notification key
-      description: Stable key for an updateable notification; later sends edit the original event.
-      selector: {text: {}}
+      description: Stable key for an updateable notification; later sends edit the original event instead of creating a new one.
+      selector:
+        text: {}
     message:
       name: Message
+      description: Text body. Can be empty when only media is sent.
       selector:
-        text: {multiline: true}
+        text:
+          multiline: true
     msgtype:
       name: Message type
       default: text
@@ -41,43 +48,156 @@ send:
       name: Mention users
       description: Matrix user IDs added to native m.mentions metadata.
       selector:
-        text: {multiple: true}
+        text:
+          multiple: true
     mention_room:
       name: Mention room
+      description: Add a native room-wide Matrix mention.
       default: false
-      selector: {boolean: {}}
+      selector:
+        boolean: {}
     thread_id:
       name: Thread ID
-      selector: {text: {}}
+      description: Matrix event ID of the thread root.
+      selector:
+        text: {}
     media:
       name: Advanced media
-      description: Advanced media objects using entity_id, path, url, or media_source. Supports captions, thumbnails, dimensions and native voice markers.
-      selector: {object: {}}
+      description: One or more media attachments. Use Send Matrix media for the Home Assistant Media Browser; use this structured form for cameras, local paths, URLs and advanced metadata.
+      selector:
+        object:
+          multiple: true
+          label_field: filename
+          description_field: caption
+          fields:
+            entity_id:
+              label: Home Assistant entity
+              selector:
+                entity: {}
+            path:
+              label: Local path
+              selector:
+                text: {}
+            url:
+              label: URL
+              selector:
+                text:
+                  type: url
+            media_source:
+              label: Media Source ID
+              selector:
+                text: {}
+            type:
+              label: Media type
+              selector:
+                select:
+                  options: [auto, image, video, audio, file]
+            filename:
+              label: File name
+              selector:
+                text: {}
+            caption:
+              label: Caption
+              selector:
+                text:
+                  multiline: true
+            formatted_caption:
+              label: Formatted caption
+              selector:
+                text:
+                  multiline: true
+            width:
+              label: Width
+              selector:
+                number:
+                  min: 1
+                  mode: box
+            height:
+              label: Height
+              selector:
+                number:
+                  min: 1
+                  mode: box
+            duration_ms:
+              label: Duration, ms
+              selector:
+                number:
+                  min: 0
+                  mode: box
+            voice:
+              label: Native voice message
+              selector:
+                boolean: {}
     actions:
       name: Reaction actions
-      description: Explicit HA service calls bound to reactions. Supports expires_in, max_uses and allowed_users.
-      selector: {object: {}}
+      description: Explicit Home Assistant service calls bound to reactions on this outgoing Matrix event. They are allowlisted and can expire or be limited by use count.
+      selector:
+        object:
+          multiple: true
+          label_field: reaction
+          description_field: service
+          fields:
+            reaction:
+              label: Reaction
+              required: true
+              selector:
+                text: {}
+            service:
+              label: Home Assistant action
+              required: true
+              selector:
+                text: {}
+            target:
+              label: Target
+              selector:
+                target: {}
+            data:
+              label: Action data
+              selector:
+                object: {}
+            expires_in:
+              label: Expires after, seconds
+              selector:
+                number:
+                  min: 1
+                  max: 604800
+                  mode: box
+            max_uses:
+              label: Maximum uses
+              selector:
+                number:
+                  min: 1
+                  max: 100
+                  mode: box
+            allowed_users:
+              label: Allowed Matrix users
+              selector:
+                text:
+                  multiple: true
 
 send_media:
   name: Send Matrix media
-  description: Choose media graphically from Home Assistant and send it to Matrix. The advanced media object remains available in Send Matrix message.
+  description: Choose one media item graphically from any Home Assistant Media Source provider, including Frigate and Local Media, and send it to Matrix. YAML can still provide the same fields manually.
   fields:
     account:
       name: Account
-      description: Config entry ID. Omit when only one Matrix Extended account is loaded.
-      selector: {text: {}}
+      selector:
+        config_entry:
+          integration: matrix_extended
     target:
       name: Rooms
-      description: Matrix room aliases or IDs. Omit to use the configured default room.
+      description: Matrix room aliases or IDs. Omit to use the default room.
       selector:
-        text: {multiple: true}
+        text:
+          multiple: true
     route:
       name: Route
       description: Named routing profile. Cannot be used together with Rooms.
-      selector: {text: {}}
+      selector:
+        text: {}
     media_picker:
       name: Choose media
-      description: Open the Home Assistant media browser and choose one media item from any Media Source provider, including Frigate and Local Media.
+      description: Open the Home Assistant Media Browser. All Media Source types are accepted so providers such as Frigate are not filtered out.
       required: true
       selector:
         media:
@@ -87,72 +207,91 @@ send_media:
       name: Caption
       description: Optional Matrix caption for the selected media.
       selector:
-        text: {multiline: true}
+        text:
+          multiline: true
     voice:
       name: Voice message
       description: Mark selected audio as a native Matrix voice message.
       default: false
-      selector: {boolean: {}}
+      selector:
+        boolean: {}
     thread_id:
       name: Thread ID
-      selector: {text: {}}
+      description: Matrix event ID of the thread root.
+      selector:
+        text: {}
 
 send_voice:
   name: Send Matrix voice message
-  description: Convert text with Home Assistant TTS and send the generated audio as a native Matrix voice message. Supports E2EE, routes and threads.
+  description: Convert text with a Home Assistant TTS entity and send the generated audio as a native Matrix voice message. Locale variants are matched to languages supported by the selected TTS provider.
   fields:
     account:
       name: Account
-      selector: {text: {}}
+      selector:
+        config_entry:
+          integration: matrix_extended
     target:
       name: Rooms
       selector:
-        text: {multiple: true}
+        text:
+          multiple: true
     route:
       name: Route
-      selector: {text: {}}
+      selector:
+        text: {}
     text:
       name: Text
       required: true
       selector:
-        text: {multiline: true}
+        text:
+          multiline: true
     tts_engine:
       name: TTS engine
-      description: Optional Home Assistant TTS provider/entity. Omit to use the default engine.
-      selector: {text: {}}
+      description: Home Assistant tts.* entity. Leave empty to use the default TTS engine. YAML may still supply a compatible provider ID.
+      selector:
+        entity:
+          domain: tts
     language:
       name: Language
-      description: Optional language code such as ru-RU.
-      selector: {text: {}}
+      description: Language requested from the TTS provider. Matrix Extended will match a locale such as ru-RU to ru when appropriate.
+      selector:
+        language: {}
     tts_options:
       name: TTS options
-      description: Provider-specific Home Assistant TTS options, for example a voice selection.
-      selector: {object: {}}
+      description: Provider-specific options such as voice selection. This remains an advanced YAML/object field because providers define different keys.
+      selector:
+        object: {}
     thread_id:
       name: Thread ID
-      selector: {text: {}}
+      selector:
+        text: {}
 
 transcribe_voice:
   name: Transcribe Matrix voice
-  description: Transcribe a downloaded Matrix voice file through a Home Assistant STT entity. Files are restricted to this Matrix account's incoming-media directory. If the provider only accepts WAV/PCM, audio is normalized with Home Assistant FFmpeg. Assist execution is explicit and disabled by default.
+  description: Transcribe a downloaded Matrix voice file through Home Assistant STT. If necessary, Home Assistant FFmpeg normalizes the audio. Assist processing is explicit and disabled by default.
   fields:
     account:
       name: Account
-      selector: {text: {}}
+      selector:
+        config_entry:
+          integration: matrix_extended
     path:
       name: Incoming voice path
-      description: local_path from a matrix_extended_media event, or a filename relative to this account's incoming Matrix directory.
+      description: local_path from a matrix_extended_media event, or a filename relative to this account's incoming-media directory.
       required: true
-      selector: {text: {}}
+      selector:
+        text: {}
     stt_entity:
       name: STT entity
-      description: Home Assistant stt.* entity. Omit to use the default STT entity.
+      description: Home Assistant stt.* entity. Leave empty to use the default STT entity.
       selector:
-        entity: {domain: stt}
+        entity:
+          domain: stt
     language:
       name: Language
       description: Language requested from the STT provider. Defaults to the Home Assistant language.
-      selector: {text: {}}
+      selector:
+        language: {}
     audio_format:
       name: Input audio format
       default: ogg
@@ -171,77 +310,111 @@ transcribe_voice:
       name: Input bit depth
       default: "16"
       selector:
-        select: {options: ["8", "16", "24", "32"]}
+        select:
+          options: ["8", "16", "24", "32"]
     sample_rate:
       name: Input sample rate
       default: "48000"
       selector:
-        select: {options: ["8000", "11000", "16000", "18900", "22000", "32000", "37800", "44100", "48000"]}
+        select:
+          options: ["8000", "11000", "16000", "18900", "22000", "32000", "37800", "44100", "48000"]
     channels:
       name: Input channels
       default: "1"
       selector:
-        select: {options: ["1", "2"]}
+        select:
+          options: ["1", "2"]
     assist:
       name: Run Home Assistant Assist
       description: Explicit opt-in. When enabled, the transcript is passed to Home Assistant Conversation/Assist.
       default: false
-      selector: {boolean: {}}
+      selector:
+        boolean: {}
     conversation_agent:
       name: Conversation agent
       description: Optional conversation.* agent used when Assist is enabled.
       selector:
-        entity: {domain: conversation}
+        entity:
+          domain: conversation
     conversation_id:
       name: Conversation ID
       description: Optional existing Home Assistant conversation ID.
-      selector: {text: {}}
+      selector:
+        text: {}
 
 send_location:
   name: Send Matrix location
-  description: Send stable m.location from explicit coordinates or a Home Assistant entity exposing latitude and longitude attributes. Supports E2EE, routes and threads.
+  description: Send stable Matrix location data from explicit coordinates or a Home Assistant entity exposing latitude and longitude attributes.
   fields:
     account:
       name: Account
-      selector: {text: {}}
+      selector:
+        config_entry:
+          integration: matrix_extended
     target:
       name: Rooms
       selector:
-        text: {multiple: true}
+        text:
+          multiple: true
     route:
       name: Route
-      selector: {text: {}}
+      selector:
+        text: {}
     entity_id:
       name: Location entity
-      description: person/device_tracker/other entity with latitude and longitude attributes. Use this or explicit coordinates.
-      selector: {entity: {}}
+      description: person, device_tracker, or another entity with latitude and longitude attributes. Use this or explicit coordinates.
+      selector:
+        entity: {}
     latitude:
       name: Latitude
       selector:
-        number: {min: -90, max: 90, step: any, mode: box}
+        number:
+          min: -90
+          max: 90
+          step: any
+          mode: box
     longitude:
       name: Longitude
       selector:
-        number: {min: -180, max: 180, step: any, mode: box}
+        number:
+          min: -180
+          max: 180
+          step: any
+          mode: box
     description:
       name: Description
-      selector: {text: {}}
+      selector:
+        text: {}
     thread_id:
       name: Thread ID
-      selector: {text: {}}
+      selector:
+        text: {}
 
 reply:
   name: Reply to Matrix event
-  description: Send a rich reply to an existing Matrix event.
+  description: Send a rich reply to an existing Matrix event. Use the event ID from an incoming Matrix Extended event or a previous delivery response.
   fields:
-    account: {name: Account, selector: {text: {}}}
-    room: {name: Room, selector: {text: {}}}
-    event_id: {name: Event ID, required: true, selector: {text: {}}}
+    account:
+      name: Account
+      selector:
+        config_entry:
+          integration: matrix_extended
+    room:
+      name: Room
+      description: Matrix room alias or ID. Omit to use the default room.
+      selector:
+        text: {}
+    event_id:
+      name: Event ID
+      required: true
+      selector:
+        text: {}
     message:
       name: Message
       required: true
       selector:
-        text: {multiline: true}
+        text:
+          multiline: true
     msgtype:
       name: Message type
       default: text
@@ -259,31 +432,69 @@ reply:
     mention_users:
       name: Mention users
       selector:
-        text: {multiple: true}
-    mention_room: {name: Mention room, default: false, selector: {boolean: {}}}
-    thread_id: {name: Thread ID, selector: {text: {}}}
+        text:
+          multiple: true
+    mention_room:
+      name: Mention room
+      default: false
+      selector:
+        boolean: {}
+    thread_id:
+      name: Thread ID
+      selector:
+        text: {}
 
 react:
   name: React to Matrix event
-  description: Add an emoji reaction. matrix-nio sends m.reaction unencrypted even in E2EE rooms.
+  description: Add an emoji reaction to an existing Matrix event. Matrix reactions themselves are sent as m.reaction events.
   fields:
-    account: {name: Account, selector: {text: {}}}
-    room: {name: Room, selector: {text: {}}}
-    event_id: {name: Event ID, required: true, selector: {text: {}}}
-    reaction: {name: Reaction, required: true, selector: {text: {}}}
+    account:
+      name: Account
+      selector:
+        config_entry:
+          integration: matrix_extended
+    room:
+      name: Room
+      description: Matrix room alias or ID. Omit to use the default room.
+      selector:
+        text: {}
+    event_id:
+      name: Event ID
+      required: true
+      selector:
+        text: {}
+    reaction:
+      name: Reaction
+      description: Emoji or text reaction key, for example ✅.
+      required: true
+      selector:
+        text: {}
 
 edit:
   name: Edit Matrix message
-  description: Replace a previously sent text-like message using m.replace.
+  description: Replace a previously sent text-like Matrix message using m.replace.
   fields:
-    account: {name: Account, selector: {text: {}}}
-    room: {name: Room, selector: {text: {}}}
-    event_id: {name: Event ID, required: true, selector: {text: {}}}
+    account:
+      name: Account
+      selector:
+        config_entry:
+          integration: matrix_extended
+    room:
+      name: Room
+      description: Matrix room alias or ID. Omit to use the default room.
+      selector:
+        text: {}
+    event_id:
+      name: Event ID
+      required: true
+      selector:
+        text: {}
     message:
       name: New message
       required: true
       selector:
-        text: {multiline: true}
+        text:
+          multiline: true
     msgtype:
       name: Message type
       default: text
@@ -301,17 +512,34 @@ edit:
 
 redact:
   name: Redact Matrix event
-  description: Redact an event from a Matrix room.
-  fields:
-    account: {name: Account, selector: {text: {}}}
-    room: {name: Room, selector: {text: {}}}
-    event_id: {name: Event ID, required: true, selector: {text: {}}}
-    reason: {name: Reason, selector: {text: {}}}
-
-purge_media:
-  name: Purge downloaded Matrix media
-  description: Delete downloaded incoming media for one Matrix Extended account. Returns removed_files and removed_bytes when response data is requested.
+  description: Redact an existing Matrix event. This is Matrix redaction, not a local Home Assistant delete.
   fields:
     account:
       name: Account
-      selector: {text: {}}
+      selector:
+        config_entry:
+          integration: matrix_extended
+    room:
+      name: Room
+      description: Matrix room alias or ID. Omit to use the default room.
+      selector:
+        text: {}
+    event_id:
+      name: Event ID
+      required: true
+      selector:
+        text: {}
+    reason:
+      name: Reason
+      selector:
+        text: {}
+
+purge_media:
+  name: Purge downloaded Matrix media
+  description: Delete downloaded incoming Matrix media for one Matrix Extended account. Returns removed file and byte counts when response data is requested.
+  fields:
+    account:
+      name: Account
+      selector:
+        config_entry:
+          integration: matrix_extended

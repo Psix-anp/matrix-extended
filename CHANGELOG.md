@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.5.4 — 2026-09-14
+
+Graphical-first Home Assistant UX and public repository cleanup.
+
+- Split the options flow into **General**, **Incoming & security**, **Incoming media**, and **Notification routes**.
+- Replace raw route JSON editing with graphical add/edit/delete flows.
+- Make the default room and TLS validation editable from the integration UI and ensure runtime reload uses the saved values.
+- Prefer native Home Assistant selectors for config entries, TTS/STT entities, language, location entities, Media Browser, targets and structured advanced fields.
+- Keep YAML compatibility for all actions and advanced provider-specific options.
+- Localize diagnostic states such as encryption and incoming-event type; show `No errors` instead of an unknown state when the error buffer is clear.
+- Refresh English/Russian documentation and remove internal planning/spec/mutation-testing clutter from the user-facing repository.
+- Replace release-number-specific structure tests with current behavior/contract coverage and remove hard-coded release version maintenance from source validation.
+
+## 0.5.3 — 2026-09-14
+
+Runtime hotfixes verified on the full Home Assistant + Synapse + Element stack.
+
+- Fix `matrix_extended.send_media` service handler registration so Home Assistant invokes the graphical media action with the correct handler signature.
+- Fix Media Source browsing/delivery compatibility used by the graphical picker.
+- Improve TTS locale fallback when a provider exposes a compatible language with a different locale granularity.
+- Keep native Matrix voice delivery metadata consistent.
+- Expand the **Last incoming event** diagnostic with event kind and event-specific metadata.
+- Add real-stack regression coverage for the `send_media` action and rich incoming-event diagnostics.
+
+## 0.5.2 — 2026-09-14
+
+Localized actions and graphical media selection.
+
+- Add `matrix_extended.send_media` with the native Home Assistant Media Browser.
+- Add English and Russian action/field translations and translated selector options.
+- Verify default and room-specific Matrix notify entities in real Home Assistant.
+- Keep the existing advanced media model for cameras, URLs, local paths, multiple attachments and Matrix-specific metadata.
+
+## 0.5.1 — 2026-09-14
+
+Home Assistant 2026.9 runtime/install hotfix.
+
+- Install Matrix E2EE support through `matrix-nio[e2e]==0.26.0` from the integration manifest, not only from the test environment.
+- Fix numeric action-selector metadata so `services.yaml` is accepted by Home Assistant's real service metadata schema.
+- Add a clean Python 3.14 manifest-only E2EE import/configuration gate.
+- Validate service metadata with the real Home Assistant 2026.9.2 parser before packaging.
+
 ## 0.5.0 — 2026-09-13
 
 Automation, rich-message, voice and location release for Home Assistant 2026.9+.
@@ -63,8 +105,7 @@ Reliability release validated against real Home Assistant 2026.9.2 and Synapse 1
 - Verify automatic inbound and encrypted outbound recovery after Synapse restart without reloading Home Assistant.
 - Move matrix-nio crypto-store `restore_login()` file access out of Home Assistant's event loop.
 - Add real-stack CI covering config flow, encrypted send, reload, Synapse outage/recovery, inbound recovery, Home Assistant restart, and runtime log safety.
-- Add a fast source/compile/regression gate; current release branch has 149 passing tests.
-- Add a verified release-package gate that creates the Home Assistant install ZIP only after both mandatory test gates succeed, checks its contents byte-for-byte against the component tree, and publishes the archive with a SHA-256 checksum.
+- Add a verified release-package gate that creates the Home Assistant install ZIP only after mandatory test gates succeed, checks its contents byte-for-byte against the component tree, and publishes the archive with a SHA-256 checksum.
 
 ## 0.4.1
 

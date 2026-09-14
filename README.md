@@ -4,326 +4,84 @@
 
 <h1 align="center">Matrix Extended for Home Assistant</h1>
 
-<p align="center">
-  A focused Matrix integration for Home Assistant with E2EE, rich media, two-way events, resilient delivery, voice and location.
-</p>
+<p align="center">Secure two-way Matrix messaging for Home Assistant: E2EE, media, notify entities, incoming events, reactions, voice, location and resilient delivery.</p>
+
+<p align="center"><a href="README.md"><strong>English</strong></a> · <a href="README.ru.md">Русский</a></p>
 
 <p align="center">
-  <a href="README.md"><strong>English</strong></a> · <a href="README.ru.md">Русский</a>
-</p>
-
-<p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.5.0-blue">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.5.4-blue">
   <img alt="Home Assistant" src="https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5">
   <img alt="Matrix" src="https://img.shields.io/badge/Matrix-E2EE-0DBD8B">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
 </p>
 
-> **0.5.0** is validated against a real **Home Assistant 2026.9.2 + Synapse 1.160.0 + Element Web 1.12.26** stack before release packaging.
+## Highlights
 
-## Why Matrix Extended?
-
-Matrix Extended turns Matrix into a secure Home Assistant notification and interaction channel without turning chat text into an unrestricted remote shell.
-
-- End-to-end encrypted text and media.
-- Camera, image, local path, URL and `media-source://` attachments.
-- Plain text, `notice`, `emote`, HTML and safe Markdown.
-- Native Matrix mentions, replies, reactions, edits, redactions and threads.
-- Per-room notify entities, room discovery, default-room selector and named routes.
-- Updateable notifications via `notification_key` instead of notification spam.
-- Persistent delivery outbox that survives temporary homeserver outages.
-- Explicit reaction actions with expiry, usage limits and user allowlists.
-- Incoming text, replies, reactions, media, edits, redactions and locations as Home Assistant events.
-- Native Matrix location from coordinates or a Home Assistant location entity.
-- Native Matrix voice, Home Assistant TTS → voice, voice → STT and explicit voice → Assist.
-- Incoming-media retention, storage limits and manual purge.
-- English and Russian Home Assistant UI translations.
-
-## Screenshots
-
-Real screenshots are captured by the same disposable Element Web instance used by the release E2E tests.
-
-<p align="center">
-  <img src="docs/screenshots/element-rich-e2e.png" alt="Encrypted Matrix Extended location and voice in Element" width="820">
-</p>
+- End-to-end encrypted text and media with persistent crypto state.
+- Main `notify` entity plus room-specific `notify.*` entities.
+- Graphical Home Assistant action editor for account selection, media browsing, TTS/STT entities, languages, location entities, reaction actions and common message fields.
+- Home Assistant Media Browser support, including Local Media, Frigate and other Media Source providers.
+- Text, notice, emote, Markdown/HTML, mentions, threads, replies, reactions, edits and redactions.
+- Updateable notifications using `notification_key`.
+- Incoming message, reply, reaction, media, location, edit and redaction events.
+- Rich **Last incoming event** diagnostic entity with sender, room, event ID and type-specific attributes.
+- Home Assistant TTS → Matrix voice, Matrix voice → Home Assistant STT, optional explicit Assist processing.
+- Persistent outbox for temporary Matrix outages.
+- Russian and English Home Assistant UI.
 
 ## Installation
 
 ### HACS
 
-Once the repository is public, add it to HACS as a custom **Integration** repository and install **Matrix Extended**.
+Add this repository to HACS as a custom **Integration** repository, install **Matrix Extended**, restart Home Assistant, then open **Settings → Devices & services → Add integration → Matrix Extended**.
 
 ### Manual
 
-Copy:
-
-```text
-custom_components/matrix_extended
-```
-
-into:
-
-```text
-/config/custom_components/matrix_extended
-```
-
-Restart Home Assistant and add **Matrix Extended** from **Settings → Devices & services**.
-
-The password is used only for the initial Matrix login. The resulting access token and persistent E2EE crypto store are used afterwards.
-
-## Initial configuration
-
-Recommended setup:
-
-1. Use a dedicated Matrix bot account.
-2. Invite it to an encrypted room.
-3. Keep **Require E2EE** enabled.
-4. Enable incoming events only when needed.
-5. Configure both **Allowed users** and **Allowed rooms**. Incoming processing is fail-closed against both lists.
-6. Enable incoming-media download only if your automations need local files.
-7. Configure retention age and storage limit for downloaded media.
-
-Persistent crypto state is stored under:
-
-```text
-/config/.storage/matrix_extended/<config_entry_id>/
-```
-
-Downloaded incoming files are stored under:
-
-```text
-/config/matrix_extended/incoming/<config_entry_id>/
-```
-
-## Quick examples
-
-### Send a message
-
-```yaml
-action: matrix_extended.send
-data:
-  target:
-    - "#security:example.org"
-  message: "Motion detected at the gate"
-```
-
-### Markdown + mention
-
-```yaml
-action: matrix_extended.send
-data:
-  route: security
-  format: markdown
-  message: "**Alarm:** garage door is open"
-  mention_users:
-    - "@alex:example.org"
-```
-
-### Camera snapshot with safe reaction action
-
-```yaml
-action: matrix_extended.send
-data:
-  route: security
-  message: "Someone is at the gate"
-  media:
-    - entity_id: camera.gate
-      caption: "Latest frame"
-  actions:
-    - reaction: "💡"
-      service: light.turn_on
-      target:
-        entity_id: light.gate
-      expires_in: 300
-      max_uses: 1
-      allowed_users:
-        - "@alex:example.org"
-```
-
-A reaction can invoke only the exact Home Assistant service pre-registered on that outgoing Matrix event. Matrix text, YAML and Jinja are never interpreted as arbitrary service calls.
-
-### Update one Matrix event instead of sending many
-
-```yaml
-action: matrix_extended.send
-data:
-  route: system
-  notification_key: "download.movie.123"
-  message: "Download — 64%"
-```
-
-Later calls using the same key edit the original Matrix event with `m.replace`.
-
-### Send location
-
-From explicit coordinates:
-
-```yaml
-action: matrix_extended.send_location
-data:
-  target:
-    - "#family:example.org"
-  latitude: 52.3676
-  longitude: 4.9041
-  description: "Current position"
-```
-
-Or from an entity exposing `latitude` and `longitude`:
-
-```yaml
-action: matrix_extended.send_location
-data:
-  target:
-    - "#family:example.org"
-  entity_id: person.alex
-```
-
-### Send a native voice attachment
-
-```yaml
-action: matrix_extended.send
-data:
-  target:
-    - "#family:example.org"
-  media:
-    - path: /config/media/voice.ogg
-      type: audio
-      voice: true
-```
-
-### Home Assistant TTS → Matrix voice
-
-```yaml
-action: matrix_extended.send_voice
-data:
-  target:
-    - "#security:example.org"
-  text: "Warning. The garage door is still open."
-  language: en-US
-```
-
-`tts_engine` and provider-specific `tts_options` are optional.
-
-### Matrix voice → Home Assistant STT
-
-Use `local_path` from an incoming `matrix_extended_media` event:
-
-```yaml
-action: matrix_extended.transcribe_voice
-response_variable: voice_result
-data:
-  path: "{{ trigger.event.data.local_path }}"
-  stt_entity: stt.whisper
-  language: en
-```
-
-If the STT provider cannot accept the original OGG/Opus stream, Matrix Extended uses Home Assistant FFmpeg to normalize it to a supported WAV/PCM format.
-
-### Voice transcript → Assist
-
-Assist execution is deliberately **off by default**. Enable it explicitly:
+Copy `custom_components/matrix_extended` into `/config/custom_components/matrix_extended`, restart Home Assistant and add the integration from **Settings → Devices & services**.
 
-```yaml
-action: matrix_extended.transcribe_voice
-response_variable: voice_result
-data:
-  path: "{{ trigger.event.data.local_path }}"
-  stt_entity: stt.whisper
-  assist: true
-```
+The Matrix password is used only for the first login. Matrix Extended stores the resulting access token and E2EE crypto state for subsequent sessions.
 
-Use Matrix incoming user/room allowlists for any automation that can reach Assist.
+## Graphical setup
 
-## Services
+Initial setup asks for homeserver, Matrix user ID, password, default room and security defaults. After setup open **Settings → Devices & services → Matrix Extended → Configure**. The options are split into clear graphical sections:
 
-| Service | Purpose |
-| --- | --- |
-| `matrix_extended.send` | Text, Markdown/HTML, mentions, media, threads, routes and reaction actions |
-| `matrix_extended.send_voice` | Home Assistant TTS → native Matrix voice |
-| `matrix_extended.transcribe_voice` | Downloaded Matrix voice → Home Assistant STT; optional explicit Assist |
-| `matrix_extended.send_location` | Matrix `m.location` from coordinates or HA entity |
-| `matrix_extended.reply` | Rich reply to an event |
-| `matrix_extended.react` | Emoji reaction |
-| `matrix_extended.edit` | `m.replace` edit |
-| `matrix_extended.redact` | Redact an event |
-| `matrix_extended.purge_media` | Purge downloaded incoming media and return removed file/byte counts |
+- **General** — default room, TLS validation and E2EE requirement.
+- **Incoming & security** — enable incoming events and manage allowed Matrix users/rooms.
+- **Incoming media** — download toggle, retention and storage limit.
+- **Notification routes** — add, edit and delete named room groups without JSON.
 
-Service fields and selectors are documented directly in the Home Assistant action editor through `services.yaml`.
+See [Settings guide](docs/SETTINGS.md) for details and security behavior.
 
-## Incoming events
+## Actions and automations
 
-| Event | Meaning |
-| --- | --- |
-| `matrix_extended_message` | Incoming text-like message |
-| `matrix_extended_reply` | Incoming reply |
-| `matrix_extended_reaction` | Incoming reaction and reaction-action result |
-| `matrix_extended_media` | Incoming image/video/audio/file; voice messages are marked |
-| `matrix_extended_location` | Incoming Matrix location |
-| `matrix_extended_edit` | Incoming edit |
-| `matrix_extended_redaction` | Incoming redaction |
-| `matrix_extended_delivery` | Outgoing delivery lifecycle: `sent`, `queued`, `failed`, `dropped` |
+Home Assistant's graphical action editor is the preferred way to build automations. YAML remains fully supported and can always be selected with **Edit in YAML**.
 
-Common incoming metadata includes account, room, sender, event ID, timestamp, encryption state and relation data. Rich payloads add room name/alias, sender display name, mentions and media metadata when available.
+Core actions include `matrix_extended.send`, `send_media`, `send_voice`, `transcribe_voice`, `send_location`, `reply`, `react`, `edit`, `redact` and `purge_media`.
 
-## Delivery responses and offline queue
+See [Actions and events](docs/ACTIONS.md) for every action, incoming event, response field and diagnostic entity. See [YAML examples](docs/EXAMPLES.md) for ready-to-copy automations.
 
-`matrix_extended.send` supports response data containing a stable `delivery_id`, delivery `status` and Matrix event records. When Synapse is unavailable, supported sends can be persisted to the outbox and delivered after reconnect instead of blocking Home Assistant.
+### Media Browser
 
-Delivery lifecycle is also emitted on `matrix_extended_delivery`, making it usable from event automations independently of a service response.
+`matrix_extended.send_media` opens the native Home Assistant Media Browser and does not restrict provider-specific media classes. Frigate clips/snapshots, Local Media and other Media Source providers can therefore be selected graphically when the provider exposes them to Home Assistant.
 
-## Routing and room entities
+For cameras, URLs, local paths, multiple attachments, thumbnails or explicit media metadata, use the structured **Advanced media** field in `matrix_extended.send` or YAML.
 
-After Matrix sync the integration exposes:
+## Incoming security
 
-- one general `notify` entity for the current default room;
-- one room-specific `notify` entity per joined room;
-- a **Default room** select entity;
-- diagnostic connection/user/device/room/last-send/last-receive/error entities.
+Incoming processing is fail-closed. When incoming events are enabled, **both** the sender and room must be present in the configured allowlists. Own transaction echoes are ignored. Do not treat Matrix chat text as an unrestricted remote command channel.
 
-Named routing profiles keep automations independent from raw Matrix room IDs:
+Reaction actions are explicitly attached to an outgoing Matrix event and can use expiry, usage limits and allowed-user restrictions. Matrix text, YAML and Jinja received from chat are not executed as arbitrary Home Assistant actions.
 
-```yaml
-action: matrix_extended.send
-data:
-  route: security
-  message: "Alarm triggered"
-```
+## Diagnostics
 
-## Security model
+The integration device exposes connection status, default-room encryption, last successful send, last error and the last incoming event. The last incoming event state is the event kind (`message`, `reaction`, `media`, etc.) with useful Matrix metadata in its attributes.
 
-Matrix Extended intentionally keeps automation power explicit:
+## Verification
 
-- `Require E2EE` blocks outgoing sends to plaintext rooms when enabled.
-- Incoming processing is constrained by both user and room allowlists.
-- Matrix message text never becomes executable YAML, Jinja or an arbitrary HA service.
-- Reaction actions exist only when Home Assistant attached them to a specific outgoing event.
-- Reaction actions can expire, be limited to specific users and have a maximum use count.
-- Voice transcription can read only files from that Matrix account's incoming-media directory.
-- Voice → Assist is explicit opt-in.
-- Media purge/retention operates only inside integration-owned incoming directories.
+Release packaging is gated by unit/regression tests plus a disposable real stack using Home Assistant 2026.9.2, Synapse 1.160.0 and Element Web 1.12.26. The CI verifies E2EE installation, encrypted send/decrypt, notify entities, media action execution, incoming events, outage/reconnect, restart and package integrity.
 
-### Upstream Matrix limitations
-
-Matrix Extended intentionally stays on `matrix-nio==0.26.0` for this release. That version does not provide cross-signing support. It also sends `m.reaction` unencrypted, so reaction emoji and the target relation are visible to the homeserver even when the room is E2EE. Do not use reactions for secrets, PINs or passwords.
-
-## Testing and release gate
-
-Every release candidate must pass:
-
-1. source validation, compile checks and regression tests;
-2. a disposable real stack with Home Assistant 2026.9.2, Synapse 1.160.0 and Element Web 1.12.26;
-3. real Element E2EE decryption and rich location/voice rendering;
-4. Synapse outage → persistent queue → automatic recovery;
-5. Home Assistant restart and persisted reaction-action behavior;
-6. clean runtime logs/background tasks;
-7. install ZIP creation and byte-for-byte verification against the component tree, with SHA-256 checksum.
-
-See [`docs/TESTING.md`](docs/TESTING.md) for the test harness.
-
-## Upgrade from 0.4.x
-
-Existing config entries, access tokens, crypto stores, routing profiles and notification mappings are retained. New 0.5 options use safe defaults. Existing `matrix_extended.send` YAML keeps its original plain-text behavior unless the new fields are used.
+Contributor details are in [Testing](docs/TESTING.md). Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT. See [LICENSE](LICENSE).

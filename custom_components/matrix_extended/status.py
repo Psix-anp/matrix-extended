@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from typing import Any
 
 
 class MatrixRuntimeStatus:
@@ -14,6 +15,8 @@ class MatrixRuntimeStatus:
         "default_room_encrypted",
         "last_send",
         "last_receive",
+        "last_receive_type",
+        "last_receive_payload",
         "last_error",
         "_listeners",
     )
@@ -23,6 +26,8 @@ class MatrixRuntimeStatus:
         self.default_room_encrypted: bool | None = None
         self.last_send: datetime | None = None
         self.last_receive: datetime | None = None
+        self.last_receive_type: str | None = None
+        self.last_receive_payload: dict[str, Any] = {}
         self.last_error: str | None = None
         self._listeners: set[Callable[[], None]] = set()
 
@@ -54,10 +59,18 @@ class MatrixRuntimeStatus:
         self.last_error = None
         self._notify()
 
-    def mark_receive(self) -> None:
-        """Record an authorized incoming Matrix event."""
+    def mark_receive(
+        self,
+        event_type: str | None = None,
+        payload: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Record an authorized incoming Matrix event and its useful metadata."""
         self.connected = True
         self.last_receive = datetime.now(UTC)
+        if event_type is not None:
+            self.last_receive_type = str(event_type)
+        if payload is not None:
+            self.last_receive_payload = dict(payload)
         self.last_error = None
         self._notify()
 

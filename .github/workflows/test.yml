@@ -72,7 +72,7 @@ jobs:
           PY
       - name: Install Chromium UI test dependencies
         run: |
-          python -m pip install playwright==1.62.0
+          python -m pip install playwright==1.62.0 "matrix-nio[e2e]==0.26.0"
           python -m playwright install --with-deps chromium
       - name: Start Element Web 1.12.26
         run: docker compose -f compose.test.yml up -d --no-deps element
@@ -86,10 +86,24 @@ jobs:
         run: docker compose -f compose.test.yml up -d homeassistant
       - name: Wait for Home Assistant onboarding API
         run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
+      - name: Validate Matrix services metadata with Home Assistant parser
+        run: |
+          docker compose -f compose.test.yml exec -T homeassistant python - <<'PY'
+          from homeassistant.helpers.service import _SERVICES_SCHEMA
+          from homeassistant.util.yaml import load_yaml_dict
+
+          path = "/config/custom_components/matrix_extended/services.yaml"
+          data = load_yaml_dict(path)
+          parsed = _SERVICES_SCHEMA(data)
+          assert "transcribe_voice" in parsed
+          print("Matrix services.yaml validated by Home Assistant")
+          PY
       - name: Configure Matrix Extended and verify encrypted send + reload
         run: python ci/scripts/ha-e2e.py setup-send-reload
       - name: Verify Element decrypts text and renders rich Matrix events
         run: python ci/scripts/element-e2e.py verify-message-rich
+      - name: Verify encrypted safe commands and automatic voice Assist
+        run: python ci/scripts/matrix-command-e2e.py
       - name: Arm persistent outbox verification
         run: python ci/scripts/ha-reconnect.py arm-outbox
       - name: Stop Synapse while Home Assistant stays running
@@ -125,8 +139,17 @@ jobs:
       - name: Stack diagnostics on failure
         if: failure()
         run: |
-          docker compose -f compose.test.yml ps
-          docker compose -f compose.test.yml logs --no-color --tail=300 homeassistant synapse element
+          mkdir -p .ci
+          docker compose -f compose.test.yml ps | tee .ci/failure-stack.log
+          docker compose -f compose.test.yml logs --no-color --tail=500 homeassistant synapse element | tee -a .ci/failure-stack.log
+      - name: Upload stack diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-real-stack-failure-diagnostics
+          path: .ci/failure-stack.log
+          if-no-files-found: error
+          retention-days: 14
       - name: Stop real stack
         if: always()
         run: docker compose -f compose.test.yml down -v --remove-orphans

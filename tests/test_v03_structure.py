@@ -9,7 +9,7 @@ COMP = ROOT / "custom_components" / "matrix_extended"
 
 def test_manifest_bumped_to_v03() -> None:
     manifest = json.loads((COMP / "manifest.json").read_text())
-    assert manifest["version"] == "0.5.0"
+    assert manifest["version"] == "0.5.1"
 
 
 def test_v03_services_are_declared() -> None:

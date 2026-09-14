@@ -1,7 +1,7 @@
 {
   "domain": "matrix_extended",
   "name": "Matrix Extended",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "documentation": "https://github.com/Psix-anp/matrix-extended",
   "issue_tracker": "https://github.com/Psix-anp/matrix-extended/issues",
   "codeowners": [
@@ -23,7 +23,7 @@
     "conversation"
   ],
   "requirements": [
-    "matrix-nio==0.26.0",
+    "matrix-nio[e2e]==0.26.0",
     "atomicwrites~=1.4",
     "cachetools>=5.3",
     "peewee~=3.14",

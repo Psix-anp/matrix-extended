@@ -20,6 +20,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.storage import Store
 
 from .actions import ReactionActionRegistry
+from .commands import CommandRegistry
 from .client import (
     MatrixAccount,
     MatrixAuthenticationError,
@@ -95,6 +96,7 @@ from .routing import normalize_routing_profiles, resolve_targets
 from .receiver import MatrixInboundReceiver
 from .status import MatrixRuntimeStatus
 from .v05_services import install_v05_services
+from .v051_services import install_v051_services
 
 PLATFORMS = [Platform.NOTIFY, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SELECT]
 _OUTBOX_RETRY_SECONDS = 5.0
@@ -320,6 +322,7 @@ def _fire_delivery(
     error: str | None = None,
 ) -> dict[str, Any]:
     payload = _delivery_payload(account, delivery_id, status, events, error)
+    account.status.mark_delivery(status)
     hass.bus.async_fire(EVENT_DELIVERY, payload)
     return payload
 
@@ -689,6 +692,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     register(SERVICE_EDIT, _async_handle_edit, _EDIT_SCHEMA)
     register(SERVICE_REDACT, _async_handle_redact, _REDACT_SCHEMA)
     install_v05_services(hass)
+    install_v051_services(hass)
     return True
 
 
@@ -758,6 +762,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     stored_actions = await action_store.async_load() or {}
     action_registry = ReactionActionRegistry(stored_actions, store=action_store)
+    command_store: Store[dict[str, Any]] = Store(
+        hass, 1, f"{DOMAIN}.commands_{entry.entry_id}", private=True
+    )
+    stored_commands = await command_store.async_load() or {}
+    command_registry = CommandRegistry(stored_commands, store=command_store)
     outbox_store: Store[dict[str, Any]] = Store(
         hass, 1, f"{DOMAIN}.outbox_{entry.entry_id}", private=True
     )
@@ -774,6 +783,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         homeserver=data[CONF_HOMESERVER],
         status=status,
         action_registry=action_registry,
+        command_registry=command_registry,
         outbox=outbox,
         incoming_policy=IncomingPolicy(
             allowed_users=_entry_value(entry, CONF_ALLOWED_USERS, [data[CONF_USER_ID]]),

@@ -543,3 +543,96 @@ purge_media:
       selector:
         config_entry:
           integration: matrix_extended
+
+register_command:
+  name: Register safe Matrix command
+  description: Register or replace one exact Matrix command. Incoming Matrix text can select only this stored command and cannot override its Home Assistant service, target, data, or camera entity.
+  fields:
+    account:
+      name: Account
+      selector:
+        config_entry:
+          integration: matrix_extended
+    id:
+      name: Command ID
+      required: true
+      selector:
+        text: {}
+    trigger:
+      name: Trigger
+      description: Exact normalized phrase without the leading exclamation mark, for example garage open.
+      required: true
+      selector:
+        text: {}
+    aliases:
+      name: Aliases
+      selector:
+        text:
+          multiple: true
+    description:
+      name: Description
+      selector:
+        text: {}
+    allowed_users:
+      name: Allowed users
+      description: Optional users that further narrow the account allowlist.
+      selector:
+        text:
+          multiple: true
+    allowed_rooms:
+      name: Allowed rooms
+      description: Optional rooms that further narrow the account allowlist.
+      selector:
+        text:
+          multiple: true
+    progress:
+      name: Progress reply
+      default: true
+      selector:
+        boolean: {}
+    handler_type:
+      name: Handler type
+      required: true
+      selector:
+        select:
+          options: [service, camera_snapshot]
+    service:
+      name: Home Assistant service
+      description: Required only for service handlers.
+      selector:
+        text: {}
+    target:
+      name: Stored service target
+      description: Never derived from incoming Matrix text.
+      selector:
+        object: {}
+    data:
+      name: Stored service data
+      description: Never derived from incoming Matrix text.
+      selector:
+        object: {}
+    entity_id:
+      name: Camera entity
+      description: Required only for camera_snapshot and must be camera.*.
+      selector:
+        entity:
+          domain: camera
+    caption:
+      name: Camera caption
+      selector:
+        text: {}
+
+unregister_command:
+  name: Unregister safe Matrix command
+  description: Remove one registered Matrix command by stable ID.
+  fields:
+    account:
+      name: Account
+      selector:
+        config_entry:
+          integration: matrix_extended
+    id:
+      name: Command ID
+      required: true
+      selector:
+        text: {}

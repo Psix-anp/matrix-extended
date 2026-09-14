@@ -32,6 +32,14 @@ from .const import (
     CONF_STORE_KEY,
     CONF_USER_ID,
     CONF_VERIFY_SSL,
+    CONF_VOICE_ASSIST_ALLOWED_ROOMS,
+    CONF_VOICE_ASSIST_ALLOWED_USERS,
+    CONF_VOICE_ASSIST_CONVERSATION_AGENT,
+    CONF_VOICE_ASSIST_ENABLED,
+    CONF_VOICE_ASSIST_LANGUAGE,
+    CONF_VOICE_ASSIST_REPLY_MODE,
+    CONF_VOICE_ASSIST_STT_ENTITY,
+    CONF_VOICE_ASSIST_TTS_ENTITY,
     DEFAULT_INCOMING_MEDIA_MAX_MB,
     DEFAULT_INCOMING_MEDIA_RETENTION_DAYS,
     DOMAIN,
@@ -200,7 +208,7 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         """Show the settings menu."""
         return self.async_show_menu(
             step_id="init",
-            menu_options=["general", "incoming", "media", "routes"],
+            menu_options=["general", "incoming", "media", "voice_assist", "routes"],
         )
 
     async def async_step_general(
@@ -359,6 +367,99 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             }
         )
         return self.async_show_form(step_id="media", data_schema=schema)
+
+    async def async_step_voice_assist(
+        self, user_input: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Edit automatic Matrix voice-to-Assist settings."""
+        if user_input is not None:
+            return self._finish(
+                {
+                    CONF_VOICE_ASSIST_ENABLED: bool(
+                        user_input.get(CONF_VOICE_ASSIST_ENABLED, False)
+                    ),
+                    CONF_VOICE_ASSIST_STT_ENTITY: user_input.get(
+                        CONF_VOICE_ASSIST_STT_ENTITY
+                    ),
+                    CONF_VOICE_ASSIST_LANGUAGE: user_input.get(
+                        CONF_VOICE_ASSIST_LANGUAGE
+                    ),
+                    CONF_VOICE_ASSIST_CONVERSATION_AGENT: user_input.get(
+                        CONF_VOICE_ASSIST_CONVERSATION_AGENT
+                    ),
+                    CONF_VOICE_ASSIST_REPLY_MODE: user_input.get(
+                        CONF_VOICE_ASSIST_REPLY_MODE, "text"
+                    ),
+                    CONF_VOICE_ASSIST_TTS_ENTITY: user_input.get(
+                        CONF_VOICE_ASSIST_TTS_ENTITY
+                    ),
+                    CONF_VOICE_ASSIST_ALLOWED_USERS: _list(
+                        user_input.get(CONF_VOICE_ASSIST_ALLOWED_USERS, [])
+                    ),
+                    CONF_VOICE_ASSIST_ALLOWED_ROOMS: _list(
+                        user_input.get(CONF_VOICE_ASSIST_ALLOWED_ROOMS, [])
+                    ),
+                }
+            )
+
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_VOICE_ASSIST_ENABLED,
+                    default=self._value(CONF_VOICE_ASSIST_ENABLED, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_STT_ENTITY,
+                    description={
+                        "suggested_value": self._value(CONF_VOICE_ASSIST_STT_ENTITY)
+                    },
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="stt")
+                ),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_LANGUAGE,
+                    description={
+                        "suggested_value": self._value(CONF_VOICE_ASSIST_LANGUAGE)
+                    },
+                ): selector.TextSelector(selector.TextSelectorConfig()),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_CONVERSATION_AGENT,
+                    description={
+                        "suggested_value": self._value(
+                            CONF_VOICE_ASSIST_CONVERSATION_AGENT
+                        )
+                    },
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="conversation")
+                ),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_REPLY_MODE,
+                    default=self._value(CONF_VOICE_ASSIST_REPLY_MODE, "text"),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=["text", "voice", "both"],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_TTS_ENTITY,
+                    description={
+                        "suggested_value": self._value(CONF_VOICE_ASSIST_TTS_ENTITY)
+                    },
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="tts")
+                ),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_ALLOWED_USERS,
+                    default=self._value(CONF_VOICE_ASSIST_ALLOWED_USERS, []),
+                ): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
+                vol.Optional(
+                    CONF_VOICE_ASSIST_ALLOWED_ROOMS,
+                    default=self._value(CONF_VOICE_ASSIST_ALLOWED_ROOMS, []),
+                ): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
+            }
+        )
+        return self.async_show_form(step_id="voice_assist", data_schema=schema)
 
     async def async_step_routes(
         self, user_input: dict[str, Any] | None = None

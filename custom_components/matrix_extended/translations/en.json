@@ -35,7 +35,8 @@
   },
   "entity": {
     "binary_sensor": {
-      "connected": {"name": "Connection"}
+      "connected": {"name": "Connection"},
+      "e2ee_ready": {"name": "E2EE ready"}
     },
     "sensor": {
       "user_id": {"name": "User ID"},
@@ -65,7 +66,10 @@
           "edit": "Edit",
           "redaction": "Redaction"
         }
-      }
+      },
+      "outbox_size": {"name": "Outbox size"},
+      "last_delivery_status": {"name": "Last delivery status"},
+      "last_command": {"name": "Last command"}
     },
     "select": {
       "default_room": {"name": "Default room"}
@@ -80,6 +84,7 @@
           "general": "General",
           "incoming": "Incoming & security",
           "media": "Incoming media",
+          "voice_assist": "Voice Assist",
           "routes": "Notification routes"
         }
       },
@@ -121,6 +126,24 @@
         "data_description": {
           "incoming_media_retention_days": "0 disables age-based cleanup. The storage limit still applies.",
           "incoming_media_max_mb": "Maximum total size of the incoming-media directory."
+        }
+      },
+      "voice_assist": {
+        "title": "Voice Assist",
+        "description": "Optional automatic pipeline for native Matrix voice messages: decrypt/download, STT, Home Assistant Conversation/Assist, then reply in Matrix. Voice-specific allowlists only narrow the normal incoming allowlists.",
+        "data": {
+          "voice_assist_enabled": "Enable automatic Voice Assist",
+          "voice_assist_stt_entity": "STT entity",
+          "voice_assist_language": "Language",
+          "voice_assist_conversation_agent": "Conversation agent",
+          "voice_assist_reply_mode": "Reply mode",
+          "voice_assist_tts_entity": "TTS entity",
+          "voice_assist_allowed_users": "Allowed users",
+          "voice_assist_allowed_rooms": "Allowed rooms"
+        },
+        "data_description": {
+          "voice_assist_allowed_users": "Optional additional restriction. Leave empty to use the normal incoming user allowlist.",
+          "voice_assist_allowed_rooms": "Optional additional restriction. Leave empty to use the normal incoming room allowlist."
         }
       },
       "routes": {
@@ -256,6 +279,14 @@
       "name": "Purge downloaded Matrix media",
       "description": "Delete downloaded incoming Matrix media for one account and return removed file/byte counts.",
       "fields": {"account": {"name": "Account"}}
+    },
+    "register_command": {
+      "name": "Register safe Matrix command",
+      "description": "Register or replace one exact allowlisted Matrix command. Incoming Matrix text cannot override its stored Home Assistant action, target or data."
+    },
+    "unregister_command": {
+      "name": "Unregister safe Matrix command",
+      "description": "Remove one registered safe Matrix command by stable ID."
     }
   },
   "selector": {

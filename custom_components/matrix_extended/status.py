@@ -18,6 +18,8 @@ class MatrixRuntimeStatus:
         "last_receive_type",
         "last_receive_payload",
         "last_error",
+        "last_delivery_status",
+        "last_command",
         "_listeners",
     )
 
@@ -29,6 +31,8 @@ class MatrixRuntimeStatus:
         self.last_receive_type: str | None = None
         self.last_receive_payload: dict[str, Any] = {}
         self.last_error: str | None = None
+        self.last_delivery_status: str | None = None
+        self.last_command: dict[str, Any] | None = None
         self._listeners: set[Callable[[], None]] = set()
 
     def add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
@@ -80,6 +84,27 @@ class MatrixRuntimeStatus:
         """Record a connection/send error."""
         self.connected = connected
         self.last_error = str(error)
+        self._notify()
+
+    def mark_delivery(self, status: str) -> None:
+        """Record the latest delivery lifecycle state."""
+        self.last_delivery_status = str(status)
+        self._notify()
+
+    def mark_command(self, payload: Mapping[str, Any]) -> None:
+        """Record a bounded safe-command summary for diagnostics."""
+        self.last_command = {
+            "command_id": str(payload.get("command_id") or ""),
+            "sender": str(payload.get("sender") or ""),
+            "room_id": str(payload.get("room_id") or ""),
+            "handler_type": str(payload.get("handler_type") or ""),
+            "status": str(payload.get("status") or ""),
+            "error": (
+                None
+                if payload.get("error") is None
+                else str(payload.get("error"))[:255]
+            ),
+        }
         self._notify()
 
     def set_default_room_encryption(self, encrypted: bool | None) -> None:

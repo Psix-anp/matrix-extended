@@ -250,6 +250,7 @@ class VoiceAssistCoordinator:
                 path=str(media_payload["local_path"]),
                 stt_entity=self.settings.stt_entity,
                 language=self.settings.language,
+                content_type=media_payload.get("content_type"),
                 assist=True,
                 conversation_agent=self.settings.conversation_agent,
             )

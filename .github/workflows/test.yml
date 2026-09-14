@@ -30,9 +30,40 @@ jobs:
       - name: Run regression suite
         run: pytest -q
 
+  manifest_runtime:
+    name: Clean manifest runtime (Python 3.14 + E2EE)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install only integration manifest requirements
+        run: |
+          python -m venv .ci/manifest-venv
+          .ci/manifest-venv/bin/python -m pip install --upgrade pip
+          .ci/manifest-venv/bin/python - <<'PY' > .ci/manifest-requirements.txt
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path("custom_components/matrix_extended/manifest.json").read_text())
+          print("\n".join(manifest["requirements"]))
+          PY
+          .ci/manifest-venv/bin/python -m pip install -r .ci/manifest-requirements.txt
+      - name: Verify matrix-nio E2EE is available from manifest alone
+        run: |
+          .ci/manifest-venv/bin/python - <<'PY'
+          from nio import AsyncClientConfig
+          config = AsyncClientConfig(encryption_enabled=True, store_sync_tokens=True, max_limit_exceeded=0, max_timeouts=0)
+          assert config.encryption_enabled is True
+          print("matrix-nio E2EE dependencies are available from manifest requirements")
+          PY
+
   real_stack:
     name: Real HA 2026.9.2 + Synapse 1.160.0 + Element 1.12.26
-    needs: fast
+    needs:
+      - fast
+      - manifest_runtime
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -86,6 +117,16 @@ jobs:
         run: docker compose -f compose.test.yml up -d homeassistant
       - name: Wait for Home Assistant onboarding API
         run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
+      - name: Validate Matrix services metadata with Home Assistant parser
+        run: |
+          docker compose -f compose.test.yml exec -T homeassistant python - <<'PY'
+          from homeassistant.helpers.service import _SERVICES_SCHEMA
+          from homeassistant.util.yaml import load_yaml_dict
+          path = "/config/custom_components/matrix_extended/services.yaml"
+          parsed = _SERVICES_SCHEMA(load_yaml_dict(path))
+          assert "transcribe_voice" in parsed
+          print("Matrix services.yaml validated by Home Assistant")
+          PY
       - name: Configure Matrix Extended and verify encrypted send + reload
         run: python ci/scripts/ha-e2e.py setup-send-reload
       - name: Verify Element decrypts text and renders rich Matrix events
@@ -135,6 +176,7 @@ jobs:
     name: Verified install ZIP
     needs:
       - fast
+      - manifest_runtime
       - real_stack
     runs-on: ubuntu-latest
     timeout-minutes: 10

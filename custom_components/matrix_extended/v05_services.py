@@ -28,6 +28,7 @@ from .const import (
 )
 from .content import build_location_content, build_media_content
 from .delivery import delivery_event_record, delivery_lifecycle_payload
+from .media_picker import install_media_picker_service
 from .outbox import matrix_transaction_id
 from .retention import purge_media_directory
 from .routing import resolve_targets
@@ -323,3 +324,4 @@ def install_v05_services(hass: HomeAssistant) -> None:
     register(SERVICE_SEND_VOICE, _async_send_voice, _VOICE_SCHEMA)
     register(SERVICE_TRANSCRIBE_VOICE, async_transcribe_voice, TRANSCRIBE_SCHEMA)
     register(SERVICE_PURGE_MEDIA, _async_purge_media, _PURGE_SCHEMA)
+    install_media_picker_service(hass)

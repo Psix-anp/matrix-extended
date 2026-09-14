@@ -56,6 +56,18 @@ def test_reusable_core_keeps_path_security_and_stt_fallback() -> None:
         assert marker in source
 
 
+def test_native_wav_content_type_uses_actual_pcm_header_metadata() -> None:
+    source = _source()
+    for marker in (
+        "content_type: str | None = None",
+        "_WAV_CONTENT_TYPES",
+        "_wav_metadata",
+        "wave.open",
+        "media_type in _WAV_CONTENT_TYPES",
+    ):
+        assert marker in source
+
+
 def test_assist_remains_explicit_and_conversation_context_is_forwarded() -> None:
     source = _source()
     assert "if assist:" in source

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -22,6 +21,7 @@ from .const import (
     SERVICE_SEND,
     SERVICE_SEND_MEDIA,
 )
+from .media_picker_value import media_picker_to_media_item
 
 MEDIA_PICKER_FIELD = "media_picker"
 
@@ -46,27 +46,6 @@ SEND_MEDIA_SCHEMA = vol.Schema(
         vol.Optional(ATTR_THREAD_ID): cv.string,
     }
 )
-
-
-def media_picker_to_media_item(
-    value: Mapping[str, Any],
-    *,
-    caption: str | None = None,
-    voice: bool = False,
-) -> dict[str, Any]:
-    """Convert native HA media-selector output to the existing media resolver shape."""
-    media_content_id = value.get("media_content_id")
-    if not isinstance(media_content_id, str) or not media_content_id.strip():
-        raise ValueError("media picker result has no media_content_id")
-    item: dict[str, Any] = {
-        "media_source": media_content_id.strip(),
-        "type": "auto",
-    }
-    if caption:
-        item["caption"] = caption
-    if voice:
-        item["voice"] = True
-    return item
 
 
 def _select_account(hass: HomeAssistant, account_id: str | None) -> MatrixAccount:

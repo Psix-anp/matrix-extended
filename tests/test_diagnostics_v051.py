@@ -66,9 +66,7 @@ def test_delivery_and_command_paths_update_runtime_status() -> None:
     receiver = (COMP / "receiver.py").read_text()
     assert "account.status.mark_delivery(status)" in core
     assert "account.status.mark_delivery(status)" in v05
-    assert 'getattr(self._account.status, "mark_command", None)' in receiver
-    assert "callable(mark_command)" in receiver
-    assert "mark_command(" in receiver
+    assert "self._account.status.mark_command(" in receiver
 
 
 def test_diagnostic_translation_keys_exist() -> None:

@@ -1,7 +1,7 @@
 {
   "domain": "matrix_extended",
   "name": "Matrix Extended",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "documentation": "https://github.com/Psix-anp/matrix-extended",
   "issue_tracker": "https://github.com/Psix-anp/matrix-extended/issues",
   "codeowners": [

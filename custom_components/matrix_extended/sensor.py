@@ -33,6 +33,9 @@ async def async_setup_entry(
             MatrixLastSendSensor(config_entry, account),
             MatrixLastReceiveSensor(config_entry, account),
             MatrixLastErrorSensor(config_entry, account),
+            MatrixOutboxSizeSensor(config_entry, account),
+            MatrixLastDeliveryStatusSensor(config_entry, account),
+            MatrixLastCommandSensor(config_entry, account),
         ]
     )
 
@@ -148,3 +151,53 @@ class MatrixLastErrorSensor(MatrixDynamicSensor):
         if error is None or len(error) <= 255:
             return None
         return {"full_error": error}
+
+
+class MatrixOutboxSizeSensor(MatrixBaseSensor):
+    """Number of currently pending persistent outbound deliveries."""
+
+    _attr_translation_key = "outbox_size"
+
+    def __init__(self, entry: ConfigEntry, account: MatrixAccount) -> None:
+        super().__init__(entry, account, "outbox_size")
+
+    @property
+    def native_value(self) -> int:
+        outbox = getattr(self._account, "outbox", None)
+        return len(outbox.pending()) if outbox is not None else 0
+
+
+class MatrixLastDeliveryStatusSensor(MatrixDynamicSensor):
+    """Most recent Matrix delivery lifecycle status."""
+
+    _attr_translation_key = "last_delivery_status"
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, entry: ConfigEntry, account: MatrixAccount) -> None:
+        super().__init__(entry, account, "last_delivery_status")
+
+    @property
+    def native_value(self) -> str | None:
+        return self._account.status.last_delivery_status
+
+
+class MatrixLastCommandSensor(MatrixDynamicSensor):
+    """Most recent admitted safe command execution."""
+
+    _attr_translation_key = "last_command"
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, entry: ConfigEntry, account: MatrixAccount) -> None:
+        super().__init__(entry, account, "last_command")
+
+    @property
+    def native_value(self) -> str | None:
+        command = self._account.status.last_command
+        if not command:
+            return None
+        return str(command.get("command_id") or "") or None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        command = self._account.status.last_command
+        return dict(command) if command else None

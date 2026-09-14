@@ -193,6 +193,7 @@ def _fire_delivery(
         events=events or [],
         error=error,
     )
+    account.status.mark_delivery(status)
     hass.bus.async_fire(EVENT_DELIVERY, payload)
     return payload
 

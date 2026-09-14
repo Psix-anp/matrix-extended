@@ -17,18 +17,21 @@ def load_media_picker_value_module():
     return module
 
 
-def test_v052_manifest_version() -> None:
+def test_current_manifest_version() -> None:
     manifest = json.loads((COMP / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["version"] == "0.5.2"
+    assert manifest["version"] == "0.5.3"
 
 
-def test_send_media_exposes_native_home_assistant_media_picker() -> None:
+def test_send_media_exposes_unfiltered_home_assistant_media_picker() -> None:
     services = (COMP / "services.yaml").read_text(encoding="utf-8")
     assert "send_media:" in services
     assert "media_picker:" in services
     assert "accept:" in services
-    for media_type in ("image/*", "audio/*", "video/*"):
-        assert media_type in services
+    assert '- "*"' in services
+    # Do not use MIME-only filters here: providers such as Frigate browse with
+    # Home Assistant media types like `video` and `image`, not `video/*`.
+    assert "- image/*" not in services
+    assert "- video/*" not in services
 
 
 def test_media_picker_output_is_normalized_for_existing_media_resolver() -> None:
@@ -43,6 +46,23 @@ def test_media_picker_output_is_normalized_for_existing_media_resolver() -> None
     assert result == {
         "media_source": "media-source://media_source/local/photo.jpg",
         "type": "auto",
+    }
+
+
+def test_frigate_style_media_selector_value_is_not_rejected() -> None:
+    media_picker = load_media_picker_value_module()
+    result = media_picker.media_picker_to_media_item(
+        {
+            "media_content_id": "media-source://frigate/events/clip/example",
+            "media_content_type": "video",
+            "metadata": {"title": "Frigate clip", "media_class": "video"},
+        },
+        caption="Camera event",
+    )
+    assert result == {
+        "media_source": "media-source://frigate/events/clip/example",
+        "type": "auto",
+        "caption": "Camera event",
     }
 
 

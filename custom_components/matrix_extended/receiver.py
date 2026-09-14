@@ -168,6 +168,7 @@ class MatrixInboundReceiver:
                 }
             )
             event_type = EVENT_EDIT
+            event_kind = "edit"
         else:
             payload.update(
                 {
@@ -175,8 +176,10 @@ class MatrixInboundReceiver:
                     "formatted_body": getattr(event, "formatted_body", None),
                 }
             )
-            event_type = EVENT_REPLY if payload["reply_to"] else EVENT_MESSAGE
-        self._account.status.mark_receive()
+            is_reply = bool(payload["reply_to"])
+            event_type = EVENT_REPLY if is_reply else EVENT_MESSAGE
+            event_kind = "reply" if is_reply else "message"
+        self._account.status.mark_receive(event_kind, payload)
         self._hass.bus.async_fire(event_type, payload)
 
     async def async_handle_reaction(self, room: Any, event: Any) -> None:
@@ -214,7 +217,7 @@ class MatrixInboundReceiver:
             )
             payload["action_executed"] = True
             payload["action_service"] = action.service
-        self._account.status.mark_receive()
+        self._account.status.mark_receive("reaction", payload)
         self._hass.bus.async_fire(EVENT_REACTION, payload)
 
     async def async_handle_media(self, room: Any, event: Any) -> None:
@@ -280,7 +283,7 @@ class MatrixInboundReceiver:
                 payload["local_path"] = str(destination)
             except (MatrixExtendedError, OSError, ValueError, KeyError) as err:
                 payload["download_error"] = str(err)
-        self._account.status.mark_receive()
+        self._account.status.mark_receive("media", payload)
         self._hass.bus.async_fire(EVENT_MEDIA, payload)
 
     async def async_handle_location(self, room: Any, event: Any) -> None:
@@ -305,7 +308,7 @@ class MatrixInboundReceiver:
                 "description": str(content.get("body") or "Location"),
             }
         )
-        self._account.status.mark_receive()
+        self._account.status.mark_receive("location", payload)
         self._hass.bus.async_fire(EVENT_LOCATION, payload)
 
     async def async_handle_redaction(self, room: Any, event: Any) -> None:
@@ -319,7 +322,7 @@ class MatrixInboundReceiver:
                 "reason": getattr(event, "reason", None),
             }
         )
-        self._account.status.mark_receive()
+        self._account.status.mark_receive("redaction", payload)
         self._hass.bus.async_fire(EVENT_REDACTION, payload)
 
     async def async_listener_error(self, error: Exception) -> None:

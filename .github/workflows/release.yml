@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Validate version and changelog
+      - name: Validate version and bilingual changelog
         id: release
         shell: bash
         run: |
@@ -41,14 +41,15 @@ jobs:
           from pathlib import Path
 
           version = sys.argv[1]
-          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
           pattern = re.compile(
               rf"^## {re.escape(version)}(?:\s+—[^\n]*)?\n(?P<body>.*?)(?=^## |\Z)",
               re.MULTILINE | re.DOTALL,
           )
-          match = pattern.search(text)
-          if match is None or not match.group("body").strip():
-              raise SystemExit(f"CHANGELOG.md has no release notes for {version}")
+          for path in ("CHANGELOG.md", "CHANGELOG.ru.md"):
+              text = Path(path).read_text(encoding="utf-8")
+              match = pattern.search(text)
+              if match is None or not match.group("body").strip():
+                  raise SystemExit(f"{path} has no release notes for {version}")
           PY
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
@@ -63,10 +64,81 @@ jobs:
           tag="${{ steps.release.outputs.tag }}"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Release $tag already exists; nothing to publish"
+            echo "Release $tag already exists; checking whether Russian notes need backfill"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Compose bilingual release notes
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          TEST_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          version="${{ steps.release.outputs.version }}"
+          python - "$version" <<'PY'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          version = sys.argv[1]
+          pattern = re.compile(
+              rf"^## {re.escape(version)}(?:\s+—[^\n]*)?\n(?P<body>.*?)(?=^## |\Z)",
+              re.MULTILINE | re.DOTALL,
+          )
+
+          def extract(path: str) -> str:
+              text = Path(path).read_text(encoding="utf-8")
+              match = pattern.search(text)
+              if match is None:
+                  raise SystemExit(f"{path} has no release notes for {version}")
+              return match.group("body").strip()
+
+          en_body = extract("CHANGELOG.md")
+          ru_body = extract("CHANGELOG.ru.md")
+          run_url = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['TEST_RUN_ID']}"
+
+          notes = (
+              "## English\n\n"
+              f"{en_body}\n\n"
+              "## Русский\n\n"
+              f"{ru_body}\n\n"
+              "## Verification / Проверка\n\n"
+              "- Full Matrix Extended CI passed for this exact commit, including the real Home Assistant + Synapse + Element stack.\n"
+              "- Полный CI Matrix Extended прошёл на этом точном commit, включая реальный стек Home Assistant + Synapse + Element.\n"
+              "- Verified install ZIP gate passed before publication.\n"
+              "- Проверка install ZIP пройдена до публикации релиза.\n"
+              f"- Tested commit / Проверенный commit: `{os.environ['TESTED_SHA']}`\n"
+              f"- CI run / Прогон CI: {run_url}\n"
+          )
+          Path("dist/release-notes.md").write_text(notes, encoding="utf-8")
+          Path("dist/release-notes.ru.md").write_text(ru_body + "\n", encoding="utf-8")
+          PY
+
+      - name: Backfill Russian notes into an existing release
+        if: steps.existing.outputs.exists == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.release.outputs.tag }}"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' > dist/existing-release-notes.md
+          if grep -q '^## Русский$' dist/existing-release-notes.md; then
+            echo "Release $tag already contains Russian notes"
+            exit 0
+          fi
+          {
+            cat dist/existing-release-notes.md
+            printf '\n\n## Русский\n\n'
+            cat dist/release-notes.ru.md
+          } > dist/existing-release-notes.bilingual.md
+          gh release edit "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --notes-file dist/existing-release-notes.bilingual.md
 
       - name: Build and verify install archive
         if: steps.existing.outputs.exists != 'true'
@@ -76,40 +148,6 @@ jobs:
           version="${{ steps.release.outputs.version }}"
           python ci/scripts/build-release.py
           sha256sum "dist/matrix_extended-ha-install-v${version}.zip" > "dist/matrix_extended-ha-install-v${version}.zip.sha256"
-
-      - name: Compose release notes
-        if: steps.existing.outputs.exists != 'true'
-        env:
-          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
-          TEST_RUN_ID: ${{ github.event.workflow_run.id }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${{ steps.release.outputs.version }}"
-          python - "$version" <<'PY'
-          import os
-          import re
-          import sys
-          from pathlib import Path
-
-          version = sys.argv[1]
-          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
-          pattern = re.compile(
-              rf"^## {re.escape(version)}(?:\s+—[^\n]*)?\n(?P<body>.*?)(?=^## |\Z)",
-              re.MULTILINE | re.DOTALL,
-          )
-          body = pattern.search(text).group("body").strip()
-          run_url = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['TEST_RUN_ID']}"
-          notes = (
-              f"{body}\n\n"
-              "### Verification\n\n"
-              "- Full Matrix Extended CI passed for this exact commit, including the real Home Assistant + Synapse + Element stack.\n"
-              "- Verified install ZIP gate passed before publication.\n"
-              f"- Tested commit: `{os.environ['TESTED_SHA']}`\n"
-              f"- CI run: {run_url}\n"
-          )
-          Path("dist/release-notes.md").write_text(notes, encoding="utf-8")
-          PY
 
       - name: Publish GitHub Release
         if: steps.existing.outputs.exists != 'true'

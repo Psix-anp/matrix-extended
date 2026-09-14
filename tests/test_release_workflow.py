@@ -16,12 +16,17 @@ def test_release_workflow_contract() -> None:
     assert 'github.event.workflow_run.head_sha' in text
     assert 'custom_components/matrix_extended/manifest.json' in text
     assert 'CHANGELOG.md' in text
+    assert 'CHANGELOG.ru.md' in text
     assert 'ci/scripts/build-release.py' in text
     assert 'gh release create' in text
     assert 'matrix_extended-ha-install-v${version}.zip' in text
 
 
-def test_release_workflow_is_idempotent() -> None:
+def test_release_workflow_is_idempotent_and_can_backfill_russian_notes() -> None:
     text = Path('.github/workflows/release.yml').read_text(encoding='utf-8')
     assert 'gh release view' in text
-    assert 'already exists; nothing to publish' in text
+    assert "steps.existing.outputs.exists == 'true'" in text
+    assert 'Backfill Russian notes into an existing release' in text
+    assert "grep -q '^## Русский$'" in text
+    assert 'gh release edit' in text
+    assert "steps.existing.outputs.exists != 'true'" in text

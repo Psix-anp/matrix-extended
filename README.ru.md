@@ -60,7 +60,7 @@
 
 Основные действия: `matrix_extended.send`, `send_media`, `send_voice`, `transcribe_voice`, `send_location`, `reply`, `react`, `edit`, `redact` и `purge_media`.
 
-Полное описание: [Действия и события](docs/ACTIONS.ru.md). Готовые YAML-примеры: [Примеры](docs/EXAMPLES.md).
+Полное описание: [Действия и события](docs/ACTIONS.ru.md). Готовые YAML-примеры: [Примеры](docs/EXAMPLES.ru.md).
 
 ### Графический выбор медиа
 
@@ -86,7 +86,7 @@ Reaction actions привязываются только к конкретном
 
 Перед слиянием релиз проходит fast regression gate, чистую установку manifest-зависимостей на Python 3.14, реальный стек **Home Assistant 2026.9.2 + Synapse 1.160.0 + Element Web 1.12.26**, E2EE send/receive, notify entities, Media Browser send, outage/reconnect/outbox, restart Home Assistant, проверку фоновых задач и сборку проверенного install ZIP с SHA-256.
 
-Подробнее: [Тестирование](docs/TESTING.md).
+Подробнее: [Тестирование](docs/TESTING.ru.md).
 
 ## Лицензия
 

@@ -1,4 +1,6 @@
-# Practical examples / Практические примеры
+# Practical examples
+
+**English** · [Русский](EXAMPLES.ru.md)
 
 The service/action editor in Home Assistant contains field descriptions. These examples focus on complete automation patterns.
 
@@ -120,6 +122,6 @@ data:
     - "@seriy:example.org"
 ```
 
-## Карта в self-hosted Element
+## Maps in self-hosted Element
 
-`matrix_extended.send_location` отправляет стандартный `m.location`. Для самой отправки tile server не требуется. Чтобы Element Web нарисовал карту, настройте map/tile style на стороне Element/homeserver. CI использует OpenFreeMap только для disposable showcase-клиента.
+`matrix_extended.send_location` sends standard `m.location`. A tile server is not required to send the event itself. To render a map in Element Web, configure the map/tile style on the Element/homeserver side. CI uses OpenFreeMap only for the disposable showcase client.

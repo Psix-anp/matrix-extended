@@ -307,7 +307,27 @@ async def _exercise() -> None:
         )
         if not isinstance(login, LoginResponse):
             raise RuntimeError(f"Matrix E2E sender login failed: {login}")
-        await client.sync(timeout=3000, full_state=True)
+
+        # A brand-new matrix-nio device must publish its device/one-time keys
+        # before it tries to share a Megolm session. Its first sync only needs
+        # room state and device-list deltas; replaying the encrypted timeline
+        # would ask this new device to decrypt sessions for which it never had
+        # historical room keys.
+        if client.should_upload_keys:
+            await client.keys_upload()
+        initial_sync_filter = {
+            "room": {
+                "timeline": {"limit": 0},
+            }
+        }
+        await client.sync(
+            timeout=3000,
+            full_state=True,
+            sync_filter=initial_sync_filter,
+        )
+        if client.should_query_keys:
+            await client.keys_query()
+
         room = client.rooms.get(matrix_env["room_id"])
         if room is None or not room.encrypted:
             raise RuntimeError("Matrix E2E room is not loaded as encrypted")

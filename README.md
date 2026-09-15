@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="custom_components/matrix_extended/brand/icon.png" width="96" alt="Matrix Extended">
+  <img src="https://raw.githubusercontent.com/Psix-anp/matrix-extended/main/custom_components/matrix_extended/brand/icon.png" width="96" alt="Matrix Extended">
 </p>
 
 <h1 align="center">Matrix Extended for Home Assistant</h1>
@@ -9,7 +9,7 @@
 <p align="center"><a href="README.md"><strong>English</strong></a> · <a href="README.ru.md">Русский</a></p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.5.6-blue">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.5.7-blue">
   <img alt="Home Assistant" src="https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5">
   <img alt="Matrix" src="https://img.shields.io/badge/Matrix-E2EE-0DBD8B">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
@@ -22,7 +22,7 @@
 
 - End-to-end encrypted text and media with persistent crypto state.
 - Main `notify` entity plus room-specific `notify.*` entities.
-- Graphical Home Assistant action editor for account selection, media browsing, TTS/STT entities, languages, location entities, reaction actions and common message fields.
+- Graphical Home Assistant action editor for account selection, Media Browser, direct media URLs, camera/image entities, TTS/STT entities, languages, location entities, reaction actions and common message fields.
 - Home Assistant Media Browser support, including Local Media, Frigate and other Media Source providers.
 - Text, notice, emote, Markdown/HTML, mentions, threads, replies, reactions, edits and redactions.
 - Updateable notifications using `notification_key`.
@@ -111,11 +111,17 @@ Current actions:
 
 See [Actions and events](docs/ACTIONS.md) for fields, defaults, constraints and response data. See [Practical examples](docs/EXAMPLES.md) for ready-to-copy automations, including both safe-command handler modes and Matrix voice → STT/Assist.
 
-## Media Browser
+## Media Browser and direct media
 
-`matrix_extended.send_media` opens the native Home Assistant Media Browser and accepts provider-specific media classes. Frigate clips/snapshots, Local Media and other Media Source providers can therefore be selected graphically when the provider exposes them to Home Assistant.
+`matrix_extended.send_media` accepts exactly one graphical source:
 
-For cameras, URLs, local paths, multiple attachments, thumbnails or explicit media metadata, use the structured `media` field in `matrix_extended.send`.
+- **Choose media** — native Home Assistant Media Browser, including Frigate, Local Media and other Media Source providers;
+- **Media URL** — a direct HTTP/HTTPS image, video, audio file or downloadable media endpoint;
+- **Camera or image entity** — a `camera.*` or `image.*` entity; Matrix Extended fetches one current frame/image.
+
+For Home Assistant `image.*` Media Source items, Matrix Extended fetches a single native image instead of treating Home Assistant's `/api/image_proxy_stream/...` endpoint as a finite attachment.
+
+For local filesystem paths, multiple attachments, thumbnails or explicit low-level media metadata, use the structured `media` field in `matrix_extended.send`.
 
 ## Incoming security
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="custom_components/matrix_extended/brand/icon.png" width="96" alt="Matrix Extended">
+  <img src="https://raw.githubusercontent.com/Psix-anp/matrix-extended/main/custom_components/matrix_extended/brand/icon.png" width="96" alt="Matrix Extended">
 </p>
 
 <h1 align="center">Matrix Extended для Home Assistant</h1>
@@ -9,7 +9,7 @@
 <p align="center"><a href="README.md">English</a> · <a href="README.ru.md"><strong>Русский</strong></a></p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.5.6-blue">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.5.7-blue">
   <img alt="Home Assistant" src="https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5">
   <img alt="Matrix" src="https://img.shields.io/badge/Matrix-E2EE-0DBD8B">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
@@ -22,7 +22,7 @@
 
 - Сквозное шифрование текста и медиа с постоянным crypto-state.
 - Основная `notify`-сущность и отдельные `notify.*` сущности комнат.
-- Графический редактор действий Home Assistant: аккаунт, Media Browser, TTS/STT, язык, location, reaction actions и параметры сообщений.
+- Графический редактор действий Home Assistant: аккаунт, Media Browser, прямые URL медиа, camera/image сущности, TTS/STT, язык, location, reaction actions и параметры сообщений.
 - Home Assistant Media Browser: Local Media, Frigate и другие Media Source providers.
 - Текст, notice, emote, Markdown/HTML, mentions, threads, replies, reactions, edits и redactions.
 - Обновляемые уведомления через `notification_key`.
@@ -111,11 +111,17 @@ HACS устанавливает интеграцию в `/config/custom_componen
 
 Все поля, defaults, ограничения и response data: [Действия и события](docs/ACTIONS.ru.md). Готовые копируемые автоматизации, включая оба режима safe commands и Matrix voice → STT/Assist: [Практические примеры](docs/EXAMPLES.ru.md).
 
-## Media Browser
+## Media Browser и прямые медиа
 
-`matrix_extended.send_media` открывает штатный Home Assistant Media Browser и принимает provider-specific типы. Если Frigate, Local Media или другой Media Source provider показывает клип/снимок/файл в Home Assistant, его можно выбрать графически.
+`matrix_extended.send_media` принимает ровно один графический источник:
 
-Для камер, URL, локальных путей, нескольких вложений, thumbnail и ручных metadata используйте `media` в `matrix_extended.send`.
+- **Выбрать медиа** — штатный Home Assistant Media Browser, включая Frigate, Local Media и другие Media Source providers;
+- **URL медиа** — прямой HTTP/HTTPS URL картинки, видео, аудиофайла или скачиваемого media endpoint;
+- **Сущность камеры или изображения** — `camera.*` или `image.*`; Matrix Extended получает один актуальный кадр/изображение.
+
+Для `image.*`, выбранного через Home Assistant Media Source, Matrix Extended теперь получает одиночное изображение штатным API вместо попытки скачать поток `/api/image_proxy_stream/...` как конечный файл.
+
+Для локальных путей файловой системы, нескольких вложений, thumbnail и ручных низкоуровневых metadata используйте `media` в `matrix_extended.send`.
 
 ## Безопасность входящих событий
 

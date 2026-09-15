@@ -1,5 +1,22 @@
 # Журнал изменений
 
+## 0.5.7 — 2026-09-15
+
+Исправление Image Media Source и графическая отправка URL/entity.
+
+- Исправлен выбор Home Assistant `media-source://image/...`: теперь Matrix Extended получает один кадр штатным `image.async_get_image()`, а не пытается скачать поток `/api/image_proxy_stream/...` как конечный файл.
+- `matrix_extended.send_media` теперь принимает ровно один графический источник: Home Assistant Media Browser, прямой HTTP/HTTPS URL или `camera.*` / `image.*` entity.
+- В `send_media` добавлены выбор типа медиа и необязательное имя файла; для новых источников сохранены caption, native voice и thread.
+- Существующие автоматизации Media Browser и обработка Frigate MP4/VOD из v0.5.6 остаются совместимыми.
+- Верхняя картинка интеграции в README для HACS/embedded renderer переведена на абсолютный raw GitHub URL.
+- Миграция не требуется.
+
+### Проверка
+
+- TDD RED до реализации воспроизвёл недостающее поведение: 7 failed / 297 passed.
+- Финальный feature head прошёл regression suite, чистый Python 3.14 + E2EE, реальный Home Assistant 2026.9.2 + Synapse 1.160.0 + Element 1.12.26, реальный парсинг `services.yaml`, графический `send_media`, outage/recovery, перезапуск Home Assistant, проверку фоновых задач, verified install ZIP, Hassfest и HACS validation.
+- Финальный релиз v0.5.7 публикуется только после прохождения тем же набором обязательных gates точного release commit.
+
 ## 0.5.6 — 2026-09-15
 
 Усиление аутентификации Media Source, полная практическая документация действий и готовность к публичному HACS-распространению.

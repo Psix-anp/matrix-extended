@@ -1,19 +1,6 @@
 {
   "domain": "matrix_extended",
   "name": "Matrix Extended",
-  "version": "0.5.5",
-  "documentation": "https://github.com/Psix-anp/matrix-extended",
-  "issue_tracker": "https://github.com/Psix-anp/matrix-extended/issues",
-  "codeowners": [
-    "@Psix-anp"
-  ],
-  "config_flow": true,
-  "integration_type": "service",
-  "iot_class": "cloud_push",
-  "dependencies": [
-    "notify",
-    "ffmpeg"
-  ],
   "after_dependencies": [
     "camera",
     "image",
@@ -22,6 +9,18 @@
     "stt",
     "conversation"
   ],
+  "codeowners": [
+    "@Psix-anp"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "notify",
+    "ffmpeg"
+  ],
+  "documentation": "https://github.com/Psix-anp/matrix-extended",
+  "integration_type": "service",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/Psix-anp/matrix-extended/issues",
   "requirements": [
     "matrix-nio[e2e]==0.26.0",
     "atomicwrites~=1.4",
@@ -29,5 +28,6 @@
     "peewee~=3.14",
     "vodozemac>=0.9.0.post2",
     "Pillow==12.3.0"
-  ]
+  ],
+  "version": "0.5.5"
 }

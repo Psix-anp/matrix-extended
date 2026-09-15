@@ -31,6 +31,7 @@ _HLS_MIME_TYPES = {
     "application/x-mpegurl",
 }
 _IMAGE_MEDIA_SOURCE_PREFIX = "media-source://image/"
+_IMAGE_PROXY_STREAM_PREFIX = "/api/image_proxy_stream/"
 
 
 @dataclass(slots=True)
@@ -79,6 +80,19 @@ def _extension_for_mime(content_type: str) -> str:
 def _image_dimensions(data: bytes) -> tuple[int, int]:
     with PILImage.open(BytesIO(data)) as img:
         return img.size
+
+
+def _image_entity_from_proxy_stream_url(url: str) -> str | None:
+    """Return image entity ID from Home Assistant's image proxy stream URL."""
+    path = unquote(urlparse(url).path)
+    marker_index = path.find(_IMAGE_PROXY_STREAM_PREFIX)
+    if marker_index < 0:
+        return None
+
+    entity_id = path[marker_index + len(_IMAGE_PROXY_STREAM_PREFIX) :].strip("/")
+    if "/" in entity_id or not entity_id.startswith("image.") or len(entity_id) <= 6:
+        return None
+    return entity_id
 
 
 def _frigate_recording_proxy_url(url: str) -> str | None:
@@ -314,6 +328,9 @@ class MediaResolver:
             return resolved
 
         url = playable.url
+        if image_entity_id := _image_entity_from_proxy_stream_url(url):
+            return await self._async_from_entity(image_entity_id)
+
         playable_mime = _clean_content_type(playable.mime_type, urlparse(url).path)
         frigate_recording_url = None
         if playable_mime in _HLS_MIME_TYPES:

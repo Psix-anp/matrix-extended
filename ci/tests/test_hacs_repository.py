@@ -7,6 +7,8 @@ MANIFEST = ROOT / "custom_components" / "matrix_extended" / "manifest.json"
 HACS = ROOT / "hacs.json"
 ICON = ROOT / "custom_components" / "matrix_extended" / "brand" / "icon.png"
 LICENSE = ROOT / "LICENSE"
+HACS_WORKFLOW = ROOT / ".github" / "workflows" / "hacs.yml"
+HASSFEST_WORKFLOW = ROOT / ".github" / "workflows" / "hassfest.yml"
 
 
 def test_hacs_json_uses_supported_repository_layout():
@@ -36,3 +38,16 @@ def test_local_brand_icon_is_a_png():
 
 def test_repository_has_mit_license():
     assert LICENSE.read_text(encoding="utf-8").startswith("MIT License\n")
+
+
+def test_public_hacs_validation_workflows_are_present_and_strict():
+    hacs = HACS_WORKFLOW.read_text(encoding="utf-8")
+    hassfest = HASSFEST_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "hacs/action@main" in hacs
+    assert "category: integration" in hacs
+    assert "ignore:" not in hacs
+
+    assert "home-assistant/actions/hassfest@master" in hassfest
+    assert "pull_request:" in hassfest
+    assert "push:" in hassfest

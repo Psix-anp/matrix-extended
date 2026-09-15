@@ -267,6 +267,15 @@ def _wait_ha_state(token: str, entity_id: str, expected: str, *, timeout: float 
     raise TimeoutError(f"{entity_id} did not reach {expected}; last_state={last_state}")
 
 
+def _first_image_entity(token: str) -> str:
+    states = _request_json(HA_URL, "GET", "/api/states", token=token)
+    for state in states:
+        entity_id = str(state.get("entity_id", ""))
+        if entity_id.startswith("image."):
+            return entity_id
+    raise RuntimeError("real-stack Home Assistant exposes no image.* entity")
+
+
 def setup_send_reload() -> None:
     matrix_env = json.loads(Path(".ci/matrix-env.json").read_text())
     matrix_passwords = json.loads(Path(".ci/matrix-passwords.json").read_text())
@@ -328,6 +337,44 @@ def setup_send_reload() -> None:
     )
     out.chmod(0o600)
     print(f"Home Assistant Matrix E2E ready: entry={entry_id} encrypted_event={event.get('event_id', '<none>')}")
+
+
+def send_image_proxy_media_source() -> None:
+    state = json.loads(Path(".ci/ha-env.json").read_text())
+    matrix_env = json.loads(Path(".ci/matrix-env.json").read_text())
+    image_entity = _first_image_entity(state["access_token"])
+    before = _matrix_sync(matrix_env["user_access_token"])
+
+    _request_json(
+        HA_URL,
+        "POST",
+        "/api/services/matrix_extended/send_media",
+        token=state["access_token"],
+        json_body={
+            "target": [matrix_env["room_id"]],
+            "media_picker": {
+                "media_content_id": (
+                    "media-source://matrix_extended_test_image/" + image_entity
+                ),
+                "media_content_type": "image/jpeg",
+            },
+            "caption": "Matrix Extended image_proxy_stream real-stack regression",
+        },
+        timeout=60,
+    )
+
+    encrypted = _wait_for_encrypted_events(
+        matrix_env["user_access_token"],
+        since=before["next_batch"],
+        room_id=matrix_env["room_id"],
+        sender=matrix_env["bot_user_id"],
+        expected_count=1,
+        timeout=20,
+    )
+    print(
+        "Home Assistant image_proxy_stream Media Source verified: "
+        f"entity={image_entity} encrypted_events={encrypted}"
+    )
 
 
 def send_rich() -> None:
@@ -424,15 +471,22 @@ def verify_restart() -> None:
 
 
 def main() -> int:
-    modes = {"setup-send-reload", "send-rich", "verify-restart"}
+    modes = {
+        "setup-send-reload",
+        "send-image-proxy-media-source",
+        "send-rich",
+        "verify-restart",
+    }
     if len(sys.argv) != 2 or sys.argv[1] not in modes:
         print(
-            "usage: ha-e2e.py {setup-send-reload|send-rich|verify-restart}",
+            "usage: ha-e2e.py {setup-send-reload|send-image-proxy-media-source|send-rich|verify-restart}",
             file=sys.stderr,
         )
         return 2
     if sys.argv[1] == "setup-send-reload":
         setup_send_reload()
+    elif sys.argv[1] == "send-image-proxy-media-source":
+        send_image_proxy_media_source()
     elif sys.argv[1] == "send-rich":
         send_rich()
     else:

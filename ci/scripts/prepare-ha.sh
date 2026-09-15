@@ -81,7 +81,9 @@ class MatrixExtendedRegressionImage(ImageEntity):
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Load the disposable test integration and add its image entity."""
-    hass.data[DATA_COMPONENT].async_add_entities([MatrixExtendedRegressionImage(hass)])
+    await hass.data[DATA_COMPONENT].async_add_entities(
+        [MatrixExtendedRegressionImage(hass)]
+    )
     return True
 PY
 

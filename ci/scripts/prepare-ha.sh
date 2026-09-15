@@ -5,9 +5,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_DIR="${HA_CONFIG_DIR:-$ROOT/.ci/ha-config}"
 MEDIA_DIR="$CONFIG_DIR/matrix-e2e-media"
 LOCAL_MEDIA_DIR="$CONFIG_DIR/media"
+TEST_IMAGE_COMPONENT_DIR="$CONFIG_DIR/custom_components/matrix_extended_test_image"
 
 rm -rf "$CONFIG_DIR"
-mkdir -p "$CONFIG_DIR/custom_components" "$MEDIA_DIR" "$LOCAL_MEDIA_DIR"
+mkdir -p "$CONFIG_DIR/custom_components" "$MEDIA_DIR" "$LOCAL_MEDIA_DIR" "$TEST_IMAGE_COMPONENT_DIR"
 cp -a "$ROOT/custom_components/matrix_extended" "$CONFIG_DIR/custom_components/matrix_extended"
 
 python - "$MEDIA_DIR/matrix-e2e-voice.wav" <<'PY'
@@ -34,6 +35,66 @@ with wave.open(str(path), "wb") as output:
 PY
 cp "$MEDIA_DIR/matrix-e2e-voice.wav" "$LOCAL_MEDIA_DIR/matrix-e2e-voice.wav"
 
+cat > "$TEST_IMAGE_COMPONENT_DIR/manifest.json" <<'JSON'
+{
+  "domain": "matrix_extended_test_image",
+  "name": "Matrix Extended test image Media Source",
+  "version": "0.0.0",
+  "dependencies": ["media_source"],
+  "codeowners": []
+}
+JSON
+
+cat > "$TEST_IMAGE_COMPONENT_DIR/__init__.py" <<'PY'
+"""Disposable real-stack Media Source fixture for Matrix Extended tests."""
+
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
+
+DOMAIN = "matrix_extended_test_image"
+CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Load the disposable test integration."""
+    return True
+PY
+
+cat > "$TEST_IMAGE_COMPONENT_DIR/media_source.py" <<'PY'
+"""Media Source fixture that intentionally resolves to image_proxy_stream."""
+
+from typing import override
+
+from homeassistant.components.media_player import BrowseError
+from homeassistant.components.media_source import MediaSource, MediaSourceItem, PlayMedia
+from homeassistant.core import HomeAssistant
+
+DOMAIN = "matrix_extended_test_image"
+
+
+async def async_get_media_source(hass: HomeAssistant) -> "MatrixExtendedTestImageSource":
+    """Return the disposable image Media Source."""
+    return MatrixExtendedTestImageSource(hass)
+
+
+class MatrixExtendedTestImageSource(MediaSource):
+    """Resolve any image entity ID to HA's streaming image proxy."""
+
+    name = "Matrix Extended test image"
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        super().__init__(DOMAIN)
+        self.hass = hass
+
+    @override
+    async def async_resolve_media(self, item: MediaSourceItem) -> PlayMedia:
+        return PlayMedia(f"/api/image_proxy_stream/{item.identifier}", "image/jpeg")
+
+    @override
+    async def async_browse_media(self, item: MediaSourceItem):
+        raise BrowseError("Matrix Extended test image source is resolve-only")
+PY
+
 cat > "$CONFIG_DIR/configuration.yaml" <<'YAML'
 homeassistant:
   allowlist_external_dirs:
@@ -44,6 +105,8 @@ homeassistant:
 default_config:
 
 demo:
+
+matrix_extended_test_image:
 
 counter:
   matrix_reaction:

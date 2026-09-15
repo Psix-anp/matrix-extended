@@ -4,7 +4,7 @@
 
 **Goal:** Build `0.6.0b1` Native Matrix Control: one maintained control panel per existing Matrix room, live HA state rendering, reaction-driven safe actions, two-step confirmation for dangerous actions, persistence/recovery, GUI configuration, diagnostics, and real-stack release validation.
 
-**Architecture:** Keep Home Assistant as the source of truth. Panel configuration lives in `config_entry.options`; runtime root-event metadata lives in `Store`; pending confirmations are memory-only and are always discarded on reload/restart. Matrix reactions, existing safe commands, and future Widget actions all normalize to one safe action execution core. Panel state changes are event-driven, debounced, and emitted as `m.replace` edits of a stable root event.
+**Architecture:** Home Assistant remains the source of truth. Panel configuration lives in `config_entry.options`; runtime root-event metadata lives in `Store`; pending confirmations are memory-only and are always discarded on reload/restart. Matrix reactions, existing safe commands, and future Widget actions normalize to one safe action execution core. Panel state changes are event-driven, debounced, and emitted as `m.replace` edits of a stable root event.
 
 **Tech Stack:** Home Assistant 2026.9.x custom integration APIs, Python 3.13/3.14, `matrix-nio[e2e]==0.26.0`, Synapse 1.160.0, Element Web 1.12.26, pytest 9, GitHub Actions.
 
@@ -13,8 +13,9 @@
 ## Global Constraints
 
 - `0.6.0b1` uses existing Matrix rooms only; no automatic Space/room creation.
-- Account-level `allowed_users` and `allowed_rooms` are the outer fail-closed boundary; panel rules may only narrow access.
-- Matrix events never provide arbitrary executable `domain.service` payloads; they reference preconfigured actions.
+- Account-level `allowed_users` and resolved `allowed_rooms` are the outer fail-closed boundary; panel rules may only narrow access.
+- Persist panel room IDs, not aliases. Resolve account aliases before validating panel room membership.
+- Matrix events never provide arbitrary executable `domain.service` payloads; they reference preconfigured action IDs.
 - Home Assistant state is authoritative; do not optimistically mutate panel state after a service call.
 - One panel per Matrix room for `0.6.0b1`.
 - Panel updates use HA state subscriptions, not polling.
@@ -23,6 +24,7 @@
 - Pending confirmations are never persisted and are dropped on reload/restart.
 - Root loss/redaction moves a panel to `needs_repair`; do not create roots in a retry loop.
 - Pinning is best-effort. Missing Matrix power level is diagnostic-only and must not disable control.
+- A valid existing root may be re-pinned once during startup recovery; never fight an unpin continuously during normal sync.
 - Preserve existing E2EE behavior and `matrix-nio[e2e]==0.26.0`.
 - Real-stack release gate remains Home Assistant 2026.9.2 + Synapse 1.160.0 + Element 1.12.26 plus Python 3.14 manifest runtime.
 - `0.6.0b1` GitHub Release is a Pre-release, with bilingual notes, exact commit, verified ZIP and SHA256.
@@ -38,21 +40,17 @@ New focused modules:
 - `custom_components/matrix_extended/control_panels.py` — pure panel configuration dataclasses, validation and YAML serialization helpers.
 - `custom_components/matrix_extended/control_panel_render.py` — pure HA-state-to-Matrix panel rendering and hashing.
 - `custom_components/matrix_extended/control_panel_runtime.py` — persistent root metadata and in-memory confirmation registry.
-- `custom_components/matrix_extended/control_panel_manager.py` — panel lifecycle, state subscriptions, debounce, Matrix writes, action routing, pin/repair logic and diagnostics snapshots.
+- `custom_components/matrix_extended/control_panel_manager.py` — panel lifecycle, HA subscriptions, debounce, Matrix writes, action routing, pin/repair logic and diagnostics snapshots.
 
 Existing modules changed:
 
-- `actions.py` — persist reaction actions as shared safe-action definitions.
-- `commands.py` — normalize command handlers through shared safe-action definitions.
-- `command_executor.py` — keep Matrix progress/reply presentation but delegate HA execution.
-- `client.py` — add room-event/state helpers needed for root validation and pinning.
-- `content.py` — allow panel metadata to survive root/edit rendering.
-- `receiver.py` — route panel reactions/redactions and reuse the shared action executor.
-- `__init__.py` — construct/start/stop panel manager and listener ownership.
-- `config_flow.py`, `const.py`, `strings.json`, `translations/ru.json` — graphical panel CRUD/import/export.
-- `sensor.py` — panel diagnostic sensor.
-- `README.md`, `README.ru.md`, `docs/*` — user documentation.
-- `ci/scripts/*`, `.github/workflows/test.yml`, `.github/workflows/release.yml` — real-stack panel test and beta release semantics.
+- `actions.py`, `commands.py`, `command_executor.py` — reuse one safe-action core.
+- `client.py`, `content.py` — room-event/state helpers, pins, panel metadata-preserving edits.
+- `receiver.py`, `__init__.py` — inbound control routing and lifecycle wiring.
+- `config_flow.py`, `const.py`, `strings.json`, `translations/ru.json` — panel GUI CRUD, repair, YAML import/export.
+- `sensor.py` — panel diagnostics.
+- `README*`, `docs/*` — user docs.
+- `ci/scripts/*`, `.github/workflows/test.yml`, `.github/workflows/release.yml` — real-stack test and beta release semantics.
 
 ---
 
@@ -67,17 +65,17 @@ Existing modules changed:
 - Test: `tests/test_safe_actions_v060.py`
 - Test: `tests/test_commands_v051.py`
 - Test: `tests/test_command_executor_v051.py`
-- Test: `tests/test_reaction_actions.py` if present; otherwise add coverage to `tests/test_safe_actions_v060.py`
+- Test: `tests/test_camera_command_v051.py`
 
 **Interfaces:**
-- Produces `ServiceActionHandler(service: str, target: dict[str, Any], data: dict[str, Any])`.
-- Produces `CameraSnapshotActionHandler(entity_id: str, caption: str)`.
-- Produces `SafeActionDefinition(id: str, handler: ServiceActionHandler | CameraSnapshotActionHandler, confirmation_required: bool = False)`.
-- Produces `SafeActionExecutionResult(action_id: str, status: str, handler_type: str, error: str | None)`.
-- Produces `SafeActionExecutor.async_execute(action: SafeActionDefinition) -> SafeActionExecutionResult`.
-- Existing `CommandExecutor` remains the Matrix progress adapter and delegates HA execution to `SafeActionExecutor`.
+- `ServiceActionHandler(service: str, target: dict[str, Any], data: dict[str, Any])`.
+- `CameraSnapshotActionHandler(entity_id: str, caption: str)`.
+- `SafeActionDefinition(id: str, handler: ServiceActionHandler | CameraSnapshotActionHandler, confirmation_required: bool = False)`.
+- `SafeActionExecutionContext(account: Any | None = None, room_id: str | None = None, thread_id: str | None = None, prepared_room: Any | None = None)`.
+- `SafeActionExecutionResult(action_id: str, status: str, handler_type: str, error: str | None)`.
+- `SafeActionExecutor.async_execute(action: SafeActionDefinition, *, context: SafeActionExecutionContext | None = None) -> SafeActionExecutionResult`.
 
-- [ ] **Step 1: Write failing pure-model tests**
+- [ ] **Step 1: Write pure-model RED tests**
 
 ```python
 from custom_components.matrix_extended.safe_actions import (
@@ -92,7 +90,7 @@ def test_service_handler_rejects_invalid_service():
         parse_service_handler({"service": "broken"})
 
 
-def test_safe_action_keeps_only_preconfigured_payload():
+def test_safe_action_keeps_preconfigured_payload():
     action = SafeActionDefinition(
         id="garage.open",
         handler=ServiceActionHandler(
@@ -102,7 +100,6 @@ def test_safe_action_keeps_only_preconfigured_payload():
         ),
         confirmation_required=True,
     )
-    assert action.id == "garage.open"
     assert action.handler.service == "cover.open_cover"
     assert action.confirmation_required is True
 ```
@@ -111,38 +108,13 @@ def test_safe_action_keeps_only_preconfigured_payload():
 
 Run: `pytest -q tests/test_safe_actions_v060.py`
 
-Expected: FAIL because `safe_actions.py` does not exist.
+Expected: FAIL because the module does not exist.
 
-- [ ] **Step 3: Implement the pure action model**
+- [ ] **Step 3: Implement pure action dataclasses and validators**
 
-Create `safe_actions.py` with frozen/slotted dataclasses and shared validators. Keep Matrix sender/room authorization out of this file.
-
-```python
-@dataclass(slots=True, frozen=True)
-class ServiceActionHandler:
-    service: str
-    target: dict[str, Any]
-    data: dict[str, Any]
-
-
-@dataclass(slots=True, frozen=True)
-class CameraSnapshotActionHandler:
-    entity_id: str
-    caption: str
-
-
-@dataclass(slots=True, frozen=True)
-class SafeActionDefinition:
-    id: str
-    handler: ServiceActionHandler | CameraSnapshotActionHandler
-    confirmation_required: bool = False
-```
-
-Implement `parse_service_handler()`, `parse_camera_snapshot_handler()`, `handler_type()` and JSON-safe dump helpers. Reuse the current validation semantics from `commands.py` rather than inventing new accepted shapes.
+Reuse current validation semantics from `commands.py`. Add stable JSON-safe dump helpers. Matrix sender/room authorization stays outside this module.
 
 - [ ] **Step 4: Write executor RED tests**
-
-Use a fake `hass.services.async_call` and assert blocking execution plus bounded secret redaction.
 
 ```python
 result = await SafeActionExecutor(hass).async_execute(action)
@@ -153,23 +125,21 @@ hass.services.async_call.assert_awaited_once_with(
 )
 ```
 
-Also assert an exception containing `token=abc123` is returned with `token=<redacted>`.
+Also assert an exception containing `token=abc123` produces `token=<redacted>`.
 
-- [ ] **Step 5: Implement `SafeActionExecutor`**
+- [ ] **Step 5: Implement executor**
 
-Move the reusable HA service-call and `_safe_error()` behavior out of `command_executor.py`. Keep camera snapshot execution as a supported bounded handler using the current `MediaResolver` + Matrix upload path through an optional execution context when required; do not regress the existing camera command.
+Move reusable `_safe_error()` and service execution from `command_executor.py`. For `CameraSnapshotActionHandler`, require `SafeActionExecutionContext` with Matrix account/room and reuse the current `MediaResolver` + upload/send path. If required camera context is missing, return a bounded failed result rather than executing partially.
 
-- [ ] **Step 6: Migrate commands and reaction actions**
+- [ ] **Step 6: Adapt commands and reaction actions**
 
-`RegisteredCommand.handler` should be convertible to `SafeActionDefinition` without changing its public stored schema. `ReactionActionRegistry.consume()` should return a shared service action definition or an adapter object convertible to one. Do not change existing persisted Store format in this task.
+Keep existing persisted command/reaction Store schemas compatible. Add adapters that convert stored handlers/actions to `SafeActionDefinition` at execution time.
 
 - [ ] **Step 7: Make `CommandExecutor` delegate**
 
-Keep progress-message creation/editing in `command_executor.py`, but replace its direct `hass.services.async_call()` path with `SafeActionExecutor`. Preserve current `CommandExecutionResult` compatibility for existing sensors/events.
+Keep progress-message creation/editing in `command_executor.py`; replace direct service/camera execution with `SafeActionExecutor.async_execute()` and pass `SafeActionExecutionContext(account=..., room_id=..., thread_id=..., prepared_room=...)`.
 
-- [ ] **Step 8: Run focused and existing tests**
-
-Run:
+- [ ] **Step 8: Run focused regression**
 
 ```bash
 pytest -q tests/test_safe_actions_v060.py \
@@ -198,29 +168,20 @@ git commit -m "refactor: unify safe Matrix action execution"
 **Files:**
 - Create: `custom_components/matrix_extended/control_panels.py`
 - Modify: `custom_components/matrix_extended/const.py`
+- Modify: `requirements-test.txt`
 - Test: `tests/test_control_panels_v060.py`
 
 **Interfaces:**
-- Produces `PanelEntity(entity_id: str, label: str)`.
-- Produces `PanelAction(id: str, reaction: str, label: str, action: SafeActionDefinition)`.
-- Produces `ControlPanelDefinition(panel_id, room, title, enabled, entities, actions, allowed_users, debounce)`.
-- Produces `normalize_control_panels(raw, *, account_allowed_users, account_allowed_rooms) -> dict[str, ControlPanelDefinition]`.
-- Produces `dump_panel_yaml(panel) -> str` and `load_panel_yaml(text, *, account_allowed_users, account_allowed_rooms) -> ControlPanelDefinition`.
+- `PanelEntity(entity_id: str, label: str)`.
+- `PanelAction(id: str, reaction: str, label: str, action: SafeActionDefinition)`.
+- `ControlPanelDefinition(panel_id, room_id, title, enabled, entities, actions, allowed_users, debounce)`.
+- `normalize_control_panels(raw, *, account_allowed_users: set[str], account_allowed_room_ids: set[str]) -> dict[str, ControlPanelDefinition]`.
+- `dump_panel_yaml(panel) -> str`.
+- `load_panel_yaml(text, *, account_allowed_users: set[str], account_allowed_room_ids: set[str]) -> ControlPanelDefinition`.
 
 - [ ] **Step 1: Write validation RED tests**
 
-Cover:
-
-```python
-def test_rejects_two_panels_in_same_room(): ...
-def test_rejects_duplicate_action_id(): ...
-def test_rejects_duplicate_reaction_key(): ...
-def test_panel_users_must_be_subset_of_account_allowlist(): ...
-def test_panel_room_must_be_in_account_allowlist(): ...
-def test_debounce_defaults_to_1_5_seconds(): ...
-```
-
-Use exact example data from the design spec.
+Cover duplicate room, duplicate action ID, duplicate reaction key, duplicate entity ID, panel user outside account allowlist, room ID outside resolved account room allowlist and default debounce 1.5 seconds.
 
 - [ ] **Step 2: Run RED**
 
@@ -230,37 +191,27 @@ Expected: FAIL because the module is missing.
 
 - [ ] **Step 3: Implement panel dataclasses and normalization**
 
-Use deterministic tuples for entities/actions and a dictionary keyed by `panel_id`. Normalize Matrix room/user strings but do not resolve aliases here; alias resolution stays in runtime setup.
+Persist only room IDs. Reject room aliases in panel definitions so runtime authorization is deterministic. Accept debounce only in `0.25..10.0` seconds.
 
-Reject:
-- empty `panel_id`;
-- duplicate panel ID;
-- duplicate room;
-- empty entity list;
-- duplicate entity ID;
-- duplicate action ID;
-- duplicate reaction;
-- panel users outside account user allowlist;
-- panel room outside account room allowlist;
-- debounce outside `0.25..10.0` seconds.
+- [ ] **Step 4: Add PyYAML test dependency and YAML round-trip tests**
 
-- [ ] **Step 4: Add YAML round-trip tests**
+Add `PyYAML==6.0.3` to `requirements-test.txt` for the fast suite. Home Assistant already supplies PyYAML at runtime.
 
 ```python
 yaml_text = dump_panel_yaml(panel)
 loaded = load_panel_yaml(
     yaml_text,
     account_allowed_users={"@owner:matrix.test"},
-    account_allowed_rooms={"!room:matrix.test"},
+    account_allowed_room_ids={"!room:matrix.test"},
 )
 assert loaded == panel
 ```
 
-Also reject multi-document YAML and non-mapping roots. Use `yaml.safe_load` / `yaml.safe_dump`; Home Assistant already provides PyYAML at runtime, and tests should import it only through the integration helper.
+Reject multi-document YAML and non-mapping roots. Use `yaml.safe_load`/`safe_dump` only.
 
 - [ ] **Step 5: Add constants**
 
-Add `CONF_CONTROL_PANELS = "control_panels"` and the field keys used by Options Flow. Keep names stable because they become persisted options schema.
+Add `CONF_CONTROL_PANELS = "control_panels"` and stable panel/action field constants used by Options Flow.
 
 - [ ] **Step 6: Run tests**
 
@@ -272,7 +223,8 @@ Expected: PASS.
 
 ```bash
 git add custom_components/matrix_extended/control_panels.py \
-  custom_components/matrix_extended/const.py tests/test_control_panels_v060.py
+  custom_components/matrix_extended/const.py requirements-test.txt \
+  tests/test_control_panels_v060.py
 git commit -m "feat: add validated Matrix control panel definitions"
 ```
 
@@ -287,13 +239,13 @@ git commit -m "feat: add validated Matrix control panel definitions"
 - Test: `tests/test_content.py`
 
 **Interfaces:**
-- Produces `MatrixClient.async_get_event(room: str, event_id: str) -> Mapping[str, Any] | None`.
-- Produces `MatrixClient.async_get_state_event(room: str, event_type: str, state_key: str = "") -> Mapping[str, Any] | None`.
-- Produces `MatrixClient.async_put_state_event(room: str, event_type: str, content: dict[str, Any], state_key: str = "") -> str | None`.
-- Produces `MatrixClient.async_pin_event(room: str, event_id: str) -> bool`; merges `m.room.pinned_events` and preserves unrelated pins.
-- Produces panel-aware text/edit builders that keep `io.psix.matrix_extended.panel` in both root content and `m.new_content`.
+- `MatrixClient.async_get_event(room: str, event_id: str) -> Mapping[str, Any] | None`.
+- `MatrixClient.async_get_state_event(room: str, event_type: str, state_key: str = "") -> Mapping[str, Any] | None`.
+- `MatrixClient.async_put_state_event(room: str, event_type: str, content: dict[str, Any], state_key: str = "") -> str | None`.
+- `MatrixClient.async_pin_event(room: str, event_id: str) -> bool` merges `m.room.pinned_events` and preserves unrelated pins.
+- Panel-aware text/edit builders keep `io.psix.matrix_extended.panel` in root content and `m.new_content`.
 
-- [ ] **Step 1: Write RED tests for pin merging**
+- [ ] **Step 1: Write pin-merge RED tests**
 
 ```python
 existing = {"pinned": ["$foreign"]}
@@ -303,29 +255,25 @@ assert fake_nio.room_put_state.await_args.kwargs["content"] == {
 }
 ```
 
-Also assert pinning an already pinned event performs no state write.
+Also assert an already-pinned event performs no write.
 
-- [ ] **Step 2: Implement room state helpers**
+- [ ] **Step 2: Implement room event/state wrappers**
 
-Wrap matrix-nio `room_get_state_event`, `room_put_state`, and `room_get_event`. Convert Matrix error responses to existing `MatrixSendError`/`MatrixConnectionError` categories. `404`/missing root may return `None` only when it semantically means the event is unavailable; authorization/transport failures remain errors.
+Wrap matrix-nio `room_get_event`, `room_get_state_event` and `room_put_state`. Convert Matrix error responses to existing transport/send error categories. Treat a true missing/redacted root as unavailable; do not silently convert authorization/transport errors to `None`.
 
-- [ ] **Step 3: Write RED tests for panel metadata**
+- [ ] **Step 3: Write panel metadata RED tests**
 
-Assert root content includes:
+Assert root and replacement `m.new_content` contain:
 
 ```python
 "io.psix.matrix_extended.panel": {"schema": 1, "panel_id": "garage"}
 ```
 
-and an `m.replace` event keeps the same marker inside `m.new_content`.
+- [ ] **Step 4: Extend content builders safely**
 
-- [ ] **Step 4: Extend content builders**
-
-Prefer an optional `extra_content: Mapping[str, Any] | None` parameter on `build_text_content()` and `build_edit_content()` instead of creating duplicate message builders. Apply extra fields to the visible root content and the edit's `m.new_content`; do not allow callers to overwrite `msgtype`, `body`, `m.relates_to`, or `m.new_content`.
+Add optional `extra_content: Mapping[str, Any] | None` to `build_text_content()` and `build_edit_content()`. Forbid overriding `msgtype`, `body`, `m.relates_to` or `m.new_content`.
 
 - [ ] **Step 5: Run tests**
-
-Run:
 
 ```bash
 pytest -q tests/test_client_control_state_v060.py tests/test_content.py tests/test_client_e2ee.py
@@ -351,34 +299,20 @@ git commit -m "feat: add Matrix panel state and pin transport"
 - Test: `tests/test_control_panel_render_v060.py`
 
 **Interfaces:**
-- Produces `RenderedPanel(body: str, formatted_body: str, digest: str)`.
-- Produces `render_control_panel(panel: ControlPanelDefinition, states: Mapping[str, Any]) -> RenderedPanel`.
-- Rendering must not include the current wall-clock timestamp in the digest; otherwise unchanged HA state would cause useless edits.
+- `RenderedPanel(body: str, formatted_body: str, digest: str)`.
+- `render_control_panel(panel: ControlPanelDefinition, states: Mapping[str, Any]) -> RenderedPanel`.
 
-- [ ] **Step 1: Write RED tests for domain rendering**
+- [ ] **Step 1: Write RED domain-state tests**
 
-Cover at least:
+Cover light on/off, cover closed/opening, alarm armed/disarmed, climate state/temperature, sensor units and unknown-domain fallback.
 
-```python
-("light.garage", "on", "On")
-("cover.garage", "closed", "Closed")
-("cover.garage", "opening", "Opening")
-("alarm_control_panel.home", "armed_away", "Armed away")
-("sensor.temp", "18.7", "18.7 °C")
-("unknown.foo", "mystery", "mystery")
-```
+- [ ] **Step 2: Write escaping/order tests**
 
-Use fake state objects with `.state` and `.attributes`.
-
-- [ ] **Step 2: Test output structure and HTML escaping**
-
-Assert action legend order follows configured action order and labels/states such as `<Garage>` render escaped HTML while plain body remains readable.
+Assert entity/action order is stable and strings such as `<Garage>` are escaped only in HTML.
 
 - [ ] **Step 3: Implement renderer**
 
-Use small domain-aware helpers (`_render_binary`, `_render_cover`, `_render_alarm`, `_render_climate`, `_render_sensor`) and a raw fallback. Include unit of measurement when present. Do not add Jinja/template evaluation.
-
-Digest input should be the stable UTF-8 combination of `body` plus `formatted_body`; use SHA256 hex.
+Use small domain helpers. Do not execute templates/Jinja. Digest stable UTF-8 `body + formatted_body` with SHA256. Do not put current wall-clock time into the digest or body; unchanged HA state must remain unchanged output.
 
 - [ ] **Step 4: Run tests**
 
@@ -403,37 +337,26 @@ git commit -m "feat: render Matrix control panels from HA state"
 - Test: `tests/test_control_panel_runtime_v060.py`
 
 **Interfaces:**
-- Produces `PanelRuntime(panel_id, room_id, root_event_id, render_hash, generation, pin_status, pin_error, needs_repair, last_update_at, last_update_error)`.
-- Produces `ControlPanelRuntimeStore.restore()/dump()/async_save()` adapter around HA `Store` data.
-- Produces `PendingConfirmationRegistry.issue(...)`, `.consume(...)`, `.cancel(...)`, `.count`, `.clear()`.
-- Confirmation key is the confirmation prompt `event_id`, not just emoji/action ID.
+- `PanelRuntime(panel_id, room_id, root_event_id, render_hash, generation, pin_status, pin_error, needs_repair, last_update_at, last_update_error)`.
+- `ControlPanelRuntimeStore.restore()/dump()/async_save()`.
+- `PendingConfirmationRegistry.issue(...)`, `.consume(...)`, `.cancel(...)`, `.clear_panel(...)`, `.count`, `.clear()`.
+- Confirmation key is prompt `event_id`.
 
 - [ ] **Step 1: Write persistence RED tests**
 
-Assert JSON-safe round trip preserves root ID, generation, pin state and repair state but contains no pending confirmations.
+Assert JSON-safe round trip preserves root/generation/pin/repair state and never contains pending confirmations.
 
 - [ ] **Step 2: Write confirmation RED tests**
 
-Cover:
+Test same sender success, other sender non-consumption, 30-second expiry, stale generation, cancel, replay rejection and global clear on reload.
 
-```python
-def test_confirmation_same_sender_succeeds(): ...
-def test_confirmation_other_sender_does_not_consume(): ...
-def test_confirmation_expires_after_30_seconds(): ...
-def test_confirmation_wrong_generation_is_stale(): ...
-def test_confirmation_cannot_be_replayed(): ...
-def test_clear_drops_all_pending_on_reload(): ...
-```
+- [ ] **Step 3: Implement runtime models/store adapter**
 
-Inject a clock callback for deterministic expiry tests.
-
-- [ ] **Step 3: Implement runtime models**
-
-Use a monotonically increasing integer `generation` for each new root. Any new root invalidates old prompt confirmations.
+Use monotonically increasing integer `generation` per new root.
 
 - [ ] **Step 4: Implement memory-only confirmation registry**
 
-Store `prompt_event_id`, `panel_id`, `action_id`, `sender`, `generation`, `expires_at`. `consume()` removes a valid confirmation atomically; unauthorized sender leaves it available for the authorized sender until expiry.
+Store prompt event ID, panel ID, action ID, sender, generation and expiry only. Valid `consume()` removes atomically; wrong sender does not consume.
 
 - [ ] **Step 5: Run tests**
 
@@ -451,69 +374,54 @@ git commit -m "feat: persist Matrix panel runtime and confirmations"
 
 ---
 
-### Task 6: Control Panel Manager Lifecycle, Debounce, Root Creation, Pinning and Repair
+### Task 6: Control Panel Manager Lifecycle, Debounce, Roots, Pins and Repair
 
 **Files:**
 - Create: `custom_components/matrix_extended/control_panel_manager.py`
-- Modify: `custom_components/matrix_extended/client.py` only if a narrowly required helper is missing
 - Test: `tests/test_control_panel_manager_v060.py`
 
 **Interfaces:**
-- Produces `ControlPanelManager.async_start()`, `async_stop()`, `async_handle_reaction(...)`, `async_handle_redaction(...)`, `async_repair(panel_id)`, `diagnostics_snapshot()`, `add_listener()`.
-- Consumes panel definitions, `SafeActionExecutor`, runtime Store, account Matrix client and account incoming policy.
-- Exposes latest desired render in memory so Matrix outages coalesce state changes instead of feeding the persistent general-message outbox.
+- `ControlPanelManager.async_start()` / `async_stop()`.
+- `async_handle_reaction(room_id, root_or_prompt_event_id, reaction, sender)`.
+- `async_handle_redaction(room_id, redacted_event_id)`.
+- `async_repair(panel_id)`.
+- `diagnostics_snapshot()` and `add_listener()`.
 
-- [ ] **Step 1: Write RED test for one root and action reactions**
+- [ ] **Step 1: Write RED first-start/root-reuse tests**
 
-Fake Matrix client expectations:
+First start creates one root and one bot reaction per configured action. Restart with a valid stored root creates no root and preserves event ID.
 
-```python
-await manager.async_start()
-assert client.async_send_content.await_count == 1
-root_id = runtime["garage"].root_event_id
-assert root_id == "$panel"
-assert client.async_send_event.call_count == len(panel.actions)
-```
+- [ ] **Step 2: Implement startup root rules**
 
-The root creation path must send one initial bot reaction per configured action key so Element visibly exposes the chips.
+For each enabled panel: resolve/confirm room ID; restore runtime; validate stored root; reuse valid root; first-ever panel creates one root; previously known missing/redacted root becomes `needs_repair` without auto-replacement.
 
-- [ ] **Step 2: Implement startup root restore/create rules**
+- [ ] **Step 3: Write debounce RED tests**
 
-For each enabled panel:
-1. resolve room;
-2. restore runtime;
-3. if stored root exists, validate it with `async_get_event()`;
-4. if valid, reuse it;
-5. if no stored root (first creation), create one root, increment generation, save, add bot action reactions, best-effort pin;
-6. if a previously stored root is now absent/redacted, set `needs_repair=True` and do not auto-create a replacement.
+Two HA entity changes inside 1.5 seconds -> one `m.replace`. Render hash unchanged -> zero edits.
 
-- [ ] **Step 3: Write RED debounce/coalescing tests**
+- [ ] **Step 4: Implement HA state subscriptions**
 
-Trigger two configured HA entity changes inside 1.5 seconds, advance test loop, and assert exactly one `m.replace`. Trigger a state change whose render hash is unchanged and assert no edit.
+Subscribe only configured entity IDs. Keep one debounce task per panel and unsubscribe callbacks for stop/reload.
 
-- [ ] **Step 4: Implement entity subscriptions**
+- [ ] **Step 5: Write outage-coalescing RED test**
 
-Use HA event helpers to subscribe only to the panel's configured entity IDs. Keep unsubscribe callbacks per panel. A dirty panel schedules a single debounce task; later changes inside the window only update desired state.
+Make Matrix edit fail with `MatrixConnectionError`, trigger ten HA changes, and assert no general `PersistentOutbox` entries and no ten retry tasks. Latest desired render is kept.
 
-- [ ] **Step 5: Write Matrix outage test**
+- [ ] **Step 6: Implement bounded panel retry**
 
-Make `async_send_content()` raise `MatrixConnectionError`, then trigger ten HA changes. Assert manager stores the latest desired render and does not create ten retry tasks or touch `PersistentOutbox`. After `async_mark_matrix_available()`/next successful scheduled flush, assert one edit is sent.
+At most one retry/flush task per panel. When Matrix is available again, send only latest desired render.
 
-- [ ] **Step 6: Implement non-outbox panel retry semantics**
+- [ ] **Step 7: Implement pin behavior**
 
-On connection failure, record `last_update_error="connection"`, keep latest desired render, and wait for the listener/account to become connected or for a bounded manager retry. There must be at most one retry task per panel.
-
-- [ ] **Step 7: Implement best-effort pinning**
-
-Call `async_pin_event()` after first root creation and explicit repair. Record `pinned`, `not_pinned`, or error category. Never fail panel startup solely because pin state write is forbidden.
+On first creation, valid-root startup recovery and explicit repair, read/merge pins and attempt pin once. Record permission failure as non-fatal diagnostics. Never re-pin on every sync/state change.
 
 - [ ] **Step 8: Implement explicit repair**
 
-`async_repair(panel_id)` only succeeds for `needs_repair` or missing root. It creates exactly one root, increments generation, clears stale confirmations, registers visible reaction chips, saves runtime and attempts pinning.
+`async_repair(panel_id)` creates exactly one new root only when root is missing/repair-needed, increments generation, clears panel confirmations, adds action reaction chips, saves runtime and attempts pinning.
 
 - [ ] **Step 9: Implement clean stop**
 
-Cancel debounce/retry tasks, unsubscribe HA listeners, clear pending confirmations, and leave no background tasks.
+Cancel debounce/retry tasks, unsubscribe HA listeners and clear pending confirmations.
 
 - [ ] **Step 10: Run tests**
 
@@ -531,58 +439,49 @@ git commit -m "feat: manage live Matrix control panels"
 
 ---
 
-### Task 7: Reaction Routing, Dangerous Confirmation, Redaction Handling and Shared Execution
+### Task 7: Reaction Routing, Dangerous Confirmation, Redaction and Shared Execution
 
 **Files:**
 - Modify: `custom_components/matrix_extended/receiver.py`
 - Modify: `custom_components/matrix_extended/control_panel_manager.py`
 - Modify: `custom_components/matrix_extended/actions.py`
-- Modify: `custom_components/matrix_extended/client.py` (`MatrixAccount` fields)
+- Modify: `custom_components/matrix_extended/client.py`
 - Test: `tests/test_receiver_control_panels_v060.py`
-- Test: existing receiver/reaction tests
 
 **Interfaces:**
-- Panel manager returns a normalized reaction outcome: `handled`, `action_id`, `status`, `error`, `confirmation_prompt_event_id`.
-- Receiver tries panel action routing before legacy reaction-action registry execution.
-- Legacy reaction actions also execute through `SafeActionExecutor`, never direct `hass.services.async_call()`.
+- Panel manager reaction outcome contains `handled`, `action_id`, `status`, `error`, `confirmation_prompt_event_id`.
+- Receiver checks panel routing before legacy reaction registry.
+- Legacy reaction actions execute through `SafeActionExecutor`, not direct HA service calls.
 
-- [ ] **Step 1: Write RED test for low-risk panel reaction**
+- [ ] **Step 1: Write RED low-risk panel reaction test**
 
-Use an authorized sender/room and reaction targeting the active root. Assert the manager executes configured `action_id` and receiver marks payload `action_executed=True`.
+Authorized sender + active root + known emoji executes configured action exactly once.
 
-- [ ] **Step 2: Write RED test for forged events**
+- [ ] **Step 2: Write forged-event RED tests**
 
-Cover wrong root event, unknown emoji, unauthorized sender, unauthorized room and panel user restriction. None may call HA services.
+Wrong root, unknown emoji, unauthorized sender/room and panel user restriction must not call HA.
 
-- [ ] **Step 3: Implement panel reaction routing**
+- [ ] **Step 3: Implement panel-first reaction routing**
 
-`MatrixInboundReceiver.async_handle_reaction()` must keep the existing account-level `_allowed()` check first. Then call panel manager. If the panel manager handled the reaction, do not fall through to the generic reaction registry.
+Keep account `_allowed()` first. If panel manager handles the reaction, do not fall through to legacy reaction registry.
 
-- [ ] **Step 4: Write RED confirmation-flow tests**
+- [ ] **Step 4: Write dangerous confirmation RED tests**
 
-Dangerous root reaction should:
-1. create a reply such as `⚠️ Confirm: Open garage`;
-2. add `✅` and `❌` bot reactions to that prompt;
-3. issue 30-second pending confirmation bound to same sender/action/generation;
-4. not execute HA yet.
+Dangerous root reaction sends reply `⚠️ Confirm: ...`, adds bot `✅`/`❌` reactions and does not execute HA. Same sender `✅` executes once; other sender does nothing; `❌` cancels; replay does nothing.
 
-Same sender `✅` executes once. Other sender does nothing. `❌` cancels. Replayed `✅` does nothing.
+- [ ] **Step 5: Implement confirmation prompt**
 
-- [ ] **Step 5: Implement confirmation prompt flow**
+Prompt content carries only labels/IDs; never HA service payload. Registry binds prompt to panel/action/sender/generation for 30 seconds.
 
-Use normal Matrix `m.room.message` reply content and `m.reaction`. Never put the HA service payload into the prompt. Store only identifiers in the pending registry.
+- [ ] **Step 6: Migrate legacy reaction execution**
 
-- [ ] **Step 6: Route legacy reaction actions through shared executor**
+Convert consumed legacy reaction action to `SafeActionDefinition`, execute with shared executor, preserve current `EVENT_REACTION` compatibility fields.
 
-Replace the current direct service call in `receiver.py` with conversion to `SafeActionDefinition` plus `SafeActionExecutor.async_execute()`. Preserve current `EVENT_REACTION` payload compatibility (`action_executed`, `action_service`) while adding normalized failure metadata only when safe.
+- [ ] **Step 7: Handle root redaction**
 
-- [ ] **Step 7: Handle redacted panel roots**
-
-After authorized `m.room.redaction`, pass `room_id` and `redacts` to the panel manager. If it targets an active root, mark `needs_repair=True`, clear confirmations for the panel and cancel future edit attempts until explicit repair.
+Authorized redaction targeting active root sets `needs_repair=True`, clears panel confirmations and suppresses future edits until explicit repair.
 
 - [ ] **Step 8: Run tests**
-
-Run:
 
 ```bash
 pytest -q tests/test_receiver_control_panels_v060.py \
@@ -610,50 +509,41 @@ git commit -m "feat: route Matrix reactions through safe panel control"
 - Modify: `custom_components/matrix_extended/client.py`
 - Modify: `custom_components/matrix_extended/receiver.py`
 - Test: `tests/test_setup_control_panels_v060.py`
-- Test: `tests/test_client_e2ee.py`
 
 **Interfaces:**
-- `MatrixAccount` gains `safe_action_executor` and `panel_manager` runtime fields.
-- Panel control remains usable even when generic `incoming_enabled` is false; only panel reaction/redaction callbacks are registered in that case.
+- `MatrixAccount` gains `safe_action_executor` and `panel_manager`.
+- Panel control works even when generic `incoming_enabled` is false, using only narrow reaction/redaction callbacks.
 
-- [ ] **Step 1: Write RED setup tests**
+- [ ] **Step 1: Write RED lifecycle tests**
 
-Cover:
-- no panels: current setup behavior unchanged;
-- panels + incoming enabled: one shared receiver handles general events and delegates control;
-- panels + incoming disabled: Matrix sync listener still starts for control, but generic Matrix message/media HA events are not registered/fired;
-- unload stops panel manager before closing Matrix client.
+Cover no-panels current behavior, panels + incoming enabled, panels + incoming disabled, and unload ordering.
 
-- [ ] **Step 2: Add panel config/runtime Store setup**
+- [ ] **Step 2: Resolve account allowed rooms before panel normalization**
 
-In `async_setup_entry()`, normalize `CONF_CONTROL_PANELS`, construct `Store(hass, 1, f"{DOMAIN}.control_panels_{entry.entry_id}", private=True)`, create `SafeActionExecutor`, then create `ControlPanelManager`.
+Reuse existing `allowed_rooms = {await client.async_resolve_room(...)}`. Only after this set exists, call `normalize_control_panels(..., account_allowed_room_ids=allowed_rooms)`. This makes alias-based account config compatible with room-ID-based panel config.
 
-- [ ] **Step 3: Define listener registration modes**
+- [ ] **Step 3: Construct panel runtime**
 
-Refactor `MatrixInboundReceiver.register()` to accept a mode with exact semantics:
+Create private HA Store `f"{DOMAIN}.control_panels_{entry.entry_id}"`, shared executor and manager; attach to `MatrixAccount`.
+
+- [ ] **Step 4: Add receiver registration modes**
 
 ```python
 receiver.register(control_only=False)  # all current callbacks
-receiver.register(control_only=True)   # only reactions/redactions needed by panels
+receiver.register(control_only=True)   # panel reactions/redactions only
 ```
 
-When `control_only=True`, reaction/redaction handlers may control panels but must not execute legacy arbitrary reaction actions or fire the general incoming HA events that the user explicitly disabled.
+In control-only mode do not fire general incoming HA events and do not execute legacy generic reaction actions.
 
-- [ ] **Step 4: Start panel manager and Matrix listener**
+- [ ] **Step 5: Start listener under correct conditions**
 
-Order:
-1. account runtime constructed and stored in `hass.data`;
-2. panel manager `async_start()`;
-3. register receiver in full or control-only mode;
-4. call `client.async_start_listener()` when generic incoming or any panel is enabled.
+Start Matrix sync listener when generic incoming is enabled **or** at least one panel is enabled. Start manager before callback registration so reactions can be routed immediately.
 
-- [ ] **Step 5: Unload without task leaks**
+- [ ] **Step 6: Unload cleanly**
 
-Call `await panel_manager.async_stop()` before canceling outbox/client tasks. Clear pending confirmations on every reload/unload.
+`await panel_manager.async_stop()` before client close; pending confirmations are cleared every reload/unload.
 
-- [ ] **Step 6: Run tests**
-
-Run:
+- [ ] **Step 7: Run tests**
 
 ```bash
 pytest -q tests/test_setup_control_panels_v060.py \
@@ -662,7 +552,7 @@ pytest -q tests/test_setup_control_panels_v060.py \
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add custom_components/matrix_extended/__init__.py \
@@ -674,7 +564,7 @@ git commit -m "feat: wire Matrix control panels into HA lifecycle"
 
 ---
 
-### Task 9: Graphical Options Flow CRUD and YAML Import/Export
+### Task 9: Graphical Options Flow CRUD, Repair and YAML Import/Export
 
 **Files:**
 - Modify: `custom_components/matrix_extended/config_flow.py`
@@ -685,57 +575,38 @@ git commit -m "feat: wire Matrix control panels into HA lifecycle"
 - Test: `tests/test_documentation_localization.py`
 
 **Interfaces:**
-- Adds menu `control_panels` to Options Flow.
-- Adds steps: `panel_add`, `panel_edit`, `panel_edit_details`, `panel_delete`, `panel_import`, `panel_export_select`, `panel_export`.
-- Uses HA entity selectors for entities and current Matrix room metadata for room selection.
+- Add `control_panels` menu.
+- Add steps `panel_add`, `panel_edit`, `panel_edit_details`, `panel_action_add`, `panel_action_edit`, `panel_action_delete`, `panel_delete`, `panel_repair`, `panel_import`, `panel_export_select`, `panel_export`.
 
-- [ ] **Step 1: Write RED menu/CRUD schema tests**
+- [ ] **Step 1: Write RED menu/CRUD tests**
 
-Assert `async_step_init()` includes `control_panels`. Add flow tests that create one panel and persist it under `CONF_CONTROL_PANELS` without overwriting unrelated options.
+Assert panel menu exists and adding a panel updates only `CONF_CONTROL_PANELS` while preserving unrelated options.
 
-- [ ] **Step 2: Implement panel menu and selection state**
+- [ ] **Step 2: Implement panel menu and temporary edit state**
 
-Mirror the existing route-management pattern, but keep panel editing in multiple focused forms rather than one giant schema.
+Use the existing route-management style. Menu entries: Add, Edit, Delete, Repair, Import YAML, Export YAML.
 
-Recommended flow:
+- [ ] **Step 3: Implement panel forms**
 
-```text
-Control panels
-  Add panel
-  Edit panel
-  Delete panel
-  Import YAML
-  Export YAML
-```
+Room selector uses currently joined Matrix rooms but stores `room_id`. Entity selector is multiple HA entities. Debounce number selector is `0.25..10.0`. Manage arbitrary action count through action add/edit/delete substeps rather than nested opaque JSON.
 
-- [ ] **Step 3: Implement panel add/edit forms**
+- [ ] **Step 4: Validate against resolved runtime account policy**
 
-Use:
-- room: `SelectSelector` built from `account.rooms`/room labels;
-- entities: `EntitySelector(multiple=True)`;
-- allowed users: multiline/multiple text selector;
-- debounce: number selector `0.25..10.0`;
-- action details: stable ID, label, reaction, service string, target object, data object, confirmation boolean.
+Use loaded account `incoming_policy.allowed_rooms` for resolved room IDs and the account configured allowed users. Call the same pure panel normalizer before `_finish()`.
 
-Because HA's form schema is static per step, collect actions with repeated `panel_action_add/edit/delete` substeps rather than trying to encode arbitrary nested action arrays in one field.
+- [ ] **Step 5: Implement explicit Repair panel UI**
 
-- [ ] **Step 4: Enforce account security in UI validation**
+Choose a configured panel, call `await account.panel_manager.async_repair(panel_id)`, show success or `not_needs_repair`/Matrix error, then return to panel menu. This is the user-facing explicit repair path required by the spec; it does not mutate panel configuration.
 
-Before `_finish()`, call the same pure `normalize_control_panels()` validator used at runtime. Show specific errors for room outside allowlist, user outside allowlist, duplicate reaction/action and duplicate room.
+- [ ] **Step 6: Implement YAML import/export**
 
-- [ ] **Step 5: Implement YAML import/export**
+Import multiline YAML -> safe parse -> validator -> add or replace by `panel_id`; require explicit replace confirmation. Export choose panel -> multiline prefilled YAML text; submit returns to menu without changing config.
 
-Import: multiline text selector -> `load_panel_yaml()` -> validation -> replace panel with same ID or add new panel after explicit confirmation when replacing.
+- [ ] **Step 7: Add EN/RU strings**
 
-Export: choose panel -> multiline text field prefilled with `dump_panel_yaml(panel)`. Submitting export performs no config mutation; it returns to panel menu.
+Add every menu item, field, description and error in both locales, including repair and dangerous confirmation wording.
 
-- [ ] **Step 6: Add EN/RU strings**
-
-Every new menu item, field, error and description must exist in both `strings.json` and `translations/ru.json`. Keep Russian wording practical and explicit about dangerous-action confirmation and allowlist narrowing.
-
-- [ ] **Step 7: Run tests**
-
-Run:
+- [ ] **Step 8: Run tests**
 
 ```bash
 pytest -q tests/test_config_flow_control_panels_v060.py \
@@ -745,7 +616,7 @@ pytest -q tests/test_config_flow_control_panels_v060.py \
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add custom_components/matrix_extended/config_flow.py \
@@ -756,49 +627,34 @@ git commit -m "feat: configure Matrix control panels in HA UI"
 
 ---
 
-### Task 10: Panel Diagnostics Sensor and Runtime Visibility
+### Task 10: Panel Diagnostics Sensor
 
 **Files:**
 - Modify: `custom_components/matrix_extended/sensor.py`
 - Modify: `custom_components/matrix_extended/strings.json`
 - Modify: `custom_components/matrix_extended/translations/ru.json`
 - Test: `tests/test_control_panel_diagnostics_v060.py`
-- Test: `tests/test_diagnostics_v051.py`
 
 **Interfaces:**
-- Adds one disabled-by-default diagnostic sensor `control_panels` per Matrix account.
+- Disabled-by-default `control_panels` diagnostic sensor per account.
 - Native value: number of active panels.
-- Attributes: bounded list of per-panel diagnostic snapshots.
+- Attributes: bounded per-panel snapshots.
 
-- [ ] **Step 1: Write RED diagnostics tests**
+- [ ] **Step 1: Write RED diagnostics test**
 
-Expected snapshot keys per panel:
+Require keys `panel_id`, `room_id`, `root_event_id`, `state`, `pin_status`, `watched_entities`, `actions`, `last_update_at`, `last_update_error`, `pending_confirmations`. Assert no service data/tokens/secrets.
 
-```python
-{
-    "panel_id", "room_id", "root_event_id", "state", "pin_status",
-    "watched_entities", "actions", "last_update_at", "last_update_error",
-    "pending_confirmations",
-}
-```
+- [ ] **Step 2: Implement manager listeners and sensor**
 
-Ensure no HA service data, access tokens or secrets are exposed.
+Notify listeners on root/pin/repair/update/confirmation count changes. Sensor subscribes via `async_on_remove`.
 
-- [ ] **Step 2: Implement manager listener + sensor**
+- [ ] **Step 3: Add EN/RU entity translation**
 
-`ControlPanelManager.add_listener()` notifies on root/pin/repair/update/confirmation-count changes. `MatrixControlPanelsSensor` subscribes and publishes a bounded snapshot. Use `EntityCategory.DIAGNOSTIC` and `_attr_entity_registry_enabled_default = False`.
-
-- [ ] **Step 3: Add translations**
-
-Add `entity.sensor.control_panels.name` in EN/RU.
+Add `entity.sensor.control_panels.name`.
 
 - [ ] **Step 4: Run tests**
 
-Run:
-
-```bash
-pytest -q tests/test_control_panel_diagnostics_v060.py tests/test_diagnostics_v051.py
-```
+Run: `pytest -q tests/test_control_panel_diagnostics_v060.py tests/test_diagnostics_v051.py`
 
 Expected: PASS.
 
@@ -813,7 +669,7 @@ git commit -m "feat: expose Matrix control panel diagnostics"
 
 ---
 
-### Task 11: User Documentation for Native Matrix Control
+### Task 11: User Documentation
 
 **Files:**
 - Create: `docs/CONTROL_PANELS.md`
@@ -824,34 +680,21 @@ git commit -m "feat: expose Matrix control panel diagnostics"
 - Modify: `docs/EXAMPLES.ru.md`
 - Test: `tests/test_documentation_localization.py`
 
-**Interfaces:**
-- Documents actual `0.6.0b1` behavior only; Widget remains explicitly future/beta roadmap.
+- [ ] **Step 1: Extend localization tests**
 
-- [ ] **Step 1: Add documentation localization assertions**
+Require EN/RU control-panel docs and matching high-level sections.
 
-Require EN/RU control-panel docs and matching section anchors/feature terms.
+- [ ] **Step 2: Document actual b1 behavior**
 
-- [ ] **Step 2: Write control panel guide**
-
-Include:
-- prerequisites and allowlists;
-- GUI creation flow;
-- one-panel-per-room rule;
-- normal vs dangerous reactions;
-- 30-second same-sender confirmation;
-- pin power-level behavior;
-- `needs_repair` and explicit repair;
-- YAML import/export example;
-- state/debounce semantics;
-- security warning that Matrix cannot submit arbitrary HA services.
+Cover prerequisites/allowlists, GUI creation, one-panel-per-room, normal/dangerous reactions, 30-second same-sender confirmation, pin power level behavior, `needs_repair` + Repair UI, YAML import/export, debounce/outage behavior and security boundary.
 
 - [ ] **Step 3: Add practical examples**
 
-Add garage, alarm, light/climate examples. Include a dangerous garage open action and low-risk light toggle.
+Garage, alarm and light/climate examples with at least one dangerous and one low-risk action.
 
-- [ ] **Step 4: Update README feature list**
+- [ ] **Step 4: Update README roadmap**
 
-Mark Native Matrix Control as `0.6.0b1` and Widget as planned `0.6.0b2`; do not describe Widget as already shipped.
+Native Control = `0.6.0b1`; Matrix Widget remains planned for later beta, not shipped.
 
 - [ ] **Step 5: Run docs tests**
 
@@ -870,22 +713,15 @@ git commit -m "docs: document native Matrix control panels"
 
 ---
 
-### Task 12: Real HA/Synapse/Element Regression for Control Panels
+### Task 12: Real HA/Synapse/Element Regression
 
 **Files:**
 - Modify: `ci/scripts/prepare-ha.sh`
 - Create: `ci/scripts/matrix-control-e2e.py`
 - Modify: `.github/workflows/test.yml`
-- Test: `tests/e2e/test_ha_e2e_helpers.py` or create `tests/e2e/test_matrix_control_helpers.py`
+- Test: `tests/e2e/test_matrix_control_helpers.py`
 
-**Interfaces:**
-- Real test uses current disposable room and users from `.ci/matrix-env.json`.
-- Uses deterministic HA helpers from `prepare-ha.sh`.
-- Must prove both low-risk and dangerous action flows in an encrypted room.
-
-- [ ] **Step 1: Extend HA fixture**
-
-Add deterministic entities:
+- [ ] **Step 1: Extend deterministic HA fixture**
 
 ```yaml
 input_boolean:
@@ -897,59 +733,48 @@ input_boolean:
     initial: false
 ```
 
-Use services `input_boolean.turn_on` / `turn_off` so real state transitions are observable.
+- [ ] **Step 2: Write helper unit tests**
 
-- [ ] **Step 2: Add E2E helper unit tests**
+Test functions that identify/decrypt panel root, edit relation and confirmation reply; keep network I/O outside unit tests.
 
-Test pure functions used to locate/decrypt panel root/edit events and build reactions. Keep network calls outside unit tests.
+- [ ] **Step 3: Implement real panel configuration through Options Flow HTTP API**
 
-- [ ] **Step 3: Implement `matrix-control-e2e.py configure`**
+Create panel in the existing encrypted room with a low-risk `💡 -> input_boolean.toggle matrix_control_light` and dangerous `🔓 -> input_boolean.turn_on matrix_control_dangerous` action.
 
-Use HA config-entry Options Flow HTTP API to create a panel in the existing encrypted room with:
-- light state entity + low-risk `💡` action;
-- dangerous target + `🔓` action requiring confirmation;
-- allowed user equal to the disposable Element user.
+- [ ] **Step 4: Verify live HA state -> same-root edit**
 
-Wait for reload and record root event ID.
+Change light via HA API, sync/decrypt Matrix events and assert an `m.replace` points to the stored root; no second root is created.
 
-- [ ] **Step 4: Implement live state/edit assertion**
+- [ ] **Step 5: Verify low-risk Matrix reaction -> HA -> panel state**
 
-Change `input_boolean.matrix_control_light` through HA API, sync/decrypt as the Matrix user, and assert Element/Matrix receives an edit related to the same root event rather than a new root.
+React `💡` as the allowed Matrix user, wait for HA state transition, then verify panel edit reflects actual HA state.
 
-- [ ] **Step 5: Implement low-risk control assertion**
+- [ ] **Step 6: Verify dangerous confirmation**
 
-React `💡` to the root as the allowed Matrix user. Wait for HA entity state to change, then assert one panel edit reflects real state.
+React `🔓`; assert target remains off. Locate confirmation reply, react `✅` from the same allowed user, then assert target becomes on. Wrong-sender and replay negatives remain mandatory unit/security tests; the real stack proves the positive encrypted end-to-end path.
 
-- [ ] **Step 6: Implement dangerous confirmation assertion**
+- [ ] **Step 7: Verify outage coalescing**
 
-React `🔓` to root. Assert HA target remains off. Discover confirmation reply, react `✅` as same user, assert HA target becomes on. Add a negative attempt with a second Matrix user or unauthorized sender if bootstrap fixture already has one; otherwise create one in bootstrap for this test.
+During existing Synapse outage section, flip panel entity multiple times. After recovery, assert first successful panel update reflects only final desired state and no edit storm occurs.
 
-- [ ] **Step 7: Test Synapse outage coalescing**
+- [ ] **Step 8: Verify HA restart root stability**
 
-Before stopping Synapse, record panel state. While Synapse is down, make several HA state flips. After Synapse restart, assert only the final desired state is reflected by the first successful panel update; do not require every intermediate transition.
+After HA restart, root event ID remains identical and no duplicate root appears.
 
-- [ ] **Step 8: Test HA restart root stability**
+- [ ] **Step 9: Verify redaction + explicit Repair UI**
 
-After HA restart, assert stored root event ID is unchanged and no duplicate control root is created.
+Redact root, assert diagnostic state `needs_repair`, assert no automatic replacement, invoke Options Flow Repair, then assert exactly one new root.
 
-- [ ] **Step 9: Test redaction/repair behavior**
-
-Redact root as permitted test user/admin, verify diagnostics becomes `needs_repair`, and verify no automatic root storm. Invoke the explicit repair path through the configured UI/service mechanism implemented for b1 and assert exactly one new root.
-
-- [ ] **Step 10: Add workflow gate**
-
-Insert a real-stack step after safe commands/Voice Assist and before outage/restart steps:
+- [ ] **Step 10: Add real-stack workflow step**
 
 ```yaml
 - name: Verify encrypted Native Matrix Control panels
   run: python ci/scripts/matrix-control-e2e.py verify
 ```
 
-Preserve existing real-stack timeout unless measured runtime requires a bounded increase.
+Integrate with existing outage/restart sequence rather than starting a second stack.
 
-- [ ] **Step 11: Run local fast tests**
-
-Run:
+- [ ] **Step 11: Run local helper/compile checks**
 
 ```bash
 pytest -q tests/e2e/test_matrix_control_helpers.py
@@ -962,56 +787,39 @@ Expected: PASS.
 
 ```bash
 git add ci/scripts/prepare-ha.sh ci/scripts/matrix-control-e2e.py \
-  .github/workflows/test.yml tests/e2e/
+  .github/workflows/test.yml tests/e2e/test_matrix_control_helpers.py
 git commit -m "test: cover Matrix control panels on real HA stack"
 ```
 
 ---
 
-### Task 13: Beta Release Semantics, Version, Changelog and Final Verification
+### Task 13: Beta Release Semantics, Version and Final Verification
 
 **Files:**
 - Modify: `.github/workflows/release.yml`
 - Modify: `custom_components/matrix_extended/manifest.json`
 - Modify: `CHANGELOG.md`
 - Modify: `CHANGELOG.ru.md`
-- Modify: release-related tests if present
+- Test: `tests/test_release_workflow.py`
 
-**Interfaces:**
-- Version becomes exactly `0.6.0b1` only when implementation is release-ready.
-- Release workflow detects pre-release versions and uses GitHub `--prerelease`, never `--latest` for beta.
-
-- [ ] **Step 1: Write release-workflow contract test if repository has workflow tests; otherwise add `tests/test_release_workflow.py`**
-
-Parse `.github/workflows/release.yml` as text and assert beta-aware logic exists:
+- [ ] **Step 1: Write beta release RED contract test**
 
 ```python
+workflow = Path(".github/workflows/release.yml").read_text()
 assert "--prerelease" in workflow
 assert "--latest" in workflow
-assert "0.6.0b1" not in workflow  # logic must be generic, not hard-coded
+assert "0.6.0b1" not in workflow
 ```
 
-- [ ] **Step 2: Make release mode generic**
+The logic must be generic, not hard-coded to one beta.
 
-In `release.yml`, derive pre-release status from Python packaging-version semantics or a conservative regex matching `a`, `b`, `rc` segments. Emit `prerelease=true/false` as a step output.
+- [ ] **Step 2: Implement generic pre-release detection**
 
-For pre-release:
+Use a Python stdlib regex that treats versions containing `aN`, `bN` or `rcN` suffixes as pre-release and emits a workflow output. Avoid adding a packaging dependency solely for release detection.
 
-```bash
-gh release create "$tag" ... --prerelease ...
-```
+Stable path uses `gh release create ... --latest`; pre-release path uses `... --prerelease` and never `--latest`.
 
-For stable:
-
-```bash
-gh release create "$tag" ... --latest ...
-```
-
-Do not mark beta as latest.
-
-- [ ] **Step 3: Run the entire fast gate before version bump**
-
-Run:
+- [ ] **Step 3: Run entire fast gate before version bump**
 
 ```bash
 python ci/scripts/validate-source.py
@@ -1019,23 +827,13 @@ python -m compileall -q custom_components/matrix_extended
 pytest -q
 ```
 
-Expected: all PASS.
+Expected: PASS.
 
-- [ ] **Step 4: Bump manifest to `0.6.0b1` and add bilingual changelog**
+- [ ] **Step 4: Bump manifest to exact `0.6.0b1` and add bilingual changelog**
 
-`CHANGELOG.md` and `CHANGELOG.ru.md` must include:
-- Native Matrix Control overview;
-- existing-room limitation;
-- reaction controls and dangerous confirmations;
-- persistence/recovery/pin behavior;
-- GUI + YAML import/export;
-- diagnostics;
-- real-stack test status;
-- note that Widget is not included yet and is planned for later beta.
+Notes must state existing-room limitation, reaction control, dangerous confirmation, persistence/recovery/pinning, GUI/YAML support, diagnostics, real-stack status, and that Widget is not included yet.
 
-- [ ] **Step 5: Run full local regression again**
-
-Run:
+- [ ] **Step 5: Run full local release check**
 
 ```bash
 python ci/scripts/validate-source.py
@@ -1044,43 +842,30 @@ pytest -q
 python ci/scripts/build-release.py
 ```
 
-Expected: PASS and a verified `dist/matrix_extended-ha-install-v0.6.0b1.zip`.
+Expected: PASS and `dist/matrix_extended-ha-install-v0.6.0b1.zip`.
 
-- [ ] **Step 6: Push implementation branch and open PR to `main`**
+- [ ] **Step 6: Open PR to `main`**
 
-PR body must list the design spec, test coverage, real-stack requirements, and explicitly state that release publication is blocked on all CI gates.
+PR body links the design spec and plan, summarizes security boundaries, and states publication is blocked on all CI gates.
 
-- [ ] **Step 7: Require CI proof before merge**
+- [ ] **Step 7: Require exact-head green before merge**
 
-Do not merge until all are green for the exact PR head:
-- Fast regression gate;
-- Clean manifest runtime Python 3.14 + E2EE;
-- Real HA 2026.9.2 + Synapse 1.160.0 + Element 1.12.26;
-- Verified install ZIP;
-- Hassfest;
-- HACS validation.
+Require Fast regression, Python 3.14 + E2EE manifest runtime, real HA/Synapse/Element, verified ZIP, Hassfest and HACS validation.
 
-- [ ] **Step 8: Merge only after exact-head green, then verify main CI**
+- [ ] **Step 8: Merge only after green and verify main CI on exact merge commit**
 
-After merge, confirm the same gates pass for the exact merge commit on `main`.
+No completion claim until all main gates pass.
 
-- [ ] **Step 9: Verify generated GitHub Pre-release**
+- [ ] **Step 9: Verify generated GitHub release**
 
-Check:
-- tag `v0.6.0b1`;
-- release marked Pre-release;
-- exact tested main commit target;
-- bilingual notes;
-- install ZIP;
-- `.sha256` asset;
-- release does not become `Latest`.
+Confirm tag `v0.6.0b1`, Pre-release flag, exact tested commit target, bilingual notes, install ZIP and SHA256, and ensure it is not Latest.
 
-- [ ] **Step 10: Commit release-prep changes before PR review**
+- [ ] **Step 10: Commit release-prep changes**
 
 ```bash
 git add .github/workflows/release.yml \
   custom_components/matrix_extended/manifest.json \
-  CHANGELOG.md CHANGELOG.ru.md tests/
+  CHANGELOG.md CHANGELOG.ru.md tests/test_release_workflow.py
 git commit -m "release: prepare Matrix Extended 0.6.0b1"
 ```
 
@@ -1088,15 +873,15 @@ git commit -m "release: prepare Matrix Extended 0.6.0b1"
 
 ## Plan Self-Review Checklist
 
-Before implementation handoff, verify:
-
-1. Every spec requirement maps to at least one task above.
-2. No task creates a second authorization/execution engine.
-3. General incoming events can remain disabled while panel control still has a narrow reaction/redaction listener path.
-4. Pending confirmations are memory-only and are cleared on reload/restart.
-5. Lost/redacted roots never cause automatic message storms.
-6. Pinning failure is non-fatal.
-7. HA state, not service-call success, drives visible panel state.
-8. Panel outage handling never feeds every state edit into the persistent normal-message outbox.
-9. Widget support is only an interface boundary in b1; no Widget implementation is included.
-10. Beta publication is Pre-release and not Latest.
+1. Every approved design requirement maps to a task above.
+2. `SafeActionExecutionContext` resolves the existing camera-snapshot need without leaving a second executor.
+3. Account room aliases are resolved before panel room-ID validation.
+4. General incoming events may remain disabled while a narrow control-only reaction/redaction listener is active.
+5. Pending confirmations are memory-only and cleared on reload/restart.
+6. Lost/redacted roots never create automatic message storms; Repair is an explicit GUI action.
+7. Pin failure is non-fatal, and re-pin attempts happen only at creation/startup recovery/repair.
+8. HA state, not service-call success, drives visible panel state.
+9. Panel outage handling never feeds state edits into the persistent normal-message outbox.
+10. Widget support is only a stable interface boundary in b1; no Widget code is implemented.
+11. Real-stack tests prove positive encrypted low-risk/dangerous paths; wrong-sender/replay are covered by unit/security tests.
+12. Beta publication is Pre-release and not Latest.

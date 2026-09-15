@@ -497,17 +497,7 @@ actions:
 mode: queued
 ```
 
-## 14. Thread: отправка и reply внутри ветки
-
-```yaml
-action: matrix_extended.send
-data:
-  room: "!room:example.org"
-  message: "Обновление внутри ветки"
-  thread_id: "$thread_root_event"
-```
-
-Для `send` поле комнаты называется `target`, поэтому корректный вариант:
+## 14. Thread: отправка внутри ветки
 
 ```yaml
 action: matrix_extended.send
@@ -518,7 +508,7 @@ data:
   thread_id: "$thread_root_event"
 ```
 
-У `reply` используется `room`, потому что reply адресуется одному Matrix room.
+У `send` поле комнаты называется `target`, потому что действие может отправлять сразу в несколько комнат. У `reply` используется `room`, потому что reply адресуется одной Matrix room.
 
 ## Карта в self-hosted Element
 

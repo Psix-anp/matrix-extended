@@ -30,6 +30,7 @@ _HLS_MIME_TYPES = {
     "application/vnd.apple.mpegurl",
     "application/x-mpegurl",
 }
+_IMAGE_MEDIA_SOURCE_PREFIX = "media-source://image/"
 
 
 @dataclass(slots=True)
@@ -291,6 +292,11 @@ class MediaResolver:
         return async_process_play_media_url(self.hass, url)
 
     async def _async_from_media_source(self, media_id: str) -> ResolvedMedia:
+        if media_id.startswith(_IMAGE_MEDIA_SOURCE_PREFIX):
+            entity_id = media_id.removeprefix(_IMAGE_MEDIA_SOURCE_PREFIX).strip()
+            if entity_id:
+                return await self._async_from_entity(entity_id)
+
         try:
             playable = await media_source.async_resolve_media(
                 self.hass, media_id, target_media_player=None

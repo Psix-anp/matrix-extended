@@ -26,6 +26,11 @@ from .content import (
     validate_media_size,
 )
 
+_HLS_MIME_TYPES = {
+    "application/vnd.apple.mpegurl",
+    "application/x-mpegurl",
+}
+
 
 @dataclass(slots=True)
 class ResolvedMedia:
@@ -73,6 +78,46 @@ def _extension_for_mime(content_type: str) -> str:
 def _image_dimensions(data: bytes) -> tuple[int, int]:
     with PILImage.open(BytesIO(data)) as img:
         return img.size
+
+
+def _frigate_recording_proxy_url(url: str) -> str | None:
+    """Map a Frigate timestamp VOD playlist to its HA MP4 recording proxy."""
+    parsed = urlparse(url)
+    parts = parsed.path.strip("/").split("/")
+    if len(parts) < 9 or parts[:2] != ["api", "frigate"]:
+        return None
+
+    if parts[2] == "vod":
+        prefix = parts[:2]
+        vod = parts[2:]
+    elif len(parts) >= 10 and parts[3] == "vod":
+        prefix = parts[:3]
+        vod = parts[3:]
+    else:
+        return None
+
+    if (
+        len(vod) != 7
+        or vod[0] != "vod"
+        or vod[2] != "start"
+        or vod[4] != "end"
+        or vod[6].lower() != "index.m3u8"
+    ):
+        return None
+
+    camera_name, start, end = vod[1], vod[3], vod[5]
+    if not camera_name or not start or not end:
+        return None
+    try:
+        float(start)
+        float(end)
+    except ValueError:
+        return None
+
+    path = "/" + "/".join(
+        [*prefix, "recording", camera_name, "start", start, "end", end]
+    )
+    return parsed._replace(path=path, query="", fragment="").geturl()
 
 
 class MediaResolver:
@@ -231,6 +276,20 @@ class MediaResolver:
                 )
         return bytes(data)
 
+    def _process_media_source_url(self, url: str) -> str:
+        """Sign Home Assistant-owned media URLs before downloading them."""
+        try:
+            from homeassistant.components.media_player.browse_media import (  # noqa: PLC0415
+                async_process_play_media_url,
+            )
+        except ImportError:
+            # Compatibility with older Home Assistant releases; current HA always
+            # provides the helper and signs protected internal URLs here.
+            if url.startswith("/"):
+                return f"{get_url(self.hass, prefer_external=False).rstrip('/')}{url}"
+            return url
+        return async_process_play_media_url(self.hass, url)
+
     async def _async_from_media_source(self, media_id: str) -> ResolvedMedia:
         try:
             playable = await media_source.async_resolve_media(
@@ -247,10 +306,24 @@ class MediaResolver:
             )
             resolved.media_type = infer_media_type(resolved.content_type)
             return resolved
+
         url = playable.url
-        if url.startswith("/"):
-            url = f"{get_url(self.hass, prefer_external=False).rstrip('/')}{url}"
-        resolved = await self._async_from_url(url)
+        playable_mime = _clean_content_type(playable.mime_type, urlparse(url).path)
+        frigate_recording_url = None
+        if playable_mime in _HLS_MIME_TYPES:
+            frigate_recording_url = _frigate_recording_proxy_url(url)
+
+        if frigate_recording_url is not None:
+            resolved = await self._async_from_url(
+                self._process_media_source_url(frigate_recording_url)
+            )
+            resolved.content_type = "video/mp4"
+            if not resolved.filename.lower().endswith(".mp4"):
+                resolved.filename = f"{resolved.filename}.mp4"
+            resolved.media_type = "video"
+            return resolved
+
+        resolved = await self._async_from_url(self._process_media_source_url(url))
         resolved.content_type = _clean_content_type(playable.mime_type, resolved.filename)
         resolved.media_type = infer_media_type(resolved.content_type)
         return resolved

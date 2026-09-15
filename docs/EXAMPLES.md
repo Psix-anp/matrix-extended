@@ -54,7 +54,13 @@ Set `tts_engine` only when you need a specific Home Assistant TTS provider.
 
 ## 4. Incoming Matrix voice → STT
 
-Trigger on downloaded incoming Matrix media and transcribe only voice messages:
+When incoming-media downloads are enabled, Matrix Extended stores received voice files under:
+
+`/config/matrix_extended/incoming/<config_entry_id>/`
+
+The `matrix_extended_media` event exposes the exact full path as `local_path`, so automations do not need to construct the filename or config-entry ID manually.
+
+Automation for native Matrix voice messages only:
 
 ```yaml
 trigger:
@@ -62,7 +68,9 @@ trigger:
     event_type: matrix_extended_media
 condition:
   - condition: template
-    value_template: "{{ trigger.event.data.voice | default(false) }}"
+    value_template: >-
+      {{ trigger.event.data.voice | default(false)
+         and trigger.event.data.local_path | default('') }}
 action:
   - action: matrix_extended.transcribe_voice
     response_variable: voice_result
@@ -73,8 +81,22 @@ action:
   - action: persistent_notification.create
     data:
       title: "Matrix voice"
-      message: "{{ voice_result.transcript }}"
+      message: "{{ voice_result.text }}"
 ```
+
+`matrix_extended.transcribe_voice` returns at least `text`, `stt_entity`, `language`, `normalized`, and `assist_executed`. When `assist: true` is used, the response also contains `assist`.
+
+For a manual Developer Tools → Actions test, copy `local_path` from a `matrix_extended_media` event and call:
+
+```yaml
+action: matrix_extended.transcribe_voice
+data:
+  path: "/config/matrix_extended/incoming/0123456789abcdef/abc123456789-voice-message.ogg"
+  stt_entity: stt.whisper
+  language: ru
+```
+
+The path above is only an example. The action intentionally refuses arbitrary files outside the selected Matrix account's incoming-media directory.
 
 Add `assist: true` only for explicitly trusted user/room allowlists.
 

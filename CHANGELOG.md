@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.7 — 2026-09-15
+
+Image Media Source snapshot fix and graphical URL/entity media sending.
+
+- Fix Home Assistant `media-source://image/...` selections by fetching one native image frame through `image.async_get_image()` instead of trying to download the `/api/image_proxy_stream/...` streaming endpoint as a finite attachment.
+- Extend `matrix_extended.send_media` to accept exactly one graphical source: Home Assistant Media Browser, direct HTTP/HTTPS URL, or `camera.*` / `image.*` entity.
+- Add media type override and optional filename to `send_media` while retaining caption, native voice and thread support for the new source modes.
+- Keep existing Media Browser automations and the Frigate MP4/VOD handling introduced in v0.5.6 compatible.
+- Fix the top README integration image for HACS/embedded rendering by using an absolute raw GitHub URL.
+- No migration is required.
+
+### Verification
+
+- TDD RED reproduced the missing behavior with 7 failed / 297 passed before implementation.
+- The final feature head passed regression, clean Python 3.14 + E2EE, real Home Assistant 2026.9.2 + Synapse 1.160.0 + Element 1.12.26, real `services.yaml` parsing, graphical `send_media`, outage/recovery, Home Assistant restart, background-task cleanup, verified install ZIP, Hassfest and HACS validation.
+- The final v0.5.7 release is published only after the exact release commit passes the same mandatory gates.
+
 ## 0.5.6 — 2026-09-15
 
 Media Source authentication hardening, complete action recipes, and public/HACS readiness.

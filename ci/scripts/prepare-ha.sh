@@ -40,7 +40,7 @@ cat > "$TEST_IMAGE_COMPONENT_DIR/manifest.json" <<'JSON'
   "domain": "matrix_extended_test_image",
   "name": "Matrix Extended test image Media Source",
   "version": "0.0.0",
-  "dependencies": ["media_source"],
+  "dependencies": ["media_source", "image"],
   "codeowners": []
 }
 JSON
@@ -48,15 +48,40 @@ JSON
 cat > "$TEST_IMAGE_COMPONENT_DIR/__init__.py" <<'PY'
 """Disposable real-stack Media Source fixture for Matrix Extended tests."""
 
+from base64 import b64decode
+from typing import override
+
+from homeassistant.components.image import ImageEntity
+from homeassistant.components.image.const import DATA_COMPONENT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
 DOMAIN = "matrix_extended_test_image"
 CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
+_TEST_IMAGE = b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg=="
+)
+
+
+class MatrixExtendedRegressionImage(ImageEntity):
+    """Deterministic finite image used by the real-stack regression."""
+
+    _attr_name = "Matrix Extended Regression"
+    _attr_unique_id = "matrix_extended_regression"
+    _attr_content_type = "image/png"
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        super().__init__(hass)
+        self.entity_id = "image.matrix_extended_regression"
+
+    @override
+    async def async_image(self) -> bytes | None:
+        return _TEST_IMAGE
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Load the disposable test integration."""
+    """Load the disposable test integration and add its image entity."""
+    hass.data[DATA_COMPONENT].async_add_entities([MatrixExtendedRegressionImage(hass)])
     return True
 PY
 
@@ -78,7 +103,7 @@ async def async_get_media_source(hass: HomeAssistant) -> "MatrixExtendedTestImag
 
 
 class MatrixExtendedTestImageSource(MediaSource):
-    """Resolve any image entity ID to HA's streaming image proxy."""
+    """Resolve the fixture image entity to HA's streaming image proxy."""
 
     name = "Matrix Extended test image"
 
@@ -88,7 +113,7 @@ class MatrixExtendedTestImageSource(MediaSource):
 
     @override
     async def async_resolve_media(self, item: MediaSourceItem) -> PlayMedia:
-        return PlayMedia(f"/api/image_proxy_stream/{item.identifier}", "image/jpeg")
+        return PlayMedia(f"/api/image_proxy_stream/{item.identifier}", "image/png")
 
     @override
     async def async_browse_media(self, item: MediaSourceItem):

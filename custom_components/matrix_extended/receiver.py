@@ -43,6 +43,8 @@ from .const import (
 )
 from .incoming import extract_relations, extract_replacement, safe_filename
 from .retention import cleanup_media_directory
+from .safe_action_executor import SafeActionExecutor
+from .safe_actions import SafeActionDefinition, ServiceActionHandler
 from .voice_assist import VoiceAssistCoordinator
 
 _TEXT_EVENTS = (RoomMessageText, RoomMessageNotice, RoomMessageEmote)
@@ -106,6 +108,7 @@ class MatrixInboundReceiver:
         self._media_retention_days = int(media_retention_days)
         self._media_max_bytes = int(media_max_bytes)
         self._command_executor = CommandExecutor(hass, account)
+        self._safe_action_executor = SafeActionExecutor(hass)
         self._voice_assist = VoiceAssistCoordinator(hass, account, entry_id=entry_id)
 
     def register(self) -> None:
@@ -262,16 +265,20 @@ class MatrixInboundReceiver:
         )
         if action is not None:
             await registry.async_save()
-            domain, service = action.service.split(".", 1)
-            await self._hass.services.async_call(
-                domain,
-                service,
-                action.data,
-                blocking=False,
-                target=action.target or None,
+            result = await self._safe_action_executor.async_execute(
+                SafeActionDefinition(
+                    id=f"reaction:{room.room_id}:{event.reacts_to}:{event.key}",
+                    handler=ServiceActionHandler(
+                        service=action.service,
+                        target=dict(action.target),
+                        data=dict(action.data),
+                    ),
+                )
             )
-            payload["action_executed"] = True
             payload["action_service"] = action.service
+            payload["action_executed"] = result.status == "success"
+            if result.error is not None:
+                payload["action_error"] = result.error
         self._mark_receive("reaction", payload)
         self._hass.bus.async_fire(EVENT_REACTION, payload)
 

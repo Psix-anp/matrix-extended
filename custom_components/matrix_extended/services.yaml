@@ -177,7 +177,7 @@ send:
 
 send_media:
   name: Send Matrix media
-  description: Choose one media item graphically from any Home Assistant Media Source provider, including Frigate and Local Media, and send it to Matrix. YAML can still provide the same fields manually.
+  description: Send one media item from the Home Assistant Media Browser, a direct URL, or a camera/image entity. Choose exactly one source. Frigate and Local Media are supported through the Media Browser.
   fields:
     account:
       name: Account
@@ -197,12 +197,34 @@ send_media:
         text: {}
     media_picker:
       name: Choose media
-      description: Open the Home Assistant Media Browser. All Media Source types are accepted so providers such as Frigate are not filtered out.
-      required: true
+      description: Source 1 of 3. Open the Home Assistant Media Browser. Leave empty when using URL or Home Assistant entity.
       selector:
         media:
           accept:
             - "*"
+    url:
+      name: Media URL
+      description: Source 2 of 3. Direct HTTP or HTTPS URL to an image, video, audio file or downloadable media endpoint. Leave empty when using the Media Browser or entity.
+      selector:
+        text:
+          type: url
+    entity_id:
+      name: Camera or image entity
+      description: Source 3 of 3. camera.* or image.* entity. Matrix Extended fetches one current frame/image. Leave empty when using the Media Browser or URL.
+      selector:
+        entity: {}
+    type:
+      name: Media type
+      description: Usually keep Auto. Override only when the remote server reports an incorrect Content-Type.
+      default: auto
+      selector:
+        select:
+          options: [auto, image, video, audio, file]
+    filename:
+      name: File name
+      description: Optional filename presented to Matrix. Useful for URLs without a meaningful path filename.
+      selector:
+        text: {}
     caption:
       name: Caption
       description: Optional Matrix caption for the selected media.

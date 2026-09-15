@@ -19,7 +19,7 @@
 ```yaml
 delivery_id: "..."
 status: sent
- events:
+events:
   - room_id: "!room:example.org"
     event_id: "$event"
     kind: text

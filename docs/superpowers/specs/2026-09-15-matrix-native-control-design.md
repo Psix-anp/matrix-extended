@@ -35,7 +35,8 @@ Add safe, persistent Home Assistant control surfaces to existing Matrix rooms wi
 - free-form service execution from Matrix event payloads;
 - complex action conditions;
 - direct HA API access from Matrix clients;
-- cross-signing or new sync protocol work.
+- cross-signing or new sync protocol work;
+- timeline/history scanning to rediscover a lost panel root.
 
 Automatic Space/room setup is deferred to a later beta. The graphical Matrix Widget is deferred to 0.6.0b2.
 
@@ -75,7 +76,8 @@ Confirmation rules:
 - timeout cancels;
 - another sender cannot consume the confirmation;
 - changing/replacing the source panel/action invalidates stale confirmation state;
-- confirmation stores an action reference, not a copied arbitrary service payload.
+- confirmation stores an action reference, not a copied arbitrary service payload;
+- pending confirmations are intentionally dropped on Home Assistant restart/reload.
 
 Ordinary low-risk actions such as lights, climate, and media execute without a second confirmation.
 
@@ -154,7 +156,7 @@ Pinning is optional enhancement, not a requirement for control. If the Matrix ac
 - reactions remain usable;
 - diagnostics show a non-fatal `not pinned / insufficient power level` condition.
 
-If a user manually removes the pin, Matrix Extended does not continuously fight that choice. Re-pinning is attempted at panel creation, startup recovery when appropriate, or an explicit repair operation.
+If a user manually removes the pin, Matrix Extended does not continuously fight that choice. Automatic pinning is attempted only when a new panel root is created. An explicit repair action may pin the repaired/new root again. Ordinary startup does not re-pin an existing root that is currently unpinned.
 
 ## Home Assistant State Flow
 
@@ -233,7 +235,7 @@ Runtime metadata is stored separately in Home Assistant `Store`. Per panel, pers
 - pin status/last pin error information suitable for diagnostics;
 - panel generation/version needed to invalidate stale confirmations.
 
-Pending confirmations may be persisted only if their expiry semantics remain exact across restart; otherwise they are intentionally dropped on HA restart. In either case, a restart must never turn an unconfirmed dangerous action into an executable action.
+Pending confirmations are in-memory only and are dropped on HA restart/reload. This is a deliberate safety property: restart can only cancel an unconfirmed dangerous action, never advance it toward execution.
 
 ## Startup and Recovery
 
@@ -242,17 +244,17 @@ On setup/reload/restart:
 1. load configuration and runtime store;
 2. connect/sync the Matrix account;
 3. resolve the configured existing room;
-4. restore the known root event when valid;
+4. restore the known root event ID from runtime state;
 5. subscribe to the configured HA entities;
 6. render current HA state;
 7. update the existing root only when the render differs;
-8. validate/report pin status.
+8. report current pin state without automatically re-pinning an existing root.
 
 No duplicate control root should be created during ordinary HA restart.
 
-If the root event was redacted/deleted or becomes unusable, the panel enters repair. Repair creates exactly one new root, registers actions against the new root, persists the new event ID, and optionally attempts to pin it.
+If editing the stored root proves that it was redacted/deleted or is otherwise unusable, the panel enters `needs_repair`. Matrix Extended does not automatically create repeated roots in a retry loop. An explicit repair operation creates exactly one new root, registers actions against the new root, persists the new event ID, and attempts to pin the new root.
 
-If the runtime store is lost, Matrix Extended may attempt recovery only through a reliable machine-readable identifier available from accessible Matrix event/state history. It must never identify a panel by fuzzy matching its human-readable text. If reliable recovery is unavailable, explicit repair creates one new root and records it.
+If the runtime Store is lost or the panel has no stored root event ID, 0.6.0b1 does not scan Matrix history to guess the old root. The panel enters `needs_repair`; explicit repair creates one new root and records it. Human-readable message text is never used to identify an old panel root.
 
 ## Error Handling and Diagnostics
 
@@ -284,7 +286,7 @@ Missing pin permission is a warning, not a panel setup failure.
 - `action_id`;
 - entity identity plus rendered/display state;
 - `confirmation_required`;
-- request/result correlation identifiers where needed.
+- `request_id`, generated uniquely for each action request/result correlation.
 
 Reserve namespaced event families such as:
 
@@ -341,7 +343,7 @@ Cover at minimum:
 - resulting panel state is based on a real HA state event, not optimistic mutation;
 - Matrix outage collapses many HA changes to one final post-recovery update;
 - pin permission failure does not disable panel control;
-- redacted root leads to one repaired root and no message storm.
+- redacted root leads to `needs_repair` and explicit repair creates one new root without a message storm.
 
 ### Security Tests
 
@@ -354,7 +356,8 @@ Cover at minimum:
 - reaction against an unrelated event;
 - stale confirmation;
 - confirmation by another user;
-- replayed consumed confirmation.
+- replayed consumed confirmation;
+- HA restart/reload drops pending confirmation without executing it.
 
 ### Real Stack Gate
 
@@ -368,15 +371,16 @@ Before publishing 0.6.0b1, run the existing real environment using the project b
 The release candidate must prove the complete path in a real encrypted room:
 
 1. configure a panel for an existing room;
-2. create/render the control root;
+2. create/render the control root through explicit panel setup/repair;
 3. pin it when power level allows;
 4. change a HA entity and observe an edit in Element;
 5. trigger a low-risk reaction action and observe the real HA state update;
 6. trigger a dangerous action, require same-user confirmation, and then execute;
-7. restart HA and confirm no duplicate root;
+7. restart HA and confirm no duplicate root and no pending confirmation survives;
 8. interrupt/recover Synapse and confirm state coalescing plus restored control;
-9. verify no leaked/blocked background tasks;
-10. build and verify the install ZIP.
+9. redact the root and verify `needs_repair`, then repair once and verify exactly one new root;
+10. verify no leaked/blocked background tasks;
+11. build and verify the install ZIP.
 
 ## Release Gate
 
@@ -392,4 +396,4 @@ The GitHub release is marked Pre-release and contains bilingual EN/RU notes, exa
 
 ## Success Criteria
 
-0.6.0b1 is successful when an ordinary Element user can safely control explicitly configured HA entities from a maintained Matrix room message, see live HA state reflected without polling or timeline spam, confirm dangerous actions securely, survive HA/Synapse restarts and outages without duplicated control roots, and use the same underlying action model that 0.6.0b2 Widget will consume.
+0.6.0b1 is successful when an ordinary Element user can safely control explicitly configured HA entities from a maintained Matrix room message, see live HA state reflected without polling or timeline spam, confirm dangerous actions securely, survive HA/Synapse restarts and outages without duplicated control roots, recover explicitly from a missing/redacted root without a message storm, and use the same underlying action model that 0.6.0b2 Widget will consume.

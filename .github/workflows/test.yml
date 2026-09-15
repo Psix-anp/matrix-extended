@@ -137,6 +137,8 @@ jobs:
         run: python ci/scripts/element-e2e.py verify-message-rich
       - name: Verify graphical send_media executes in real Home Assistant
         run: python ci/scripts/verify-runtime.py send-media
+      - name: Verify image_proxy_stream Media Source uses a native image frame
+        run: python ci/scripts/ha-e2e.py send-image-proxy-media-source
       - name: Verify encrypted safe commands and automatic voice Assist
         run: python ci/scripts/matrix-command-e2e.py
       - name: Arm persistent outbox verification

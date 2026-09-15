@@ -108,7 +108,9 @@ class MatrixInboundReceiver:
         self._media_retention_days = int(media_retention_days)
         self._media_max_bytes = int(media_max_bytes)
         self._command_executor = CommandExecutor(hass, account)
-        self._safe_action_executor = SafeActionExecutor(hass)
+        self._safe_action_executor = (
+            getattr(account, "safe_action_executor", None) or SafeActionExecutor(hass)
+        )
         self._voice_assist = VoiceAssistCoordinator(hass, account, entry_id=entry_id)
 
     def register(self) -> None:
@@ -252,6 +254,29 @@ class MatrixInboundReceiver:
                 "action_executed": False,
             }
         )
+
+        panel_manager = getattr(self._account, "panel_manager", None)
+        if panel_manager is not None:
+            outcome = await panel_manager.async_handle_reaction(
+                room.room_id,
+                event.reacts_to,
+                event.key,
+                event.sender,
+            )
+            if outcome.handled:
+                payload["panel_action_id"] = outcome.action_id
+                payload["panel_action_status"] = outcome.status
+                payload["action_executed"] = outcome.status == "success"
+                if outcome.error is not None:
+                    payload["action_error"] = outcome.error
+                if outcome.confirmation_prompt_event_id is not None:
+                    payload["confirmation_prompt_event_id"] = (
+                        outcome.confirmation_prompt_event_id
+                    )
+                self._mark_receive("reaction", payload)
+                self._hass.bus.async_fire(EVENT_REACTION, payload)
+                return
+
         registry = self._account.action_registry
         action = (
             registry.consume(
@@ -403,6 +428,11 @@ class MatrixInboundReceiver:
                 "reason": getattr(event, "reason", None),
             }
         )
+        panel_manager = getattr(self._account, "panel_manager", None)
+        if panel_manager is not None and payload["redacts"]:
+            await panel_manager.async_handle_redaction(
+                room.room_id, payload["redacts"]
+            )
         self._mark_receive("redaction", payload)
         self._hass.bus.async_fire(EVENT_REDACTION, payload)
 

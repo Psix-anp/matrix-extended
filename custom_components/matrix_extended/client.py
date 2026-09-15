@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 import inspect
@@ -321,6 +322,97 @@ class MatrixClient:
             raise MatrixSendError(f"Unable to resolve room {room}: {_error_text(response)}")
         self._room_cache[room] = response.room_id
         return response.room_id
+
+    async def async_get_event(
+        self, room: str, event_id: str
+    ) -> dict[str, Any] | None:
+        """Fetch one room event; return None only when Matrix reports it missing."""
+        room_id = await self.async_resolve_room(room)
+        try:
+            response = await self._client.room_get_event(room_id, event_id)
+        except Exception as err:
+            raise MatrixConnectionError(str(err)) from err
+        if isinstance(response, ErrorResponse):
+            if getattr(response, "status_code", None) == "M_NOT_FOUND":
+                return None
+            raise MatrixSendError(
+                f"Unable to fetch Matrix event {event_id}: {_error_text(response)}"
+            )
+        event = getattr(response, "event", None)
+        source = getattr(event, "source", None)
+        if not isinstance(source, Mapping):
+            raise MatrixSendError(f"Matrix event {event_id} has no event source")
+        return dict(source)
+
+    async def async_get_state_event(
+        self,
+        room: str,
+        event_type: str,
+        *,
+        state_key: str = "",
+    ) -> dict[str, Any] | None:
+        """Fetch one room state event; return None only when state is absent."""
+        room_id = await self.async_resolve_room(room)
+        try:
+            response = await self._client.room_get_state_event(
+                room_id, event_type, state_key
+            )
+        except Exception as err:
+            raise MatrixConnectionError(str(err)) from err
+        if isinstance(response, ErrorResponse):
+            if getattr(response, "status_code", None) == "M_NOT_FOUND":
+                return None
+            raise MatrixSendError(
+                f"Unable to fetch Matrix state {event_type}: {_error_text(response)}"
+            )
+        content = getattr(response, "content", None)
+        if not isinstance(content, Mapping):
+            raise MatrixSendError(f"Matrix state {event_type} has no content")
+        return dict(content)
+
+    async def async_put_state_event(
+        self,
+        room: str,
+        event_type: str,
+        content: Mapping[str, Any],
+        *,
+        state_key: str = "",
+    ) -> str | None:
+        """Write one Matrix room-state event and return its event ID."""
+        room_id = await self.async_resolve_room(room)
+        try:
+            response = await self._client.room_put_state(
+                room_id,
+                event_type,
+                dict(content),
+                state_key=state_key,
+            )
+        except Exception as err:
+            raise MatrixConnectionError(str(err)) from err
+        if isinstance(response, ErrorResponse):
+            raise MatrixSendError(
+                f"Unable to write Matrix state {event_type}: {_error_text(response)}"
+            )
+        return getattr(response, "event_id", None)
+
+    async def async_pin_event(self, room: str, event_id: str) -> bool:
+        """Append one pin without deleting unrelated pinned events."""
+        state = await self.async_get_state_event(room, "m.room.pinned_events") or {}
+        raw_pins = state.get("pinned", [])
+        pins = (
+            [str(item) for item in raw_pins if isinstance(item, str) and item]
+            if isinstance(raw_pins, list)
+            else []
+        )
+        if event_id in pins:
+            return False
+        pins.append(event_id)
+        await self.async_put_state_event(
+            room,
+            "m.room.pinned_events",
+            {"pinned": pins},
+        )
+        return True
 
     async def async_room_encrypted(self, room: str, *, sync: bool = True) -> bool:
         """Return whether a joined room has Matrix E2EE enabled."""

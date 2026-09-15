@@ -190,6 +190,11 @@ class PendingConfirmationRegistry:
         self._prune_expired()
         return len(self._items)
 
+    def get(self, prompt_event_id: str) -> PendingConfirmation | None:
+        """Return one still-valid prompt without consuming it."""
+        self._prune_expired()
+        return self._items.get(prompt_event_id)
+
     def issue(
         self,
         *,

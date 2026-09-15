@@ -5,21 +5,42 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Mapping
 from contextlib import suppress
+from dataclasses import dataclass
 import time
 from typing import Any
 
 from .client import MatrixConnectionError, MatrixSendError
-from .content import build_edit_content, build_reaction_content, build_text_content
+from .content import (
+    build_edit_content,
+    build_reaction_content,
+    build_reply_content,
+    build_text_content,
+)
 from .control_panel_render import RenderedPanel, render_control_panel
 from .control_panel_runtime import (
     ControlPanelRuntimeStore,
     PanelRuntime,
     PendingConfirmationRegistry,
 )
-from .control_panels import ControlPanelDefinition
+from .control_panels import ControlPanelDefinition, PanelAction
+from .safe_action_executor import SafeActionExecutionContext, SafeActionExecutor
 
 PANEL_METADATA_KEY = "io.psix.matrix_extended.panel"
 PANEL_SCHEMA = 1
+_CONFIRM_REACTION = "✅"
+_CANCEL_REACTION = "❌"
+_CONFIRMATION_TTL_SECONDS = 30.0
+
+
+@dataclass(slots=True, frozen=True)
+class PanelReactionOutcome:
+    """Bounded result of routing one Matrix reaction through panel control."""
+
+    handled: bool
+    action_id: str | None = None
+    status: str | None = None
+    error: str | None = None
+    confirmation_prompt_event_id: str | None = None
 
 
 class ControlPanelManager:
@@ -33,6 +54,7 @@ class ControlPanelManager:
         panels: Mapping[str, ControlPanelDefinition],
         runtime_store: ControlPanelRuntimeStore,
         confirmations: PendingConfirmationRegistry | None = None,
+        safe_action_executor: SafeActionExecutor | None = None,
         track_state_change: Callable[..., Callable[[], None]] | None = None,
         retry_delay: float = 5.0,
         now: Callable[[], float] = time.time,
@@ -42,6 +64,7 @@ class ControlPanelManager:
         self.panels = dict(panels)
         self.runtime_store = runtime_store
         self.confirmations = confirmations or PendingConfirmationRegistry()
+        self.safe_action_executor = safe_action_executor or SafeActionExecutor(hass)
         self._track_state_change = track_state_change
         self._retry_delay = max(0.01, float(retry_delay))
         self._now = now
@@ -408,6 +431,179 @@ class ControlPanelManager:
         self._desired.pop(panel_id, None)
         self.confirmations.clear_panel(panel_id)
         return await self._create_root(panel, runtime)
+
+    def _panel_for_root(
+        self, room_id: str, event_id: str
+    ) -> tuple[ControlPanelDefinition, PanelRuntime] | None:
+        for panel in self.panels.values():
+            if not panel.enabled or panel.room_id != room_id:
+                continue
+            runtime = self.runtime_store.get(panel.panel_id)
+            if runtime is not None and runtime.root_event_id == event_id:
+                return panel, runtime
+        return None
+
+    @staticmethod
+    def _action_for_reaction(
+        panel: ControlPanelDefinition, reaction: str
+    ) -> PanelAction | None:
+        return next(
+            (action for action in panel.actions if action.reaction == reaction),
+            None,
+        )
+
+    @staticmethod
+    def _action_by_id(
+        panel: ControlPanelDefinition, action_id: str
+    ) -> PanelAction | None:
+        return next(
+            (action for action in panel.actions if action.id == action_id),
+            None,
+        )
+
+    async def _execute_panel_action(
+        self,
+        panel: ControlPanelDefinition,
+        action: PanelAction,
+    ) -> PanelReactionOutcome:
+        result = await self.safe_action_executor.async_execute(
+            action.action,
+            context=SafeActionExecutionContext(room_id=panel.room_id),
+        )
+        return PanelReactionOutcome(
+            handled=True,
+            action_id=action.id,
+            status=result.status,
+            error=result.error,
+        )
+
+    async def _request_confirmation(
+        self,
+        panel: ControlPanelDefinition,
+        runtime: PanelRuntime,
+        action: PanelAction,
+        sender: str,
+    ) -> PanelReactionOutcome:
+        prompt_event_id = await self.client.async_send_content(
+            panel.room_id,
+            build_reply_content(
+                f"⚠️ Confirm: {action.label}",
+                reply_to=runtime.root_event_id,
+            ),
+        )
+        if not prompt_event_id:
+            return PanelReactionOutcome(
+                handled=True,
+                action_id=action.id,
+                status="failed",
+                error="Matrix confirmation prompt returned no event ID",
+            )
+        for reaction in (_CONFIRM_REACTION, _CANCEL_REACTION):
+            await self.client.async_send_event(
+                panel.room_id,
+                "m.reaction",
+                build_reaction_content(prompt_event_id, reaction),
+            )
+        self.confirmations.issue(
+            prompt_event_id=prompt_event_id,
+            panel_id=panel.panel_id,
+            action_id=action.id,
+            sender=sender,
+            generation=runtime.generation,
+            expires_in=_CONFIRMATION_TTL_SECONDS,
+        )
+        self._notify()
+        return PanelReactionOutcome(
+            handled=True,
+            action_id=action.id,
+            status="confirmation_required",
+            confirmation_prompt_event_id=prompt_event_id,
+        )
+
+    async def async_handle_reaction(
+        self,
+        room_id: str,
+        event_id: str,
+        reaction: str,
+        sender: str,
+    ) -> PanelReactionOutcome:
+        """Route one already account-authorized Matrix reaction safely."""
+        pending = self.confirmations.get(event_id)
+        if pending is not None:
+            panel = self.panels.get(pending.panel_id)
+            runtime = self.runtime_store.get(pending.panel_id)
+            if (
+                panel is None
+                or runtime is None
+                or panel.room_id != room_id
+                or runtime.needs_repair
+            ):
+                return PanelReactionOutcome(
+                    handled=True,
+                    action_id=pending.action_id,
+                    status="invalid",
+                )
+            if pending.sender != sender:
+                return PanelReactionOutcome(
+                    handled=True,
+                    action_id=pending.action_id,
+                    status="unauthorized",
+                )
+            if reaction == _CANCEL_REACTION:
+                cancelled = self.confirmations.cancel(
+                    event_id,
+                    sender=sender,
+                    current_generation=runtime.generation,
+                )
+                self._notify()
+                return PanelReactionOutcome(
+                    handled=True,
+                    action_id=pending.action_id,
+                    status="cancelled" if cancelled else "expired",
+                )
+            if reaction != _CONFIRM_REACTION:
+                return PanelReactionOutcome(
+                    handled=True,
+                    action_id=pending.action_id,
+                    status="ignored",
+                )
+            confirmation = self.confirmations.consume(
+                event_id,
+                sender=sender,
+                current_generation=runtime.generation,
+            )
+            self._notify()
+            if confirmation is None:
+                return PanelReactionOutcome(
+                    handled=True,
+                    action_id=pending.action_id,
+                    status="expired",
+                )
+            action = self._action_by_id(panel, confirmation.action_id)
+            if action is None:
+                return PanelReactionOutcome(
+                    handled=True,
+                    action_id=confirmation.action_id,
+                    status="invalid",
+                )
+            return await self._execute_panel_action(panel, action)
+
+        matched = self._panel_for_root(room_id, event_id)
+        if matched is None:
+            return PanelReactionOutcome(handled=False, status="ignored")
+        panel, runtime = matched
+        if runtime.needs_repair:
+            return PanelReactionOutcome(handled=True, status="repair_required")
+        if panel.allowed_users and sender not in panel.allowed_users:
+            return PanelReactionOutcome(handled=True, status="unauthorized")
+        action = self._action_for_reaction(panel, reaction)
+        if action is None:
+            # A reaction on a managed root is owned by the panel subsystem;
+            # never fall through to a legacy reaction mapping for that root.
+            return PanelReactionOutcome(handled=True, status="ignored")
+        if action.action.confirmation_required:
+            return await self._request_confirmation(panel, runtime, action, sender)
+        return await self._execute_panel_action(panel, action)
 
     async def async_handle_redaction(
         self, room_id: str, redacted_event_id: str

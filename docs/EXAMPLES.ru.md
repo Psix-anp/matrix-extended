@@ -54,7 +54,13 @@ data:
 
 ## 4. Входящее голосовое Matrix → STT
 
-Запускайте автоматизацию по скачанному входящему Matrix-медиа и распознавайте только голосовые сообщения:
+Если в настройках Matrix Extended включено скачивание входящих медиа, интеграция сама сохраняет голосовое в:
+
+`/config/matrix_extended/incoming/<config_entry_id>/`
+
+Событие `matrix_extended_media` уже содержит точный полный путь в `local_path`, поэтому искать имя файла или `config_entry_id` вручную не нужно.
+
+Автоматизация только для нативных Matrix voice:
 
 ```yaml
 trigger:
@@ -62,7 +68,9 @@ trigger:
     event_type: matrix_extended_media
 condition:
   - condition: template
-    value_template: "{{ trigger.event.data.voice | default(false) }}"
+    value_template: >-
+      {{ trigger.event.data.voice | default(false)
+         and trigger.event.data.local_path | default('') }}
 action:
   - action: matrix_extended.transcribe_voice
     response_variable: voice_result
@@ -73,8 +81,22 @@ action:
   - action: persistent_notification.create
     data:
       title: "Matrix voice"
-      message: "{{ voice_result.transcript }}"
+      message: "{{ voice_result.text }}"
 ```
+
+`matrix_extended.transcribe_voice` возвращает как минимум `text`, `stt_entity`, `language`, `normalized` и `assist_executed`. Если `assist: true`, в ответе также появляется `assist`.
+
+Для ручной проверки можно скопировать `local_path` из события `matrix_extended_media` и вызвать действие в Developer Tools → Actions:
+
+```yaml
+action: matrix_extended.transcribe_voice
+data:
+  path: "/config/matrix_extended/incoming/0123456789abcdef/abc123456789-voice-message.ogg"
+  stt_entity: stt.whisper
+  language: ru
+```
+
+Путь выше только пример. Сервис специально не разрешает читать произвольные файлы вне каталога входящих медиа выбранного Matrix-аккаунта.
 
 Добавляйте `assist: true` только для явно доверенных allowlist пользователей и комнат.
 

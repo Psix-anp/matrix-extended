@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.6 — 2026-09-15
+
+Media Source authentication hardening, complete action recipes, and public/HACS readiness.
+
+- Fix authenticated Home Assistant Media Source downloads used by `matrix_extended.send_media` by processing internal Home Assistant URLs through the native signed-media URL path instead of downloading protected endpoints anonymously.
+- Convert Frigate timestamp VOD manifests to the Frigate MP4 recording proxy before Matrix upload so selected clips are sent as actual video instead of an HLS playlist.
+- Expand English and Russian action documentation for all Matrix Extended actions with field descriptions, defaults, response data, and ready-to-copy Home Assistant automations.
+- Add verified Matrix voice → STT and STT → Assist recipes, including safe boolean conditions for `matrix_extended_media` events.
+- Rewrite installation, first-connection, settings, Voice Assist, safe-command, HACS custom-repository, and public-distribution documentation.
+- Add transparent AI-assisted development disclosure for OpenAI / ChatGPT while keeping project decisions and maintenance attributed to Psix-anp.
+- Add Home Assistant Hassfest validation and public-repository/HACS readiness contracts.
+- Keep existing automations compatible; no migration is required.
+
+### Verification
+
+- Feature and documentation PRs passed regression, clean Python 3.14 + E2EE, real Home Assistant 2026.9.2 + Synapse 1.160.0 + Element 1.12.26, and verified install-ZIP gates before merge.
+- Public-readiness changes passed Hassfest.
+- Final v0.5.6 release is published only after the release commit passes the same mandatory gates.
+
 ## 0.5.5 — 2026-09-14
 
 Safe Matrix commands, encrypted camera snapshots and automatic Voice Assist.

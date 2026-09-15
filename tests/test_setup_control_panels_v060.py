@@ -4,6 +4,9 @@ import ast
 import importlib.util
 from pathlib import Path
 import sys
+import types
+
+import pytest
 
 ROOT = Path(__file__).parents[1]
 TESTS = ROOT / "tests"
@@ -17,6 +20,27 @@ def load_helper(filename: str, name: str):
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
+
+
+class FakePanelManager:
+    def __init__(self, *, handled: bool) -> None:
+        self.handled = handled
+        self.reactions = []
+        self.redactions = []
+
+    async def async_handle_reaction(self, room_id, event_id, reaction, sender):
+        self.reactions.append((room_id, event_id, reaction, sender))
+        return types.SimpleNamespace(
+            handled=self.handled,
+            action_id="panel_action" if self.handled else None,
+            status="success" if self.handled else "ignored",
+            error=None,
+            confirmation_prompt_event_id=None,
+        )
+
+    async def async_handle_redaction(self, room_id, event_id):
+        self.redactions.append((room_id, event_id))
+        return True
 
 
 def test_receiver_control_only_registers_reaction_and_redaction_only(tmp_path) -> None:
@@ -53,6 +77,88 @@ def test_receiver_default_registration_stays_backward_compatible(tmp_path) -> No
     receiver.register()
 
     assert len(account.client.callbacks) == 5
+
+
+@pytest.mark.asyncio
+async def test_control_only_panel_reaction_has_no_general_inbound_event(tmp_path) -> None:
+    helper = load_helper("test_receiver_behavior.py", "receiver_control_only_panel_v060")
+    mod, _, _ = helper.load_receiver()
+    hass = helper.FakeHass()
+    account = helper.make_account()
+    panel = FakePanelManager(handled=True)
+    account.panel_manager = panel
+    receiver = mod.MatrixInboundReceiver(
+        hass,
+        entry_id="entry",
+        account=account,
+        incoming_dir=str(tmp_path),
+        download_media=False,
+    )
+    receiver.register(control_only=True)
+
+    await receiver.async_handle_reaction(
+        helper.make_room(), helper.make_event(key="💡", reacts_to="$panel")
+    )
+
+    assert panel.reactions == [
+        ("!home:example", "$panel", "💡", "@user:example")
+    ]
+    assert hass.bus.events == []
+
+
+@pytest.mark.asyncio
+async def test_control_only_unknown_reaction_never_falls_to_legacy_registry(tmp_path) -> None:
+    helper = load_helper("test_receiver_behavior.py", "receiver_control_only_legacy_v060")
+    mod, _, _ = helper.load_receiver()
+    hass = helper.FakeHass()
+    legacy = helper.FakeRegistry(helper.Action(service="light.turn_on"))
+    account = helper.make_account(registry=legacy)
+    panel = FakePanelManager(handled=False)
+    account.panel_manager = panel
+    receiver = mod.MatrixInboundReceiver(
+        hass,
+        entry_id="entry",
+        account=account,
+        incoming_dir=str(tmp_path),
+        download_media=False,
+    )
+    receiver.register(control_only=True)
+
+    await receiver.async_handle_reaction(
+        helper.make_room(), helper.make_event(key="💡", reacts_to="$legacy")
+    )
+
+    assert panel.reactions == [
+        ("!home:example", "$legacy", "💡", "@user:example")
+    ]
+    assert legacy.calls == []
+    assert hass.services.calls == []
+    assert hass.bus.events == []
+
+
+@pytest.mark.asyncio
+async def test_control_only_redaction_repairs_panel_without_general_event(tmp_path) -> None:
+    helper = load_helper("test_receiver_behavior.py", "receiver_control_only_redaction_v060")
+    mod, _, _ = helper.load_receiver()
+    hass = helper.FakeHass()
+    account = helper.make_account()
+    panel = FakePanelManager(handled=True)
+    account.panel_manager = panel
+    receiver = mod.MatrixInboundReceiver(
+        hass,
+        entry_id="entry",
+        account=account,
+        incoming_dir=str(tmp_path),
+        download_media=False,
+    )
+    receiver.register(control_only=True)
+
+    await receiver.async_handle_redaction(
+        helper.make_room(), helper.make_event(redacts="$panel", reason="removed")
+    )
+
+    assert panel.redactions == [("!home:example", "$panel")]
+    assert hass.bus.events == []
 
 
 def _function_source(path: Path, name: str) -> str:

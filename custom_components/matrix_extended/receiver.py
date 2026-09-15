@@ -112,18 +112,23 @@ class MatrixInboundReceiver:
             getattr(account, "safe_action_executor", None) or SafeActionExecutor(hass)
         )
         self._voice_assist = VoiceAssistCoordinator(hass, account, entry_id=entry_id)
+        self._control_only = False
 
-    def register(self) -> None:
-        """Register all supported callbacks before starting live sync."""
-        self._account.client.add_event_callback(self.async_handle_text, _TEXT_EVENTS)
+    def register(self, *, control_only: bool = False) -> None:
+        """Register inbound callbacks, optionally limited to panel control."""
+        self._control_only = bool(control_only)
+        if not self._control_only:
+            self._account.client.add_event_callback(self.async_handle_text, _TEXT_EVENTS)
         self._account.client.add_event_callback(self.async_handle_reaction, ReactionEvent)
-        self._account.client.add_event_callback(self.async_handle_media, _MEDIA_EVENTS)
+        if not self._control_only:
+            self._account.client.add_event_callback(self.async_handle_media, _MEDIA_EVENTS)
         self._account.client.add_event_callback(self.async_handle_redaction, RedactionEvent)
-        # matrix-nio 0.26 maps unsupported m.room.message msgtypes such as
-        # stable m.location to RoomMessageUnknown.
-        self._account.client.add_event_callback(
-            self.async_handle_location, RoomMessageUnknown
-        )
+        if not self._control_only:
+            # matrix-nio 0.26 maps unsupported m.room.message msgtypes such as
+            # stable m.location to RoomMessageUnknown.
+            self._account.client.add_event_callback(
+                self.async_handle_location, RoomMessageUnknown
+            )
 
     def _allowed(self, room: Any, event: Any) -> bool:
         policy = self._account.incoming_policy
@@ -243,7 +248,7 @@ class MatrixInboundReceiver:
             )
 
     async def async_handle_reaction(self, room: Any, event: Any) -> None:
-        """Fire reaction events and execute only pre-registered actions."""
+        """Route authorized reactions through panel or legacy safe actions."""
         if not self._allowed(room, event):
             return
         payload = self._base_payload(room, event)
@@ -264,6 +269,8 @@ class MatrixInboundReceiver:
                 event.sender,
             )
             if outcome.handled:
+                if self._control_only:
+                    return
                 payload["panel_action_id"] = outcome.action_id
                 payload["panel_action_status"] = outcome.status
                 payload["action_executed"] = outcome.status == "success"
@@ -276,6 +283,11 @@ class MatrixInboundReceiver:
                 self._mark_receive("reaction", payload)
                 self._hass.bus.async_fire(EVENT_REACTION, payload)
                 return
+
+        if self._control_only:
+            # Narrow panel-control mode must never execute generic registered
+            # reaction actions or expose general inbound HA events.
+            return
 
         registry = self._account.action_registry
         action = (
@@ -418,7 +430,7 @@ class MatrixInboundReceiver:
         self._hass.bus.async_fire(EVENT_LOCATION, payload)
 
     async def async_handle_redaction(self, room: Any, event: Any) -> None:
-        """Forward authorized m.room.redaction events into Home Assistant."""
+        """Route authorized redactions to panel repair and optional HA events."""
         if not self._allowed(room, event):
             return
         payload = self._base_payload(room, event)
@@ -433,6 +445,8 @@ class MatrixInboundReceiver:
             await panel_manager.async_handle_redaction(
                 room.room_id, payload["redacts"]
             )
+        if self._control_only:
+            return
         self._mark_receive("redaction", payload)
         self._hass.bus.async_fire(EVENT_REDACTION, payload)
 

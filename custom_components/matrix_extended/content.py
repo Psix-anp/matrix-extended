@@ -12,6 +12,7 @@ MediaType = Literal["image", "video", "audio", "file"]
 MessageType = Literal["text", "notice", "emote"]
 SOURCE_KEYS = ("path", "url", "entity_id", "media_source")
 _MESSAGE_TYPES = {"text", "notice", "emote"}
+_RESERVED_EXTRA_CONTENT = {"msgtype", "body", "m.relates_to", "m.new_content"}
 _SAFE_LINK_RE = re.compile(r"\[([^\]\n]+)\]\((https?://[^\s)]+)\)")
 _UNSAFE_LINK_RE = re.compile(
     r"\[([^\]\n]+)\]\((?!https?://)(?:[^()\s]|\([^()]*\))*\)"
@@ -26,6 +27,17 @@ def _matrix_msgtype(msgtype: str) -> str:
     if value not in _MESSAGE_TYPES:
         raise ValueError("msgtype must be text, notice, or emote")
     return f"m.{value}"
+
+
+def _extra_content(value: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Copy namespaced extension content without allowing structural overrides."""
+    if not value:
+        return {}
+    overlap = _RESERVED_EXTRA_CONTENT.intersection(value)
+    if overlap:
+        keys = ", ".join(sorted(overlap))
+        raise ValueError(f"extra_content contains reserved Matrix keys: {keys}")
+    return dict(value)
 
 
 def build_mentions(
@@ -90,14 +102,16 @@ def build_text_content(
     thread_id: str | None = None,
     msgtype: str = "text",
     mentions: Mapping[str, Any] | None = None,
+    extra_content: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build text-like content with optional HTML, mentions, and thread relation."""
+    """Build text-like content with optional HTML, mentions, relations and extensions."""
     content: dict[str, Any] = {"msgtype": _matrix_msgtype(msgtype), "body": body}
     if formatted_body is not None:
         content["format"] = "org.matrix.custom.html"
         content["formatted_body"] = formatted_body
     if mentions:
         content["m.mentions"] = dict(mentions)
+    content.update(_extra_content(extra_content))
     content.update(_thread_relation(thread_id))
     return content
 
@@ -141,16 +155,20 @@ def build_edit_content(
     event_id: str,
     formatted_body: str | None = None,
     msgtype: str = "text",
+    extra_content: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build an m.replace edit for a text-like message."""
     matrix_msgtype = _matrix_msgtype(msgtype)
+    extension = _extra_content(extra_content)
     new_content: dict[str, Any] = {"msgtype": matrix_msgtype, "body": body}
+    new_content.update(extension)
     content: dict[str, Any] = {
         "msgtype": matrix_msgtype,
         "body": f"* {body}",
         "m.new_content": new_content,
         "m.relates_to": {"rel_type": "m.replace", "event_id": event_id},
     }
+    content.update(extension)
     if formatted_body is not None:
         new_content["format"] = "org.matrix.custom.html"
         new_content["formatted_body"] = formatted_body

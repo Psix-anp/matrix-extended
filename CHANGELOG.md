@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.8 — 2026-09-15
+
+Resolved Home Assistant image proxy-stream fallback hotfix.
+
+- Fix the real Home Assistant Media Browser case where a non-canonical Media Source ID resolves to a signed absolute or relative `/api/image_proxy_stream/image.*` URL: Matrix Extended now detects that exact image proxy path and fetches one finite frame through `image.async_get_image()` instead of attempting to download the streaming endpoint.
+- Keep the fallback fail-closed to `image.*` on the exact Home Assistant image proxy-stream path; camera streams and unrelated URLs continue through their existing handlers.
+- Add unit regression coverage for signed absolute and relative proxy URLs plus an end-to-end disposable Image Media Source fixture in the real Home Assistant + Synapse + Element stack.
+- Fix the real-stack test fixture for Home Assistant 2026.9.2 by awaiting asynchronous image-entity registration and pin the regression to deterministic `image.matrix_extended_regression`.
+- No migration is required.
+
+### Verification
+
+- TDD RED reproduced the field failure before implementation: 2 failed / 304 passed.
+- The fixed PR head passed regression, clean Python 3.14 + E2EE, the full Home Assistant 2026.9.2 + Synapse 1.160.0 + Element 1.12.26 stack, the exact `image_proxy_stream` regression, outage/recovery, Home Assistant restart, background-task cleanup, verified install ZIP, Hassfest and HACS validation.
+- The merged `main` commit was independently re-run through the same Matrix Extended gates successfully before preparing this release.
+- The final v0.5.8 GitHub Release is published only after the exact version commit passes the mandatory gates again.
+
 ## 0.5.7 — 2026-09-15
 
 Image Media Source snapshot fix and graphical URL/entity media sending.

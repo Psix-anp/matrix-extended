@@ -9,7 +9,7 @@
 <p align="center"><a href="README.md"><strong>English</strong></a> · <a href="README.ru.md">Русский</a></p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.5.7-blue">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.5.8-blue">
   <img alt="Home Assistant" src="https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5">
   <img alt="Matrix" src="https://img.shields.io/badge/Matrix-E2EE-0DBD8B">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">

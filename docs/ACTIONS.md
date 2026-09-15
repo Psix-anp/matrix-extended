@@ -39,11 +39,23 @@ The graphical editor can select a `tts.*` entity and language. Provider-specific
 
 ### `matrix_extended.transcribe_voice`
 
-Transcribes a downloaded incoming Matrix voice file through Home Assistant STT. The path is restricted to the selected Matrix account's incoming-media directory.
+Transcribes an already downloaded incoming Matrix voice file through Home Assistant STT.
+
+Matrix Extended creates one incoming-media directory per Matrix account:
+
+`/config/matrix_extended/incoming/<config_entry_id>/`
+
+The exact path is built with `hass.config.path("matrix_extended", "incoming", entry.entry_id)`, so installations with a non-standard Home Assistant config root may use a different prefix than `/config`.
+
+When media is received, Matrix Extended saves it there and exposes the exact full filename as `trigger.event.data.local_path` on the `matrix_extended_media` event. Normal automations should pass that `local_path` directly to `matrix_extended.transcribe_voice`; there is no need to construct the path manually.
+
+For safety, the action accepts only regular files inside the selected account's incoming-media directory. Parent traversal, symlinks and paths belonging to another Matrix account are rejected.
 
 If the selected STT provider requires WAV/PCM, Matrix Extended can normalize supported input through Home Assistant FFmpeg.
 
 `assist: true` is explicit opt-in. Voice messages do not reach Home Assistant Assist by default.
+
+See [EXAMPLES.md — “Incoming Matrix voice → STT”](EXAMPLES.md#4-incoming-matrix-voice--stt) for a complete automation.
 
 ### `matrix_extended.send_location`
 

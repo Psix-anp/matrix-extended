@@ -39,11 +39,23 @@
 
 ### `matrix_extended.transcribe_voice`
 
-Распознаёт скачанное входящее Matrix voice через Home Assistant STT. Путь ограничен каталогом входящих медиа выбранного Matrix-аккаунта.
+Распознаёт уже скачанное входящее Matrix voice через Home Assistant STT.
+
+Matrix Extended сам создаёт отдельный каталог входящих медиа для каждого Matrix-аккаунта:
+
+`/config/matrix_extended/incoming/<config_entry_id>/`
+
+Точное расположение строится через `hass.config.path("matrix_extended", "incoming", entry.entry_id)`, поэтому при нестандартном каталоге конфигурации Home Assistant корневая часть может отличаться от `/config`.
+
+При получении медиа интеграция сохраняет файл в этот каталог и публикует его полный путь в `trigger.event.data.local_path` события `matrix_extended_media`. В обычной автоматизации путь вручную составлять не нужно — передавайте `local_path` прямо в `matrix_extended.transcribe_voice`.
+
+Из соображений безопасности действие принимает только обычные файлы внутри каталога входящих медиа выбранного Matrix-аккаунта; выход через `..`, symlink или путь другого аккаунта отклоняется.
 
 Если STT-провайдеру нужен WAV/PCM, Matrix Extended может нормализовать поддерживаемый вход через штатный Home Assistant FFmpeg.
 
 `assist: true` включается только явно. Голосовое сообщение не отправляется в Home Assistant Assist по умолчанию.
+
+Готовый пример автоматизации: [EXAMPLES.ru.md — «Входящее голосовое Matrix → STT»](EXAMPLES.ru.md#4-входящее-голосовое-matrix--stt).
 
 ### `matrix_extended.send_location`
 
@@ -115,4 +127,4 @@ Matrix Extended-specific actions нужны, когда требуются route
 
 Если Matrix homeserver временно недоступен, поддерживаемые исходящие отправки сохраняются в persistent outbox. Интеграция отмечает потерю соединения, ставит сообщение в очередь и доставляет его после reconnect, не блокируя event loop Home Assistant.
 
-Готовые примеры: [EXAMPLES.md](EXAMPLES.md). Настройки интеграции: [SETTINGS.ru.md](SETTINGS.ru.md).
+Готовые примеры: [EXAMPLES.ru.md](EXAMPLES.ru.md). Настройки интеграции: [SETTINGS.ru.md](SETTINGS.ru.md).

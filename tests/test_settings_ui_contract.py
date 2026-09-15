@@ -14,6 +14,8 @@ RU = COMP / "translations" / "ru.json"
 MANIFEST = COMP / "manifest.json"
 README = ROOT / "README.md"
 README_RU = ROOT / "README.ru.md"
+SETTINGS = ROOT / "docs" / "SETTINGS.md"
+SETTINGS_RU = ROOT / "docs" / "SETTINGS.ru.md"
 
 
 def test_options_flow_is_split_into_graphical_sections() -> None:
@@ -23,6 +25,7 @@ def test_options_flow_is_split_into_graphical_sections() -> None:
         "async_step_general",
         "async_step_incoming",
         "async_step_media",
+        "async_step_voice_assist",
         "async_step_routes",
         "async_step_route_add",
         "async_step_route_edit",
@@ -75,6 +78,7 @@ def test_settings_and_actions_have_current_bilingual_help() -> None:
             "general",
             "incoming",
             "media",
+            "voice_assist",
             "routes",
             "route_add",
             "route_edit",
@@ -94,6 +98,8 @@ def test_settings_and_actions_have_current_bilingual_help() -> None:
             "edit",
             "redact",
             "purge_media",
+            "register_command",
+            "unregister_command",
         ):
             assert payload["services"][action].get("description")
 
@@ -105,3 +111,40 @@ def test_public_docs_track_manifest_version_and_gui_first_setup() -> None:
         assert version in text
         assert "Settings" in text or "Настройки" in text
         assert "YAML" in text
+
+
+def test_public_readme_explains_install_connection_and_ai_assistance() -> None:
+    english = README.read_text(encoding="utf-8")
+    russian = README_RU.read_text(encoding="utf-8")
+
+    assert "AI-assisted" in english
+    assert "HACS" in english and "custom repository" in english.lower()
+    assert "First connection" in english
+    assert "Voice Assist" in english
+    assert "register_command" in english
+
+    assert "ИИ" in russian
+    assert "HACS" in russian and "пользовательск" in russian.lower()
+    assert "Первое подключение" in russian
+    assert "Voice Assist" in russian
+    assert "register_command" in russian
+
+
+def test_settings_guides_cover_initial_setup_and_all_option_sections() -> None:
+    for path in (SETTINGS, SETTINGS_RU):
+        text = path.read_text(encoding="utf-8")
+        for token in (
+            "homeserver",
+            "default_room",
+            "verify_ssl",
+            "require_e2ee",
+            "incoming_enabled",
+            "allowed_users",
+            "allowed_rooms",
+            "download_incoming_media",
+            "voice_assist",
+            "text",
+            "voice",
+            "both",
+        ):
+            assert token in text

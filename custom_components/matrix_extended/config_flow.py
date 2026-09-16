@@ -342,6 +342,9 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         self, draft: dict[str, Any] | None, *, include_id: bool
     ) -> vol.Schema:
         current = draft or {}
+        room_options = self._panel_room_options()
+        current_room = str(current.get(CONF_PANEL_ROOM_ID, ""))
+        default_room = current_room or (room_options[0] if room_options else "")
         schema: dict[Any, Any] = {}
         if include_id:
             schema[
@@ -353,10 +356,10 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         schema[
             vol.Required(
                 CONF_PANEL_ROOM_ID,
-                default=str(current.get(CONF_PANEL_ROOM_ID, "")) or None,
+                default=default_room,
             )
         ] = selector.SelectSelector(
-            selector.SelectSelectorConfig(options=self._panel_room_options())
+            selector.SelectSelectorConfig(options=room_options)
         )
         schema[
             vol.Required(
@@ -436,6 +439,13 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             ),
         }
 
+    @staticmethod
+    def _action_data_text(action: dict[str, Any]) -> str:
+        data = action.get(CONF_PANEL_ACTION_DATA, {})
+        if not isinstance(data, dict) or not data:
+            return ""
+        return yaml.safe_dump(data, allow_unicode=True, sort_keys=False).strip()
+
     def _action_schema(self, current: dict[str, Any] | None = None) -> vol.Schema:
         action = current or {}
         return vol.Schema(
@@ -462,8 +472,8 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                 ): selector.TargetSelector(),
                 vol.Optional(
                     CONF_PANEL_ACTION_DATA,
-                    default=deepcopy(action.get(CONF_PANEL_ACTION_DATA, {})),
-                ): selector.ObjectSelector(),
+                    default=self._action_data_text(action),
+                ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
                 vol.Optional(
                     CONF_PANEL_ACTION_CONFIRMATION_REQUIRED,
                     default=bool(
@@ -475,6 +485,13 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
 
     @staticmethod
     def _action_from_input(user_input: dict[str, Any]) -> dict[str, Any]:
+        raw_data = str(user_input.get(CONF_PANEL_ACTION_DATA, "")).strip()
+        if raw_data:
+            parsed_data = yaml.safe_load(raw_data)
+            if not isinstance(parsed_data, dict):
+                raise ValueError("action data must be a mapping")
+        else:
+            parsed_data = {}
         return {
             CONF_PANEL_ACTION_ID: str(user_input[CONF_PANEL_ACTION_ID]).strip(),
             CONF_PANEL_ACTION_REACTION: str(
@@ -487,9 +504,7 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             CONF_PANEL_ACTION_TARGET: deepcopy(
                 user_input.get(CONF_PANEL_ACTION_TARGET, {})
             ),
-            CONF_PANEL_ACTION_DATA: deepcopy(
-                user_input.get(CONF_PANEL_ACTION_DATA, {})
-            ),
+            CONF_PANEL_ACTION_DATA: parsed_data,
             CONF_PANEL_ACTION_CONFIRMATION_REQUIRED: bool(
                 user_input.get(CONF_PANEL_ACTION_CONFIRMATION_REQUIRED, False)
             ),
@@ -882,13 +897,12 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             return await self.async_step_control_panels()
         errors: dict[str, str] = {}
         if user_input is not None:
-            updated = deepcopy(draft)
-            updated.setdefault(CONF_PANEL_ACTIONS, []).append(
-                self._action_from_input(user_input)
-            )
             try:
+                action = self._action_from_input(user_input)
+                updated = deepcopy(draft)
+                updated.setdefault(CONF_PANEL_ACTIONS, []).append(action)
                 self._validate_draft(updated)
-            except ValueError:
+            except (ValueError, yaml.YAMLError):
                 errors["base"] = "invalid_panel_action"
             else:
                 self._panel_draft = updated
@@ -946,15 +960,15 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             return await self.async_step_panel_action_edit()
         errors: dict[str, str] = {}
         if user_input is not None:
-            replacement = self._action_from_input(user_input)
-            updated = deepcopy(draft)
-            for index, item in enumerate(updated.get(CONF_PANEL_ACTIONS, [])):
-                if str(item.get(CONF_PANEL_ACTION_ID, "")) == self._panel_action_id:
-                    updated[CONF_PANEL_ACTIONS][index] = replacement
-                    break
             try:
+                replacement = self._action_from_input(user_input)
+                updated = deepcopy(draft)
+                for index, item in enumerate(updated.get(CONF_PANEL_ACTIONS, [])):
+                    if str(item.get(CONF_PANEL_ACTION_ID, "")) == self._panel_action_id:
+                        updated[CONF_PANEL_ACTIONS][index] = replacement
+                        break
                 self._validate_draft(updated)
-            except ValueError:
+            except (ValueError, yaml.YAMLError):
                 errors["base"] = "invalid_panel_action"
             else:
                 self._panel_draft = updated

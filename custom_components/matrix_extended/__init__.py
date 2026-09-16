@@ -50,6 +50,7 @@ from .const import (
     CONF_ACCESS_TOKEN,
     CONF_ALLOWED_ROOMS,
     CONF_ALLOWED_USERS,
+    CONF_CONTROL_PANELS,
     CONF_DEFAULT_ROOM,
     CONF_DEVICE_ID,
     CONF_DOWNLOAD_INCOMING_MEDIA,
@@ -87,6 +88,9 @@ from .content import (
     render_markdown,
     validate_media_item_shape,
 )
+from .control_panel_manager import ControlPanelManager
+from .control_panel_runtime import ControlPanelRuntimeStore
+from .control_panels import normalize_control_panels
 from .delivery import delivery_event_record, delivery_lifecycle_payload
 from .incoming import IncomingPolicy
 from .media import MediaResolver
@@ -94,6 +98,7 @@ from .notifications import NotificationKeyRegistry
 from .outbox import PersistentOutbox, matrix_transaction_id
 from .routing import normalize_routing_profiles, resolve_targets
 from .receiver import MatrixInboundReceiver
+from .safe_action_executor import SafeActionExecutor
 from .status import MatrixRuntimeStatus
 from .v05_services import install_v05_services
 from .v051_services import install_v051_services
@@ -751,6 +756,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await client.async_close()
         raise ConfigEntryNotReady(str(err)) from err
 
+    account_allowed_users = set(
+        _entry_value(entry, CONF_ALLOWED_USERS, [data[CONF_USER_ID]])
+    )
+    panels = normalize_control_panels(
+        _entry_value(entry, CONF_CONTROL_PANELS, []),
+        account_allowed_users=account_allowed_users,
+        account_allowed_room_ids=allowed_rooms,
+    )
+    enabled_panels = any(panel.enabled for panel in panels.values())
+    incoming_enabled = bool(_entry_value(entry, CONF_INCOMING_ENABLED, True))
+
     status.mark_connected(default_room_encrypted=default_room_encrypted)
     notification_store: Store[dict[str, dict[str, str]]] = Store(
         hass, 1, f"{DOMAIN}.notification_keys_{entry.entry_id}", private=True
@@ -773,6 +789,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     stored_outbox = await outbox_store.async_load() or {}
     outbox = PersistentOutbox(stored_outbox, store=outbox_store)
     await outbox.async_save()
+
+    panel_store: Store[dict[str, Any]] = Store(
+        hass, 1, f"{DOMAIN}.control_panels_{entry.entry_id}", private=True
+    )
+    stored_panel_runtime = await panel_store.async_load() or {}
+    panel_runtime_store = ControlPanelRuntimeStore(
+        stored_panel_runtime,
+        store=panel_store,
+    )
+    safe_action_executor = SafeActionExecutor(hass)
+    panel_manager = ControlPanelManager(
+        hass=hass,
+        client=client,
+        panels=panels,
+        runtime_store=panel_runtime_store,
+        safe_action_executor=safe_action_executor,
+    )
+
     rooms = client.rooms_snapshot()
     default_room_id = await client.async_resolve_room(data[CONF_DEFAULT_ROOM])
     account = MatrixAccount(
@@ -786,7 +820,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         command_registry=command_registry,
         outbox=outbox,
         incoming_policy=IncomingPolicy(
-            allowed_users=_entry_value(entry, CONF_ALLOWED_USERS, [data[CONF_USER_ID]]),
+            allowed_users=account_allowed_users,
             allowed_rooms=allowed_rooms,
         ),
         rooms=rooms,
@@ -797,6 +831,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         notification_store=notification_store,
         entry_id=entry.entry_id,
         default_room_id=default_room_id,
+        safe_action_executor=safe_action_executor,
+        panel_manager=panel_manager,
     )
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = account
     account.outbox_task = hass.async_create_task(
@@ -804,7 +840,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         f"matrix_extended_outbox_{entry.entry_id}",
     )
 
-    if _entry_value(entry, CONF_INCOMING_ENABLED, True):
+    await panel_manager.async_start()
+
+    if incoming_enabled or enabled_panels:
         incoming_dir = hass.config.path(DOMAIN, "incoming", entry.entry_id)
         await hass.async_add_executor_job(partial(Path(incoming_dir).mkdir, parents=True, exist_ok=True))
         receiver = MatrixInboundReceiver(
@@ -812,7 +850,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry_id=entry.entry_id,
             account=account,
             incoming_dir=incoming_dir,
-            download_media=_entry_value(entry, CONF_DOWNLOAD_INCOMING_MEDIA, True),
+            download_media=(
+                _entry_value(entry, CONF_DOWNLOAD_INCOMING_MEDIA, True)
+                if incoming_enabled
+                else False
+            ),
             media_retention_days=int(
                 _entry_value(
                     entry,
@@ -830,7 +872,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             * 1024
             * 1024,
         )
-        receiver.register()
+        receiver.register(control_only=not incoming_enabled)
         await client.async_start_listener(receiver.async_listener_error)
 
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
@@ -845,6 +887,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
     account: MatrixAccount | None = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     if account is not None:
+        if account.panel_manager is not None:
+            await account.panel_manager.async_stop()
         if account.outbox_task is not None:
             account.outbox_task.cancel()
             with suppress(asyncio.CancelledError):

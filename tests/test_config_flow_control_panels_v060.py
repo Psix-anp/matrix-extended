@@ -63,6 +63,16 @@ def test_panel_actions_are_graphically_managed_and_support_confirmation() -> Non
     assert "CONF_PANEL_ACTION_DATA" in source
 
 
+def test_panel_action_service_selector_matches_ha_2026_api() -> None:
+    """HA 2026.9 has no ServiceSelector; use a SelectSelector service picker."""
+    schema = _class_method_source("MatrixExtendedOptionsFlow", "_action_schema")
+    source = CONFIG_FLOW.read_text(encoding="utf-8")
+    assert "ServiceSelector" not in source
+    assert "SelectSelectorConfig" in schema
+    assert "custom_value=True" in schema
+    assert "_panel_service_options" in schema
+
+
 def test_panel_save_reuses_pure_normalizer_and_runtime_policy() -> None:
     source = CONFIG_FLOW.read_text(encoding="utf-8")
     assert "normalize_control_panels" in source

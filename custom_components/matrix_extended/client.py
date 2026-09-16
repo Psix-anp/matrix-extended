@@ -10,7 +10,7 @@ import inspect
 import io
 from typing import Any
 
-from nio import AsyncClient, AsyncClientConfig, RedactionEvent
+from nio import AsyncClient, AsyncClientConfig
 from nio.responses import (
     ErrorResponse,
     LoginResponse,
@@ -176,8 +176,7 @@ class MatrixClient:
         for room_id, room_info in joined.items():
             timeline = getattr(room_info, "timeline", None)
             for event in getattr(timeline, "events", ()):
-                if not isinstance(event, RedactionEvent):
-                    continue
+                # matrix-nio exposes the target event ID only on redaction events.
                 redacts = getattr(event, "redacts", None)
                 sender = getattr(event, "sender", None)
                 if not redacts or not sender:

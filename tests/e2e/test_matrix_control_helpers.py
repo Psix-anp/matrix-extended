@@ -105,3 +105,20 @@ def test_find_confirmation_reply_is_bound_to_root_and_action_label() -> None:
     )
 
     assert event["event_id"] == "$confirm"
+
+
+def test_real_ha_fixture_exposes_control_targets() -> None:
+    source = (ROOT / "ci" / "scripts" / "prepare-ha.sh").read_text(encoding="utf-8")
+    assert "matrix_control_light:" in source
+    assert "matrix_control_dangerous:" in source
+
+
+def test_real_stack_workflow_exercises_full_control_lifecycle() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+    for command in (
+        "matrix-control-e2e.py verify",
+        "matrix-control-e2e.py outage-flips",
+        "matrix-control-e2e.py verify-recovery",
+        "matrix-control-e2e.py verify-restart-repair",
+    ):
+        assert command in workflow, command

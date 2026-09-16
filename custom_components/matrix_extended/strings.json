@@ -66,7 +66,8 @@
       },
       "outbox_size": {"name": "Outbox size"},
       "last_delivery_status": {"name": "Last delivery status"},
-      "last_command": {"name": "Last command"}
+      "last_command": {"name": "Last command"},
+      "control_panels": {"name": "Control panels"}
     },
     "select": {"default_room": {"name": "Default room"}}
   },

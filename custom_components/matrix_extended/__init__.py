@@ -842,6 +842,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await panel_manager.async_start()
 
+    for room_id, redacted_event_id, sender, transaction_id in client.drain_initial_redactions():
+        if account.incoming_policy.should_process(
+            sender=sender,
+            room_id=room_id,
+            transaction_id=transaction_id,
+        ):
+            await panel_manager.async_handle_redaction(room_id, redacted_event_id)
+
     if incoming_enabled or enabled_panels:
         incoming_dir = hass.config.path(DOMAIN, "incoming", entry.entry_id)
         await hass.async_add_executor_job(partial(Path(incoming_dir).mkdir, parents=True, exist_ok=True))

@@ -360,14 +360,21 @@ class ControlPanelManager:
             return
         tracker = self._track_state_change
         if tracker is None:
+            from homeassistant.core import HassJobType
             from homeassistant.helpers.event import async_track_state_change_event
 
-            tracker = async_track_state_change_event
-        unsubscribe = tracker(
-            self.hass,
-            entity_ids,
-            lambda _event, panel_id=panel.panel_id: self._state_changed(panel_id),
-        )
+            unsubscribe = async_track_state_change_event(
+                self.hass,
+                entity_ids,
+                lambda _event, panel_id=panel.panel_id: self._state_changed(panel_id),
+                job_type=HassJobType.Callback,
+            )
+        else:
+            unsubscribe = tracker(
+                self.hass,
+                entity_ids,
+                lambda _event, panel_id=panel.panel_id: self._state_changed(panel_id),
+            )
         self._unsubscribers.append(unsubscribe)
 
     async def async_start(self) -> None:

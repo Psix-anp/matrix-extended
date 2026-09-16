@@ -47,6 +47,7 @@ async def async_setup_entry(
             MatrixOutboxSizeSensor(config_entry, account),
             MatrixLastDeliveryStatusSensor(config_entry, account),
             MatrixLastCommandSensor(config_entry, account),
+            MatrixControlPanelsSensor(config_entry, account),
         ]
     )
 
@@ -226,3 +227,39 @@ class MatrixLastCommandSensor(MatrixDynamicSensor):
     def extra_state_attributes(self) -> dict[str, Any] | None:
         command = self._account.status.last_command
         return dict(command) if command else None
+
+
+class MatrixControlPanelsSensor(MatrixBaseSensor):
+    """Bounded runtime health for native Matrix control panels."""
+
+    _attr_translation_key = "control_panels"
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, entry: ConfigEntry, account: MatrixAccount) -> None:
+        super().__init__(entry, account, "control_panels")
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        panel_manager = getattr(self._account, "panel_manager", None)
+        if panel_manager is not None:
+            self.async_on_remove(
+                panel_manager.add_listener(self.async_write_ha_state)
+            )
+
+    def _snapshots(self) -> list[dict[str, Any]]:
+        panel_manager = getattr(self._account, "panel_manager", None)
+        if panel_manager is None:
+            return []
+        return list(panel_manager.diagnostics_snapshot())
+
+    @property
+    def native_value(self) -> int:
+        snapshots = self._snapshots()
+        return sum(
+            1 for item in snapshots if item.get("state") == "active"
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        snapshots = self._snapshots()
+        return {"panels": snapshots}

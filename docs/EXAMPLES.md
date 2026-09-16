@@ -490,6 +490,98 @@ data:
 
 `send` uses `target` because it can address multiple rooms. `reply` uses the single-room `room` field.
 
+## 15. Native Matrix control panels (`0.6.0b1`)
+
+These snippets are **panel YAML import definitions**, not `matrix_extended.*` service calls. Create them graphically under Matrix Extended → Configure → Native Matrix control panels, or import one validated document. See [Native Matrix control panels](CONTROL_PANELS.md).
+
+### Garage — dangerous action with confirmation
+
+```yaml
+panel_id: garage
+room_id: "!garage:example.org"
+title: Garage
+enabled: true
+entities:
+  - entity_id: cover.garage
+    label: Garage door
+actions:
+  - id: garage_open
+    reaction: "🔓"
+    label: Open garage
+    service: cover.open_cover
+    target:
+      entity_id: cover.garage
+    data: {}
+    confirmation_required: true
+allowed_users:
+  - "@owner:example.org"
+debounce: 1.5
+```
+
+`confirmation_required: true` means the first reaction only creates a confirmation request. The same Matrix sender must answer with `✅` within 30 seconds before `cover.open_cover` runs.
+
+### Alarm — dangerous disarm action
+
+```yaml
+panel_id: alarm
+room_id: "!security:example.org"
+title: Security
+enabled: true
+entities:
+  - entity_id: alarm_control_panel.home
+    label: Alarm
+actions:
+  - id: alarm_disarm
+    reaction: "🛑"
+    label: Disarm alarm
+    service: alarm_control_panel.alarm_disarm
+    target:
+      entity_id: alarm_control_panel.home
+    data: {}
+    confirmation_required: true
+allowed_users:
+  - "@owner:example.org"
+debounce: 1.0
+```
+
+If your alarm provider requires sensitive service data, keep it local and treat exported panel YAML as sensitive configuration.
+
+### Light and climate — low-risk one-step actions
+
+```yaml
+panel_id: living
+room_id: "!living:example.org"
+title: Living room
+enabled: true
+entities:
+  - entity_id: light.living_room
+    label: Light
+  - entity_id: climate.living_room
+    label: Climate
+actions:
+  - id: light_toggle
+    reaction: "💡"
+    label: Toggle light
+    service: light.toggle
+    target:
+      entity_id: light.living_room
+    data: {}
+    confirmation_required: false
+  - id: climate_comfort
+    reaction: "🌡️"
+    label: Set 21 °C
+    service: climate.set_temperature
+    target:
+      entity_id: climate.living_room
+    data:
+      temperature: 21
+    confirmation_required: false
+allowed_users: []
+debounce: 1.5
+```
+
+`allowed_users: []` does not make the panel public: it means there is no *additional* panel restriction, so the account-level sender and room allowlists still apply.
+
 ## Maps in self-hosted Element
 
 `matrix_extended.send_location` sends standard `m.location`. A tile server is not required to send the event. To render the map in Element Web, configure the map/tile style on the Element/homeserver side.

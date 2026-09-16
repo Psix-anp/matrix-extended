@@ -283,6 +283,14 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         rooms = allowed_rooms & joined if joined else allowed_rooms
         return sorted(rooms)
 
+    def _panel_service_options(self) -> list[str]:
+        services = self.hass.services.async_services()
+        return sorted(
+            f"{domain}.{service}"
+            for domain, domain_services in services.items()
+            for service in domain_services
+        )
+
     @staticmethod
     def _panel_from_yaml_definition(panel: Any) -> dict[str, Any]:
         raw = yaml.safe_load(dump_panel_yaml(panel))
@@ -465,7 +473,13 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                 vol.Required(
                     CONF_PANEL_ACTION_SERVICE,
                     default=str(action.get(CONF_PANEL_ACTION_SERVICE, "")),
-                ): selector.ServiceSelector(),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=self._panel_service_options(),
+                        custom_value=True,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
                 vol.Optional(
                     CONF_PANEL_ACTION_TARGET,
                     default=deepcopy(action.get(CONF_PANEL_ACTION_TARGET, {})),

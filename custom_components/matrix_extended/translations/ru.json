@@ -69,7 +69,8 @@
       },
       "outbox_size": {"name": "Размер очереди отправки"},
       "last_delivery_status": {"name": "Статус последней доставки"},
-      "last_command": {"name": "Последняя команда"}
+      "last_command": {"name": "Последняя команда"},
+      "control_panels": {"name": "Панели управления"}
     },
     "select": {
       "default_room": {"name": "Комната по умолчанию"}

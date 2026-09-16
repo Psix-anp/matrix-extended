@@ -10,7 +10,7 @@ import inspect
 import io
 from typing import Any
 
-from nio import AsyncClient, AsyncClientConfig
+from nio import AsyncClient, AsyncClientConfig, RedactionEvent
 from nio.responses import (
     ErrorResponse,
     LoginResponse,
@@ -165,6 +165,39 @@ class MatrixClient:
         self._room_cache: dict[str, str] = {}
         self._require_e2ee = require_e2ee
         self._sync_task: asyncio.Task[Any] | None = None
+        self._initial_redactions: list[tuple[str, str, str, str | None]] = []
+        self._capture_initial_redactions = True
+
+    def _remember_initial_redactions(self, response: SyncResponse) -> None:
+        """Keep replay-safe redactions consumed before inbound callbacks exist."""
+        joined = getattr(getattr(response, "rooms", None), "join", {})
+        if not isinstance(joined, Mapping):
+            return
+        for room_id, room_info in joined.items():
+            timeline = getattr(room_info, "timeline", None)
+            for event in getattr(timeline, "events", ()):
+                if not isinstance(event, RedactionEvent):
+                    continue
+                redacts = getattr(event, "redacts", None)
+                sender = getattr(event, "sender", None)
+                if not redacts or not sender:
+                    continue
+                transaction_id = getattr(event, "transaction_id", None)
+                item = (
+                    str(room_id),
+                    str(redacts),
+                    str(sender),
+                    str(transaction_id) if transaction_id else None,
+                )
+                if item not in self._initial_redactions:
+                    self._initial_redactions.append(item)
+
+    def drain_initial_redactions(self) -> list[tuple[str, str, str, str | None]]:
+        """Return startup redactions once and stop startup-only capture."""
+        redactions = list(self._initial_redactions)
+        self._initial_redactions.clear()
+        self._capture_initial_redactions = False
+        return redactions
 
     async def _async_sync(self, *, full_state: bool = False) -> None:
         try:
@@ -177,6 +210,8 @@ class MatrixClient:
             raise MatrixConnectionError(str(err)) from err
         if not isinstance(response, SyncResponse):
             raise MatrixConnectionError(f"Matrix sync failed: {_error_text(response)}")
+        if full_state and getattr(self, "_capture_initial_redactions", True):
+            self._remember_initial_redactions(response)
 
     async def _async_crypto_housekeeping(self) -> None:
         """Run the key maintenance normally performed by sync_forever."""

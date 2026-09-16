@@ -91,6 +91,8 @@ class MatrixAccount:
     outbox_task: Any = None
     entry_id: str = ""
     default_room_id: str = ""
+    safe_action_executor: Any = None
+    panel_manager: Any = None
 
 
 def _error_text(response: Any) -> str:

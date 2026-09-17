@@ -1,0 +1,95 @@
+name: Temporary startup redaction fix
+
+on:
+  push:
+    branches:
+      - feature/native-matrix-control-0.6.0b1
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    if: ${{ !contains(github.event.head_commit.message, '[startup-redaction-fixed]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/native-matrix-control-0.6.0b1
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-test.txt
+      - name: Add regression first
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          startup = Path('tests/test_initial_redaction_recovery_v060.py')
+          text = startup.read_text(encoding='utf-8')
+          old = '''    assert setup.index("await panel_manager.async_start()") < setup.index(\n        "drain_initial_redactions"\n    )\n    assert setup.index("drain_initial_redactions") < setup.index("receiver.register(")'''
+          new = '''    assert setup.index("drain_initial_redactions") < setup.index(\n        "await panel_manager.async_start()"\n    )\n    assert setup.index("async_handle_redaction") < setup.index(\n        "await panel_manager.async_start()"\n    )\n    assert setup.index("drain_initial_redactions") < setup.index("receiver.register(")'''
+          if old not in text:
+              raise SystemExit('startup ordering assertion anchor not found')
+          startup.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          manager_test = Path('tests/test_control_panel_manager_v060.py')
+          text = manager_test.read_text(encoding='utf-8')
+          marker = 'test_pre_start_redaction_blocks_old_root_edit_until_explicit_repair'
+          if marker not in text:
+              text += '''\n\n@pytest.mark.asyncio\nasync def test_pre_start_redaction_blocks_old_root_edit_until_explicit_repair() -> None:\n    modules = load_modules()\n    runtime_mod = modules["control_panel_runtime"]\n    manager_mod = modules["manager"]\n    store = runtime_mod.ControlPanelRuntimeStore()\n    store.set(\n        runtime_mod.PanelRuntime(\n            panel_id="garage",\n            room_id="!garage:example",\n            root_event_id="$old-root",\n            generation=2,\n            render_hash="stale-render",\n        )\n    )\n    manager, _, client, _, _ = build_manager(modules, runtime_store=store)\n    client.events[("!garage:example", "$old-root")] = {\n        "event_id": "$old-root",\n        "type": "m.room.message",\n        "content": {\n            manager_mod.PANEL_METADATA_KEY: {\n                "schema": manager_mod.PANEL_SCHEMA,\n                "panel_id": "garage",\n            }\n        },\n    }\n\n    assert await manager.async_handle_redaction("!garage:example", "$old-root") is True\n    assert store.get("garage").needs_repair is True\n\n    await manager.async_start()\n\n    assert client.edits == []\n    assert client.root_sends == []\n    assert store.get("garage").root_event_id == "$old-root"\n    assert store.get("garage").needs_repair is True\n\n    new_root = await manager.async_repair("garage")\n    assert new_root == "$root1"\n    assert len(client.root_sends) == 1\n    assert store.get("garage").root_event_id == "$root1"\n    assert store.get("garage").needs_repair is False\n    await manager.async_stop()\n'''
+              manager_test.write_text(text, encoding='utf-8')
+          PY
+      - name: Prove regression is red before production fix
+        shell: bash
+        run: |
+          set +e
+          pytest -q tests/test_initial_redaction_recovery_v060.py tests/test_control_panel_manager_v060.py
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo 'Regression unexpectedly passed before production fix'
+            exit 1
+          fi
+          echo 'Regression reproduced as expected (RED)'
+      - name: Apply minimal startup-order fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          setup_file = Path('custom_components/matrix_extended/__init__.py')
+          text = setup_file.read_text(encoding='utf-8')
+          old = '''    await panel_manager.async_start()\n\n    for room_id, redacted_event_id, sender, transaction_id in client.drain_initial_redactions():\n        if account.incoming_policy.should_process(\n            sender=sender,\n            room_id=room_id,\n            transaction_id=transaction_id,\n        ):\n            await panel_manager.async_handle_redaction(room_id, redacted_event_id)\n'''
+          new = '''    # The initial full-state Matrix sync happens before the inbound receiver is\n    # registered. Apply its narrowly buffered redactions to the restored panel\n    # runtime *before* panel startup can validate, pin or edit an old root.\n    # This preserves the explicit-repair invariant across the HA restart race.\n    for room_id, redacted_event_id, sender, transaction_id in client.drain_initial_redactions():\n        if account.incoming_policy.should_process(\n            sender=sender,\n            room_id=room_id,\n            transaction_id=transaction_id,\n        ):\n            await panel_manager.async_handle_redaction(room_id, redacted_event_id)\n\n    await panel_manager.async_start()\n'''
+          if old not in text:
+              raise SystemExit('setup startup-redaction anchor not found')
+          setup_file.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          manager_file = Path('custom_components/matrix_extended/control_panel_manager.py')
+          text = manager_file.read_text(encoding='utf-8')
+          old = '''    async def _prepare_panel(self, panel: ControlPanelDefinition) -> None:\n        runtime = self._runtime_for(panel)\n        if runtime.root_event_id:\n'''
+          new = '''    async def _prepare_panel(self, panel: ControlPanelDefinition) -> None:\n        runtime = self._runtime_for(panel)\n        if runtime.needs_repair:\n            # A startup redaction may have been recovered before subscriptions\n            # are active. Do not validate, pin or edit that root again; only an\n            # explicit Repair may advance the generation.\n            if runtime.last_update_error is None:\n                runtime.last_update_error = "control panel root requires explicit repair"\n                await self._save()\n            return\n        if runtime.root_event_id:\n'''
+          if old not in text:
+              raise SystemExit('manager prepare anchor not found')
+          manager_file.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Verify targeted regression is green
+        run: pytest -q tests/test_initial_redaction_recovery_v060.py tests/test_control_panel_manager_v060.py
+      - name: Validate and run full fast gate
+        run: |
+          python ci/scripts/validate-source.py
+          python -m compileall -q custom_components/matrix_extended
+          pytest -q
+      - name: Commit verified fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add custom_components/matrix_extended/__init__.py \
+                  custom_components/matrix_extended/control_panel_manager.py \
+                  tests/test_initial_redaction_recovery_v060.py \
+                  tests/test_control_panel_manager_v060.py
+          git commit -m 'Fix startup redaction race before panel activation [startup-redaction-fixed]'
+          git push origin HEAD:feature/native-matrix-control-0.6.0b1

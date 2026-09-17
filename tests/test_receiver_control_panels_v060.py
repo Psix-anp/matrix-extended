@@ -306,3 +306,39 @@ async def test_receiver_forwards_authorized_root_redaction_to_panel_manager(tmp_
 
     assert panel.redactions == [("!home:example", "$panel")]
     assert hass.bus.events[-1][0] == const.EVENT_REDACTION
+
+
+@pytest.mark.asyncio
+async def test_receiver_forwards_room_v11_content_redacts_to_panel_manager(tmp_path) -> None:
+    helper = load_test_helper("test_receiver_behavior.py", "receiver_redaction_v11_helpers_v060")
+    receiver_mod, const, _ = helper.load_receiver()
+    hass = helper.FakeHass()
+    account = helper.make_account()
+    panel = FakePanelManager(
+        types.SimpleNamespace(
+            handled=False,
+            action_id=None,
+            status=None,
+            error=None,
+            confirmation_prompt_event_id=None,
+        )
+    )
+    account.panel_manager = panel
+    receiver = receiver_mod.MatrixInboundReceiver(
+        hass,
+        entry_id="entry",
+        account=account,
+        incoming_dir=str(tmp_path),
+        download_media=False,
+    )
+    event = helper.make_event(
+        redacts=None,
+        reason="removed",
+        source={"content": {"redacts": "$panel-v11"}},
+    )
+
+    await receiver.async_handle_redaction(helper.make_room(), event)
+
+    assert panel.redactions == [("!home:example", "$panel-v11")]
+    assert hass.bus.events[-1][0] == const.EVENT_REDACTION
+    assert hass.bus.events[-1][1]["redacts"] == "$panel-v11"

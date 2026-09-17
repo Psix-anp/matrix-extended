@@ -209,6 +209,14 @@ class ControlPanelManager:
 
     async def _prepare_panel(self, panel: ControlPanelDefinition) -> None:
         runtime = self._runtime_for(panel)
+        if runtime.needs_repair:
+            # A startup redaction may have been recovered before subscriptions
+            # are active. Do not validate, pin or edit that root again; only an
+            # explicit Repair may advance the generation.
+            if runtime.last_update_error is None:
+                runtime.last_update_error = "control panel root requires explicit repair"
+                await self._save()
+            return
         if runtime.root_event_id:
             try:
                 event = await self.client.async_get_event(

@@ -108,7 +108,10 @@ def test_setup_replays_initial_redactions_through_incoming_policy_before_receive
 
     assert "drain_initial_redactions" in setup
     assert "account.incoming_policy.should_process" in setup
-    assert setup.index("await panel_manager.async_start()") < setup.index(
-        "drain_initial_redactions"
+    assert setup.index("drain_initial_redactions") < setup.index(
+        "await panel_manager.async_start()"
+    )
+    assert setup.index("async_handle_redaction") < setup.index(
+        "await panel_manager.async_start()"
     )
     assert setup.index("drain_initial_redactions") < setup.index("receiver.register(")

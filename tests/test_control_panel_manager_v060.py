@@ -339,3 +339,48 @@ async def test_stop_unsubscribes_cancels_tasks_and_clears_confirmations() -> Non
     assert tracker.unsubscribed == 1
     assert manager.pending_retry_count == 0
     assert confirmations.count == 0
+
+
+@pytest.mark.asyncio
+async def test_pre_start_redaction_blocks_old_root_edit_until_explicit_repair() -> None:
+    modules = load_modules()
+    runtime_mod = modules["control_panel_runtime"]
+    manager_mod = modules["manager"]
+    store = runtime_mod.ControlPanelRuntimeStore()
+    store.set(
+        runtime_mod.PanelRuntime(
+            panel_id="garage",
+            room_id="!garage:example",
+            root_event_id="$old-root",
+            generation=2,
+            render_hash="stale-render",
+        )
+    )
+    manager, _, client, _, _ = build_manager(modules, runtime_store=store)
+    client.events[("!garage:example", "$old-root")] = {
+        "event_id": "$old-root",
+        "type": "m.room.message",
+        "content": {
+            manager_mod.PANEL_METADATA_KEY: {
+                "schema": manager_mod.PANEL_SCHEMA,
+                "panel_id": "garage",
+            }
+        },
+    }
+
+    assert await manager.async_handle_redaction("!garage:example", "$old-root") is True
+    assert store.get("garage").needs_repair is True
+
+    await manager.async_start()
+
+    assert client.edits == []
+    assert client.root_sends == []
+    assert store.get("garage").root_event_id == "$old-root"
+    assert store.get("garage").needs_repair is True
+
+    new_root = await manager.async_repair("garage")
+    assert new_root == "$root1"
+    assert len(client.root_sends) == 1
+    assert store.get("garage").root_event_id == "$root1"
+    assert store.get("garage").needs_repair is False
+    await manager.async_stop()

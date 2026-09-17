@@ -80,6 +80,8 @@ jobs:
         run: pytest -q tests/test_initial_redaction_recovery_v060.py tests/test_control_panel_manager_v060.py
       - name: Validate and run full fast gate
         run: |
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          rm -rf .pytest_cache
           python ci/scripts/validate-source.py
           python -m compileall -q custom_components/matrix_extended
           pytest -q

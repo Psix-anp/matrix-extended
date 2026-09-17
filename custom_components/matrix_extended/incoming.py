@@ -42,6 +42,12 @@ class IncomingPolicy:
         return self.allows(sender, room_id)
 
 
+def redaction_target(event: Any) -> str | None:
+    """Return the legacy matrix-nio redaction target when exposed directly."""
+    direct = getattr(event, "redacts", None)
+    return direct if isinstance(direct, str) and direct else None
+
+
 def extract_relations(source: Mapping[str, Any]) -> tuple[str | None, str | None]:
     """Extract rich-reply parent and thread root IDs from event source."""
     content = source.get("content")

@@ -25,13 +25,15 @@ class FakeRedactionEvent:
     def __init__(
         self,
         *,
-        redacts: str,
+        redacts: str | None,
         sender: str,
         transaction_id: str | None = None,
+        source: dict | None = None,
     ) -> None:
         self.redacts = redacts
         self.sender = sender
         self.transaction_id = transaction_id
+        self.source = source or {}
 
 
 class FakeSyncResponse:
@@ -78,6 +80,27 @@ async def test_initial_full_state_sync_buffers_only_redactions_for_panel_recover
     assert client.drain_initial_redactions() == []
     assert nio.sync_calls == [
         {"timeout": 0, "full_state": True, "set_presence": "offline"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_room_v11_initial_redaction_uses_content_redacts_target() -> None:
+    mod = load_client("matrix_extended_client_room_v11_redaction_v060")
+    mod.SyncResponse = FakeSyncResponse
+    redaction = FakeRedactionEvent(
+        redacts=None,
+        sender="@operator:test",
+        source={"content": {"redacts": "$panel-root-v11"}},
+    )
+    nio = FakeNio(FakeSyncResponse([redaction]))
+    client = mod.MatrixClient.__new__(mod.MatrixClient)
+    client._client = nio
+    client._initial_redactions = []
+
+    await client._async_sync(full_state=True)
+
+    assert client.drain_initial_redactions() == [
+        ("!control:test", "$panel-root-v11", "@operator:test", None)
     ]
 
 

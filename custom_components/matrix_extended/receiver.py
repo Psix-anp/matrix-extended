@@ -26,7 +26,7 @@ from nio import (
 
 from homeassistant.core import HomeAssistant
 
-from .client import MatrixAccount, MatrixExtendedError, redaction_target
+from .client import MatrixAccount, MatrixExtendedError
 from .command_executor import CommandExecutor
 from .const import (
     DEFAULT_INCOMING_MEDIA_MAX_MB,
@@ -41,7 +41,7 @@ from .const import (
     EVENT_REPLY,
     MAX_INCOMING_MEDIA_BYTES,
 )
-from .incoming import extract_relations, extract_replacement, safe_filename
+from .incoming import extract_relations, extract_replacement, redaction_target, safe_filename
 from .retention import cleanup_media_directory
 from .safe_action_executor import SafeActionExecutor
 from .safe_actions import SafeActionDefinition, ServiceActionHandler

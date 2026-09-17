@@ -26,7 +26,7 @@ from nio import (
 
 from homeassistant.core import HomeAssistant
 
-from .client import MatrixAccount, MatrixExtendedError
+from .client import MatrixAccount, MatrixExtendedError, redaction_target
 from .command_executor import CommandExecutor
 from .const import (
     DEFAULT_INCOMING_MEDIA_MAX_MB,
@@ -436,7 +436,7 @@ class MatrixInboundReceiver:
         payload = self._base_payload(room, event)
         payload.update(
             {
-                "redacts": getattr(event, "redacts", None),
+                "redacts": redaction_target(event),
                 "reason": getattr(event, "reason", None),
             }
         )

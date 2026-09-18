@@ -4,6 +4,8 @@ import importlib.util
 from pathlib import Path
 import sys
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "ci" / "scripts" / "matrix-control-e2e.py"
 
@@ -70,6 +72,44 @@ def test_is_panel_edit_accepts_only_m_replace_for_original_root() -> None:
 
     assert mod.is_panel_edit(good, "$root") is True
     assert mod.is_panel_edit(wrong_root, "$root") is False
+
+
+@pytest.mark.parametrize("target", ["$root", "$other-root"])
+def test_panel_root_helpers_reject_edits_with_panel_metadata(target: str) -> None:
+    mod = load_helpers()
+    spec = importlib.util.spec_from_file_location(
+        "matrix_control_content_test",
+        ROOT / "custom_components" / "matrix_extended" / "content.py",
+    )
+    assert spec and spec.loader
+    content = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(content)
+    marker = {mod.PANEL_METADATA_KEY: {"schema": 1, "panel_id": mod.PANEL_ID}}
+    edit = {
+        "event_id": "$edit",
+        "type": "m.room.message",
+        "sender": "@bot:matrix.test",
+        "content": content.build_edit_content(
+            "Light: on", event_id=target, extra_content=marker
+        ),
+    }
+    root = {
+        "event_id": "$root",
+        "type": "m.room.message",
+        "sender": "@bot:matrix.test",
+        "content": content.build_text_content("Light: off", extra_content=marker),
+    }
+
+    assert mod.is_panel_edit(edit, target) is True
+    assert mod._is_panel_root(edit, sender="@bot:matrix.test") is False
+    assert mod._is_panel_root(root, sender="@bot:matrix.test") is True
+    assert mod.find_panel_root(
+        [edit, root], panel_id=mod.PANEL_ID, sender="@bot:matrix.test"
+    )["event_id"] == "$root"
+    with pytest.raises(LookupError):
+        mod.find_panel_root(
+            [edit], panel_id=mod.PANEL_ID, sender="@bot:matrix.test"
+        )
 
 
 def test_find_confirmation_reply_is_bound_to_root_and_action_label() -> None:

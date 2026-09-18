@@ -48,7 +48,11 @@ def find_panel_root(
     for event in events:
         if event.get("type") != "m.room.message" or event.get("sender") != sender:
             continue
-        marker = _content(event).get(PANEL_METADATA_KEY)
+        content = _content(event)
+        relation = content.get("m.relates_to")
+        if isinstance(relation, Mapping) and relation.get("rel_type") == "m.replace":
+            continue
+        marker = content.get(PANEL_METADATA_KEY)
         if (
             isinstance(marker, Mapping)
             and marker.get("schema") == PANEL_SCHEMA
@@ -99,7 +103,12 @@ def find_confirmation_reply(
 def _is_panel_root(event: Mapping[str, Any], *, sender: str) -> bool:
     if event.get("type") != "m.room.message" or event.get("sender") != sender:
         return False
-    marker = _content(event).get(PANEL_METADATA_KEY)
+    content = _content(event)
+    relation = content.get("m.relates_to")
+    # Edits retain panel metadata, but their event IDs are not new roots.
+    if isinstance(relation, Mapping) and relation.get("rel_type") == "m.replace":
+        return False
+    marker = content.get(PANEL_METADATA_KEY)
     return (
         isinstance(marker, Mapping)
         and marker.get("schema") == PANEL_SCHEMA

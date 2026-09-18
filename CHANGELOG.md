@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.0b1 — 2026-09-18
+
+First Native Matrix Control beta, published as a pre-release for testing.
+
+- Configure one native control panel per existing Matrix room through Home Assistant options, with YAML import/export.
+- Show live entity states in one stable message, updated with Matrix edits; invoke predefined local Home Assistant actions using reactions.
+- Require same-user, single-use confirmation within 30 seconds for actions configured with confirmation.
+- Enforce account room/user allowlists and optional narrower panel user permissions. Home Assistant service targets and data stay local.
+- Coalesce state changes during outages and restore the latest state after reconnecting. Preserve the panel root across Home Assistant restarts.
+- Mark deleted panel roots as needing repair; explicit Repair creates a replacement root. Add pin status and panel diagnostics.
+- Fix the end-to-end checks so panel edits are not mistaken for duplicate roots.
+- This beta does not create rooms or Spaces and does not include a Widget. Matrix reactions are not E2EE; authorization uses the configured sender and room allowlists.
+
+### Testing
+
+- Back up Home Assistant before installing this pre-release. Start with a harmless entity such as a test input_boolean or light.
+- Verify live updates, action reactions, confirmation, restart, and explicit Repair. Report the integration version and sanitized diagnostics with any issue.
+- The release commit must pass regression tests and the real Home Assistant 2026.9.2 + Synapse 1.160.0 + Element 1.12.26 stack before publication.
+
 ## 0.5.8 — 2026-09-15
 
 Resolved Home Assistant image proxy-stream fallback hotfix.

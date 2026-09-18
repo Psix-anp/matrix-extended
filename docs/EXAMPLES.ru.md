@@ -510,6 +510,98 @@ data:
 
 У `send` поле комнаты называется `target`, потому что действие может отправлять сразу в несколько комнат. У `reply` используется `room`, потому что reply адресуется одной Matrix room.
 
+## 15. Нативные панели управления Matrix (`0.6.0b1`)
+
+Следующие блоки — **YAML определения панелей для import**, а не вызовы `matrix_extended.*`. Панель можно собрать графически через Matrix Extended → Настроить → Нативные панели управления Matrix или импортировать один валидированный YAML document. Подробности: [Нативные панели управления Matrix](CONTROL_PANELS.ru.md).
+
+### Гараж — опасное действие с подтверждением
+
+```yaml
+panel_id: garage
+room_id: "!garage:example.org"
+title: Гараж
+enabled: true
+entities:
+  - entity_id: cover.garage
+    label: Ворота гаража
+actions:
+  - id: garage_open
+    reaction: "🔓"
+    label: Открыть гараж
+    service: cover.open_cover
+    target:
+      entity_id: cover.garage
+    data: {}
+    confirmation_required: true
+allowed_users:
+  - "@owner:example.org"
+debounce: 1.5
+```
+
+`confirmation_required: true` означает, что первая реакция только создаёт запрос подтверждения. Тот же Matrix sender обязан нажать `✅` в течение 30 секунд, и только после этого выполняется `cover.open_cover`.
+
+### Сигнализация — опасное снятие с охраны
+
+```yaml
+panel_id: alarm
+room_id: "!security:example.org"
+title: Охрана
+enabled: true
+entities:
+  - entity_id: alarm_control_panel.home
+    label: Сигнализация
+actions:
+  - id: alarm_disarm
+    reaction: "🛑"
+    label: Снять с охраны
+    service: alarm_control_panel.alarm_disarm
+    target:
+      entity_id: alarm_control_panel.home
+    data: {}
+    confirmation_required: true
+allowed_users:
+  - "@owner:example.org"
+debounce: 1.0
+```
+
+Если ваш alarm provider требует чувствительные service data, храните их только локально и считайте экспортированный panel YAML чувствительной конфигурацией.
+
+### Свет и климат — обычные одноступенчатые действия
+
+```yaml
+panel_id: living
+room_id: "!living:example.org"
+title: Гостиная
+enabled: true
+entities:
+  - entity_id: light.living_room
+    label: Свет
+  - entity_id: climate.living_room
+    label: Климат
+actions:
+  - id: light_toggle
+    reaction: "💡"
+    label: Переключить свет
+    service: light.toggle
+    target:
+      entity_id: light.living_room
+    data: {}
+    confirmation_required: false
+  - id: climate_comfort
+    reaction: "🌡️"
+    label: Установить 21 °C
+    service: climate.set_temperature
+    target:
+      entity_id: climate.living_room
+    data:
+      temperature: 21
+    confirmation_required: false
+allowed_users: []
+debounce: 1.5
+```
+
+`allowed_users: []` не делает панель публичной: это только отсутствие дополнительного panel-level ограничения. Account-level allowlist отправителей и комнат продолжает действовать.
+
 ## Карта в self-hosted Element
 
 `matrix_extended.send_location` отправляет стандартный `m.location`. Для самой отправки tile server не нужен. Чтобы Element Web отрисовал карту, настройте map/tile style на стороне Element/homeserver.

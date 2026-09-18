@@ -29,6 +29,7 @@
 - Incoming message, reply, reaction, media, location, edit and redaction events.
 - Home Assistant TTS → Matrix voice, Matrix voice → Home Assistant STT, plus optional automatic Voice Assist.
 - Safe predefined Matrix commands with Home Assistant service and camera-snapshot handlers.
+- Native Matrix control panels are being prepared for `0.6.0b1`: one live pinned control message per existing room, reaction actions, state-driven edits and explicit confirmation for risky controls.
 - Persistent outbox for temporary Matrix outages.
 - Russian and English Home Assistant UI and documentation.
 
@@ -78,17 +79,26 @@ For inbound automation, both the sender and room must pass the allowlists. This 
 
 ## Configure after setup
 
-Open **Settings → Devices & services → Matrix Extended → Configure**. The graphical options menu contains five sections:
+Open **Settings → Devices & services → Matrix Extended → Configure**. The graphical options menu contains six sections on the `0.6.0b1` branch:
 
 - **General** — default room, TLS verification and E2EE policy.
 - **Incoming & security** — incoming-event toggle and sender/room allowlists.
 - **Incoming media** — download toggle, retention period and storage quota.
 - **Voice Assist** — automatic Matrix voice → STT → Home Assistant Assist processing, reply mode (`text`, `voice`, or `both`), STT/TTS entities, language, conversation agent and additional trusted users/rooms.
 - **Notification routes** — add, edit and delete reusable named room groups without raw JSON.
+- **Native Matrix control panels** — GUI-first panel CRUD, predefined reaction actions, explicit Repair and YAML import/export.
 
 The integration also exposes a **Default room** select entity for joined rooms.
 
 See the full [Settings and connection guide](docs/SETTINGS.md).
+
+## Native Matrix Control (`0.6.0b1`)
+
+The `0.6.0b1` beta adds one state-driven control message per existing Matrix room. Home Assistant states update the same logical Matrix root with `m.replace`; configured reactions resolve to locally stored safe Home Assistant actions. Risky actions can require a 30-second same-sender confirmation, and a deleted/redacted root enters `needs_repair` until explicit Repair is requested.
+
+The dedicated guide covers allowlists, pin permissions, outage coalescing, diagnostics and GUI/YAML setup: [Native Matrix control panels](docs/CONTROL_PANELS.md).
+
+The graphical Matrix Extended **Widget** is planned for a later beta. It is not part of `0.6.0b1`.
 
 ## Actions and automations
 
@@ -109,7 +119,7 @@ Current actions:
 - `matrix_extended.register_command`
 - `matrix_extended.unregister_command`
 
-See [Actions and events](docs/ACTIONS.md) for fields, defaults, constraints and response data. See [Practical examples](docs/EXAMPLES.md) for ready-to-copy automations, including both safe-command handler modes and Matrix voice → STT/Assist.
+See [Actions and events](docs/ACTIONS.md) for fields, defaults, constraints and response data. See [Practical examples](docs/EXAMPLES.md) for ready-to-copy automations, including safe-command handler modes, Matrix voice → STT/Assist, and native control-panel examples.
 
 ## Media Browser and direct media
 
@@ -133,7 +143,7 @@ Automatic Voice Assist is opt-in and has its own optional trusted-user/room rest
 
 ## Diagnostics and storage
 
-The integration device exposes connection state, Matrix user/device IDs, default room and encryption state, last successful send, last incoming event, last error, safe-command state and delivery diagnostics.
+The integration device exposes connection state, Matrix user/device IDs, default room and encryption state, last successful send, last incoming event, last error, safe-command state and delivery diagnostics. `0.6.0b1` also adds a disabled-by-default **Control panels** diagnostic sensor with bounded panel runtime snapshots and no stored action payloads or secrets.
 
 Incoming downloaded media is scoped per config entry under:
 
@@ -146,6 +156,8 @@ E2EE crypto state and integration registries are stored under Home Assistant sto
 ## Verification
 
 Release packaging is gated by regression tests plus a disposable real stack using Home Assistant 2026.9.2, Synapse 1.160.0 and Element Web 1.12.26. The CI verifies E2EE dependencies, Home Assistant service metadata parsing, encrypted send/decrypt, notify entities, Media Browser send, safe commands, automatic Voice Assist, outage/reconnect, Home Assistant restart, background-task cleanup and package integrity.
+
+Native Matrix Control is additionally gated on encrypted panel creation, same-root live edits, low-risk and confirmed dangerous reaction actions, outage coalescing, root stability across HA restart, redaction/`needs_repair`, explicit Repair, and no background-task leaks before `0.6.0b1` can be published.
 
 Public-distribution validation also runs HACS validation and Home Assistant Hassfest.
 

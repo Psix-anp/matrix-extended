@@ -31,6 +31,25 @@ CONF_ROUTE_NAME: Final = "route_name"
 CONF_ROUTE_ROOMS: Final = "route_rooms"
 CONF_ROUTE_CONFIRM: Final = "route_confirm"
 
+CONF_CONTROL_PANELS: Final = "control_panels"
+CONF_PANEL_ID: Final = "panel_id"
+CONF_PANEL_ROOM_ID: Final = "room_id"
+CONF_PANEL_TITLE: Final = "title"
+CONF_PANEL_ENABLED: Final = "enabled"
+CONF_PANEL_ENTITIES: Final = "entities"
+CONF_PANEL_ACTIONS: Final = "actions"
+CONF_PANEL_ALLOWED_USERS: Final = "allowed_users"
+CONF_PANEL_DEBOUNCE: Final = "debounce"
+CONF_PANEL_ENTITY_ID: Final = "entity_id"
+CONF_PANEL_ENTITY_LABEL: Final = "label"
+CONF_PANEL_ACTION_ID: Final = "id"
+CONF_PANEL_ACTION_REACTION: Final = "reaction"
+CONF_PANEL_ACTION_LABEL: Final = "label"
+CONF_PANEL_ACTION_SERVICE: Final = "service"
+CONF_PANEL_ACTION_TARGET: Final = "target"
+CONF_PANEL_ACTION_DATA: Final = "data"
+CONF_PANEL_ACTION_CONFIRMATION_REQUIRED: Final = "confirmation_required"
+
 DEFAULT_INCOMING_MEDIA_RETENTION_DAYS: Final = 7
 DEFAULT_INCOMING_MEDIA_MAX_MB: Final = 256
 

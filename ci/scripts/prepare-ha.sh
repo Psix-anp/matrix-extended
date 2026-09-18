@@ -148,6 +148,12 @@ input_boolean:
   matrix_denied_target:
     name: Matrix denied command target
     initial: false
+  matrix_control_light:
+    name: Matrix control light
+    initial: false
+  matrix_control_dangerous:
+    name: Matrix control dangerous target
+    initial: false
 
 logger:
   default: info

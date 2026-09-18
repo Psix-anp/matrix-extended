@@ -42,6 +42,27 @@ class IncomingPolicy:
         return self.allows(sender, room_id)
 
 
+def redaction_target(event: Any) -> str | None:
+    """Return a redaction target across pre-v11 and room-v11+ event shapes."""
+    direct = getattr(event, "redacts", None)
+    if isinstance(direct, str) and direct:
+        return direct
+
+    source = getattr(event, "source", None)
+    if not isinstance(source, Mapping):
+        return None
+
+    legacy = source.get("redacts")
+    if isinstance(legacy, str) and legacy:
+        return legacy
+
+    content = source.get("content")
+    if not isinstance(content, Mapping):
+        return None
+    current = content.get("redacts")
+    return current if isinstance(current, str) and current else None
+
+
 def extract_relations(source: Mapping[str, Any]) -> tuple[str | None, str | None]:
     """Extract rich-reply parent and thread root IDs from event source."""
     content = source.get("content")

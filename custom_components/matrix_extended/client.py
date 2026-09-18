@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 import inspect
@@ -90,12 +91,35 @@ class MatrixAccount:
     outbox_task: Any = None
     entry_id: str = ""
     default_room_id: str = ""
+    safe_action_executor: Any = None
+    panel_manager: Any = None
 
 
 def _error_text(response: Any) -> str:
     status = getattr(response, "status_code", None)
     message = getattr(response, "message", None) or str(response)
     return f"{status}: {message}" if status else message
+
+
+def redaction_target(event: Any) -> str | None:
+    """Return a redaction target across pre-v11 and room-v11+ event shapes."""
+    direct = getattr(event, "redacts", None)
+    if isinstance(direct, str) and direct:
+        return direct
+
+    source = getattr(event, "source", None)
+    if not isinstance(source, Mapping):
+        return None
+
+    legacy = source.get("redacts")
+    if isinstance(legacy, str) and legacy:
+        return legacy
+
+    content = source.get("content")
+    if not isinstance(content, Mapping):
+        return None
+    current = content.get("redacts")
+    return current if isinstance(current, str) and current else None
 
 
 async def async_password_login(
@@ -162,6 +186,37 @@ class MatrixClient:
         self._room_cache: dict[str, str] = {}
         self._require_e2ee = require_e2ee
         self._sync_task: asyncio.Task[Any] | None = None
+        self._initial_redactions: list[tuple[str, str, str, str | None]] = []
+        self._capture_initial_redactions = True
+
+    def _remember_initial_redactions(self, response: SyncResponse) -> None:
+        """Keep replay-safe redactions consumed before inbound callbacks exist."""
+        joined = getattr(getattr(response, "rooms", None), "join", {})
+        if not isinstance(joined, Mapping):
+            return
+        for room_id, room_info in joined.items():
+            timeline = getattr(room_info, "timeline", None)
+            for event in getattr(timeline, "events", ()):
+                redacts = redaction_target(event)
+                sender = getattr(event, "sender", None)
+                if not redacts or not sender:
+                    continue
+                transaction_id = getattr(event, "transaction_id", None)
+                item = (
+                    str(room_id),
+                    str(redacts),
+                    str(sender),
+                    str(transaction_id) if transaction_id else None,
+                )
+                if item not in self._initial_redactions:
+                    self._initial_redactions.append(item)
+
+    def drain_initial_redactions(self) -> list[tuple[str, str, str, str | None]]:
+        """Return startup redactions once and stop startup-only capture."""
+        redactions = list(self._initial_redactions)
+        self._initial_redactions.clear()
+        self._capture_initial_redactions = False
+        return redactions
 
     async def _async_sync(self, *, full_state: bool = False) -> None:
         try:
@@ -174,6 +229,8 @@ class MatrixClient:
             raise MatrixConnectionError(str(err)) from err
         if not isinstance(response, SyncResponse):
             raise MatrixConnectionError(f"Matrix sync failed: {_error_text(response)}")
+        if full_state and getattr(self, "_capture_initial_redactions", True):
+            self._remember_initial_redactions(response)
 
     async def _async_crypto_housekeeping(self) -> None:
         """Run the key maintenance normally performed by sync_forever."""
@@ -321,6 +378,97 @@ class MatrixClient:
             raise MatrixSendError(f"Unable to resolve room {room}: {_error_text(response)}")
         self._room_cache[room] = response.room_id
         return response.room_id
+
+    async def async_get_event(
+        self, room: str, event_id: str
+    ) -> dict[str, Any] | None:
+        """Fetch one room event; return None only when Matrix reports it missing."""
+        room_id = await self.async_resolve_room(room)
+        try:
+            response = await self._client.room_get_event(room_id, event_id)
+        except Exception as err:
+            raise MatrixConnectionError(str(err)) from err
+        if isinstance(response, ErrorResponse):
+            if getattr(response, "status_code", None) == "M_NOT_FOUND":
+                return None
+            raise MatrixSendError(
+                f"Unable to fetch Matrix event {event_id}: {_error_text(response)}"
+            )
+        event = getattr(response, "event", None)
+        source = getattr(event, "source", None)
+        if not isinstance(source, Mapping):
+            raise MatrixSendError(f"Matrix event {event_id} has no event source")
+        return dict(source)
+
+    async def async_get_state_event(
+        self,
+        room: str,
+        event_type: str,
+        *,
+        state_key: str = "",
+    ) -> dict[str, Any] | None:
+        """Fetch one room state event; return None only when state is absent."""
+        room_id = await self.async_resolve_room(room)
+        try:
+            response = await self._client.room_get_state_event(
+                room_id, event_type, state_key
+            )
+        except Exception as err:
+            raise MatrixConnectionError(str(err)) from err
+        if isinstance(response, ErrorResponse):
+            if getattr(response, "status_code", None) == "M_NOT_FOUND":
+                return None
+            raise MatrixSendError(
+                f"Unable to fetch Matrix state {event_type}: {_error_text(response)}"
+            )
+        content = getattr(response, "content", None)
+        if not isinstance(content, Mapping):
+            raise MatrixSendError(f"Matrix state {event_type} has no content")
+        return dict(content)
+
+    async def async_put_state_event(
+        self,
+        room: str,
+        event_type: str,
+        content: Mapping[str, Any],
+        *,
+        state_key: str = "",
+    ) -> str | None:
+        """Write one Matrix room-state event and return its event ID."""
+        room_id = await self.async_resolve_room(room)
+        try:
+            response = await self._client.room_put_state(
+                room_id,
+                event_type,
+                dict(content),
+                state_key=state_key,
+            )
+        except Exception as err:
+            raise MatrixConnectionError(str(err)) from err
+        if isinstance(response, ErrorResponse):
+            raise MatrixSendError(
+                f"Unable to write Matrix state {event_type}: {_error_text(response)}"
+            )
+        return getattr(response, "event_id", None)
+
+    async def async_pin_event(self, room: str, event_id: str) -> bool:
+        """Append one pin without deleting unrelated pinned events."""
+        state = await self.async_get_state_event(room, "m.room.pinned_events") or {}
+        raw_pins = state.get("pinned", [])
+        pins = (
+            [str(item) for item in raw_pins if isinstance(item, str) and item]
+            if isinstance(raw_pins, list)
+            else []
+        )
+        if event_id in pins:
+            return False
+        pins.append(event_id)
+        await self.async_put_state_event(
+            room,
+            "m.room.pinned_events",
+            {"pinned": pins},
+        )
+        return True
 
     async def async_room_encrypted(self, room: str, *, sync: bool = True) -> bool:
         """Return whether a joined room has Matrix E2EE enabled."""

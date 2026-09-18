@@ -131,6 +131,8 @@ jobs:
           PY
       - name: Configure Matrix Extended and verify encrypted send + reload
         run: python ci/scripts/ha-e2e.py setup-send-reload
+      - name: Verify Native Matrix Control root, live edit, safe action and confirmation
+        run: python ci/scripts/matrix-control-e2e.py verify
       - name: Verify default and room-specific Matrix notify entities
         run: python ci/scripts/verify-ha-entities.py
       - name: Verify Element decrypts text and renders rich Matrix events
@@ -147,6 +149,8 @@ jobs:
         run: docker compose -f compose.test.yml stop synapse
       - name: Verify Home Assistant observes the Matrix outage
         run: python ci/scripts/ha-reconnect.py wait-disconnected
+      - name: Exercise Native Matrix Control state flips while Synapse is unavailable
+        run: python ci/scripts/matrix-control-e2e.py outage-flips
       - name: Queue Matrix send while Synapse is unavailable
         run: python ci/scripts/ha-reconnect.py queue-outbox
       - name: Start Synapse again
@@ -155,6 +159,8 @@ jobs:
         run: python ci/scripts/wait-http.py http://127.0.0.1:8008/_matrix/client/versions 90
       - name: Verify queued delivery, inbound listener, and encrypted outbound recovery without HA reload
         run: python ci/scripts/ha-reconnect.py verify-reconnect
+      - name: Verify Native Matrix Control recovery coalesces to the latest state
+        run: python ci/scripts/matrix-control-e2e.py verify-recovery
       - name: Restart Home Assistant
         run: docker compose -f compose.test.yml restart homeassistant
       - name: Wait for Home Assistant after restart
@@ -163,6 +169,8 @@ jobs:
         run: python ci/scripts/ha-e2e.py verify-restart
       - name: Verify rich last incoming event sensor after Matrix reaction
         run: python ci/scripts/verify-runtime.py last-receive
+      - name: Verify Native Matrix Control root stability and explicit Repair after restart
+        run: python ci/scripts/matrix-control-e2e.py verify-restart-repair
       - name: Verify Matrix Extended did not block or leak background tasks
         run: |
           docker compose -f compose.test.yml logs --no-color homeassistant > .ci/home-assistant.log

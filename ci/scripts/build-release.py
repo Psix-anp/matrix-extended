@@ -9,7 +9,7 @@ import sys
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 COMPONENT = Path("custom_components/matrix_extended")
-VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?$")
 EXCLUDED_DIRS = {"__pycache__", ".pytest_cache"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
 FIXED_TIMESTAMP = (2026, 1, 1, 0, 0, 0)

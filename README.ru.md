@@ -29,6 +29,7 @@
 - Входящие message, reply, reaction, media, location, edit и redaction события.
 - Home Assistant TTS → Matrix voice, Matrix voice → Home Assistant STT и опциональный автоматический Voice Assist.
 - Безопасные заранее зарегистрированные Matrix-команды для действий Home Assistant и снимков камер.
+- Для `0.6.0b1` готовятся нативные панели Matrix: одно живое закреплённое control-сообщение на существующую комнату, actions по реакциям, state-driven edits и подтверждение рискованных действий.
 - Persistent outbox при временной недоступности Matrix.
 - Полноценные русские и английские интерфейс и документация.
 
@@ -78,17 +79,26 @@ HACS устанавливает интеграцию в `/config/custom_componen
 
 ## Настройка после подключения
 
-Откройте **Настройки → Устройства и службы → Matrix Extended → Настроить**. В меню пять разделов:
+Откройте **Настройки → Устройства и службы → Matrix Extended → Настроить**. На ветке `0.6.0b1` в меню шесть разделов:
 
 - **Основные** — комната по умолчанию, проверка TLS и требование E2EE.
 - **Входящие и безопасность** — включение входящих событий и allowlist пользователей/комнат.
 - **Входящие медиа** — скачивание, срок хранения и лимит занимаемого места.
 - **Voice Assist** — автоматический Matrix voice → STT → Home Assistant Assist, режим ответа (`text`, `voice` или `both`), STT/TTS сущности, язык, conversation agent и дополнительные доверенные пользователи/комнаты.
 - **Маршруты уведомлений** — графическое добавление, изменение и удаление именованных групп комнат без JSON.
+- **Нативные панели управления Matrix** — GUI-first CRUD панелей, заранее заданные reaction actions, явный Repair и YAML import/export.
 
 Также интеграция создаёт select-сущность **Комната по умолчанию** со списком joined rooms.
 
 Полное описание: [Настройка и подключение](docs/SETTINGS.ru.md).
+
+## Native Matrix Control (`0.6.0b1`)
+
+Beta `0.6.0b1` добавляет одно state-driven control-сообщение на существующую Matrix-комнату. HA state обновляет то же логическое root-событие через `m.replace`, а настроенные реакции выбирают локально сохранённые безопасные Home Assistant actions. Для опасных действий можно включить 30-секундное подтверждение тем же отправителем; удалённый/redacted root переходит в `needs_repair` до явного Repair.
+
+Отдельная инструкция описывает allowlists, Matrix pin permissions, coalescing при outage, diagnostics и настройку через GUI/YAML: [Нативные панели управления Matrix](docs/CONTROL_PANELS.ru.md).
+
+Графический **Widget** Matrix Extended запланирован на следующую beta и в `0.6.0b1` не входит.
 
 ## Действия и автоматизации
 
@@ -109,7 +119,7 @@ HACS устанавливает интеграцию в `/config/custom_componen
 - `matrix_extended.register_command`
 - `matrix_extended.unregister_command`
 
-Все поля, defaults, ограничения и response data: [Действия и события](docs/ACTIONS.ru.md). Готовые копируемые автоматизации, включая оба режима safe commands и Matrix voice → STT/Assist: [Практические примеры](docs/EXAMPLES.ru.md).
+Все поля, defaults, ограничения и response data: [Действия и события](docs/ACTIONS.ru.md). Готовые копируемые автоматизации, включая safe commands, Matrix voice → STT/Assist и примеры нативных control panels: [Практические примеры](docs/EXAMPLES.ru.md).
 
 ## Media Browser и прямые медиа
 
@@ -119,7 +129,7 @@ HACS устанавливает интеграцию в `/config/custom_componen
 - **URL медиа** — прямой HTTP/HTTPS URL картинки, видео, аудиофайла или скачиваемого media endpoint;
 - **Сущность камеры или изображения** — `camera.*` или `image.*`; Matrix Extended получает один актуальный кадр/изображение.
 
-Для `image.*`, выбранного через Home Assistant Media Source, Matrix Extended теперь получает одиночное изображение штатным API вместо попытки скачать поток `/api/image_proxy_stream/...` как конечный файл.
+Для `image.*`, выбранного через Home Assistant Media Source, Matrix Extended получает одиночное изображение штатным API вместо попытки скачать поток `/api/image_proxy_stream/...` как конечный файл.
 
 Для локальных путей файловой системы, нескольких вложений, thumbnail и ручных низкоуровневых metadata используйте `media` в `matrix_extended.send`.
 
@@ -133,7 +143,7 @@ Reaction actions и безопасные Matrix-команды содержат 
 
 ## Диагностика и хранилище
 
-Устройство интеграции показывает соединение, Matrix user/device ID, комнату по умолчанию и её шифрование, последнюю успешную отправку, последнее входящее событие, последнюю ошибку, состояние safe commands и доставки.
+Устройство интеграции показывает соединение, Matrix user/device ID, комнату по умолчанию и её шифрование, последнюю успешную отправку, последнее входящее событие, последнюю ошибку, состояние safe commands и доставки. `0.6.0b1` также добавляет выключенный по умолчанию diagnostic sensor **Панели управления** с ограниченными runtime snapshots без service data, токенов и других секретов.
 
 Скачанные входящие медиа каждого config entry хранятся отдельно:
 
@@ -146,6 +156,8 @@ E2EE crypto-state и внутренние реестры интеграции х
 ## Проверка релиза
 
 Release проходит regression suite и реальный стек **Home Assistant 2026.9.2 + Synapse 1.160.0 + Element Web 1.12.26**. CI проверяет E2EE dependencies, парсинг `services.yaml` самим Home Assistant, encrypted send/decrypt, notify entities, Media Browser send, safe commands, автоматический Voice Assist, outage/reconnect, перезапуск HA, отсутствие утечек фоновых задач и целостность install ZIP.
+
+Native Matrix Control дополнительно блокируется gate-проверками: encrypted panel creation, same-root live edits, low-risk и подтверждённый dangerous action, outage coalescing, стабильный root после рестарта HA, redaction/`needs_repair`, явный Repair и отсутствие task leaks. Только после этого можно публиковать `0.6.0b1`.
 
 Для публичного распространения дополнительно запускаются HACS validation и Home Assistant Hassfest.
 

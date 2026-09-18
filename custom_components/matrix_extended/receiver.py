@@ -41,8 +41,10 @@ from .const import (
     EVENT_REPLY,
     MAX_INCOMING_MEDIA_BYTES,
 )
-from .incoming import extract_relations, extract_replacement, safe_filename
+from .incoming import extract_relations, extract_replacement, redaction_target, safe_filename
 from .retention import cleanup_media_directory
+from .safe_action_executor import SafeActionExecutor
+from .safe_actions import SafeActionDefinition, ServiceActionHandler
 from .voice_assist import VoiceAssistCoordinator
 
 _TEXT_EVENTS = (RoomMessageText, RoomMessageNotice, RoomMessageEmote)
@@ -106,19 +108,27 @@ class MatrixInboundReceiver:
         self._media_retention_days = int(media_retention_days)
         self._media_max_bytes = int(media_max_bytes)
         self._command_executor = CommandExecutor(hass, account)
-        self._voice_assist = VoiceAssistCoordinator(hass, account, entry_id=entry_id)
-
-    def register(self) -> None:
-        """Register all supported callbacks before starting live sync."""
-        self._account.client.add_event_callback(self.async_handle_text, _TEXT_EVENTS)
-        self._account.client.add_event_callback(self.async_handle_reaction, ReactionEvent)
-        self._account.client.add_event_callback(self.async_handle_media, _MEDIA_EVENTS)
-        self._account.client.add_event_callback(self.async_handle_redaction, RedactionEvent)
-        # matrix-nio 0.26 maps unsupported m.room.message msgtypes such as
-        # stable m.location to RoomMessageUnknown.
-        self._account.client.add_event_callback(
-            self.async_handle_location, RoomMessageUnknown
+        self._safe_action_executor = (
+            getattr(account, "safe_action_executor", None) or SafeActionExecutor(hass)
         )
+        self._voice_assist = VoiceAssistCoordinator(hass, account, entry_id=entry_id)
+        self._control_only = False
+
+    def register(self, *, control_only: bool = False) -> None:
+        """Register inbound callbacks, optionally limited to panel control."""
+        self._control_only = bool(control_only)
+        if not self._control_only:
+            self._account.client.add_event_callback(self.async_handle_text, _TEXT_EVENTS)
+        self._account.client.add_event_callback(self.async_handle_reaction, ReactionEvent)
+        if not self._control_only:
+            self._account.client.add_event_callback(self.async_handle_media, _MEDIA_EVENTS)
+        self._account.client.add_event_callback(self.async_handle_redaction, RedactionEvent)
+        if not self._control_only:
+            # matrix-nio 0.26 maps unsupported m.room.message msgtypes such as
+            # stable m.location to RoomMessageUnknown.
+            self._account.client.add_event_callback(
+                self.async_handle_location, RoomMessageUnknown
+            )
 
     def _allowed(self, room: Any, event: Any) -> bool:
         policy = self._account.incoming_policy
@@ -238,7 +248,7 @@ class MatrixInboundReceiver:
             )
 
     async def async_handle_reaction(self, room: Any, event: Any) -> None:
-        """Fire reaction events and execute only pre-registered actions."""
+        """Route authorized reactions through panel or legacy safe actions."""
         if not self._allowed(room, event):
             return
         payload = self._base_payload(room, event)
@@ -249,6 +259,36 @@ class MatrixInboundReceiver:
                 "action_executed": False,
             }
         )
+
+        panel_manager = getattr(self._account, "panel_manager", None)
+        if panel_manager is not None:
+            outcome = await panel_manager.async_handle_reaction(
+                room.room_id,
+                event.reacts_to,
+                event.key,
+                event.sender,
+            )
+            if outcome.handled:
+                if self._control_only:
+                    return
+                payload["panel_action_id"] = outcome.action_id
+                payload["panel_action_status"] = outcome.status
+                payload["action_executed"] = outcome.status == "success"
+                if outcome.error is not None:
+                    payload["action_error"] = outcome.error
+                if outcome.confirmation_prompt_event_id is not None:
+                    payload["confirmation_prompt_event_id"] = (
+                        outcome.confirmation_prompt_event_id
+                    )
+                self._mark_receive("reaction", payload)
+                self._hass.bus.async_fire(EVENT_REACTION, payload)
+                return
+
+        if self._control_only:
+            # Narrow panel-control mode must never execute generic registered
+            # reaction actions or expose general inbound HA events.
+            return
+
         registry = self._account.action_registry
         action = (
             registry.consume(
@@ -262,16 +302,20 @@ class MatrixInboundReceiver:
         )
         if action is not None:
             await registry.async_save()
-            domain, service = action.service.split(".", 1)
-            await self._hass.services.async_call(
-                domain,
-                service,
-                action.data,
-                blocking=False,
-                target=action.target or None,
+            result = await self._safe_action_executor.async_execute(
+                SafeActionDefinition(
+                    id=f"reaction:{room.room_id}:{event.reacts_to}:{event.key}",
+                    handler=ServiceActionHandler(
+                        service=action.service,
+                        target=dict(action.target),
+                        data=dict(action.data),
+                    ),
+                )
             )
-            payload["action_executed"] = True
             payload["action_service"] = action.service
+            payload["action_executed"] = result.status == "success"
+            if result.error is not None:
+                payload["action_error"] = result.error
         self._mark_receive("reaction", payload)
         self._hass.bus.async_fire(EVENT_REACTION, payload)
 
@@ -386,16 +430,23 @@ class MatrixInboundReceiver:
         self._hass.bus.async_fire(EVENT_LOCATION, payload)
 
     async def async_handle_redaction(self, room: Any, event: Any) -> None:
-        """Forward authorized m.room.redaction events into Home Assistant."""
+        """Route authorized redactions to panel repair and optional HA events."""
         if not self._allowed(room, event):
             return
         payload = self._base_payload(room, event)
         payload.update(
             {
-                "redacts": getattr(event, "redacts", None),
+                "redacts": redaction_target(event),
                 "reason": getattr(event, "reason", None),
             }
         )
+        panel_manager = getattr(self._account, "panel_manager", None)
+        if panel_manager is not None and payload["redacts"]:
+            await panel_manager.async_handle_redaction(
+                room.room_id, payload["redacts"]
+            )
+        if self._control_only:
+            return
         self._mark_receive("redaction", payload)
         self._hass.bus.async_fire(EVENT_REDACTION, payload)
 

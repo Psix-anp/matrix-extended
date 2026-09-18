@@ -51,10 +51,7 @@
         }
       },
       "last_send": {"name": "Last successful send"},
-      "last_error": {
-        "name": "Last error",
-        "state": {"none": "No errors"}
-      },
+      "last_error": {"name": "Last error", "state": {"none": "No errors"}},
       "last_receive": {
         "name": "Last incoming event",
         "state": {
@@ -69,11 +66,10 @@
       },
       "outbox_size": {"name": "Outbox size"},
       "last_delivery_status": {"name": "Last delivery status"},
-      "last_command": {"name": "Last command"}
+      "last_command": {"name": "Last command"},
+      "control_panels": {"name": "Control panels"}
     },
-    "select": {
-      "default_room": {"name": "Default room"}
-    }
+    "select": {"default_room": {"name": "Default room"}}
   },
   "options": {
     "step": {
@@ -85,17 +81,14 @@
           "incoming": "Incoming & security",
           "media": "Incoming media",
           "voice_assist": "Voice Assist",
-          "routes": "Notification routes"
+          "routes": "Notification routes",
+          "control_panels": "Native Matrix control panels"
         }
       },
       "general": {
         "title": "General",
         "description": "Change the default Matrix room, TLS validation and E2EE policy. Saving reloads the integration.",
-        "data": {
-          "default_room": "Default room",
-          "verify_ssl": "Verify TLS certificate",
-          "require_e2ee": "Require E2EE"
-        },
+        "data": {"default_room": "Default room", "verify_ssl": "Verify TLS certificate", "require_e2ee": "Require E2EE"},
         "data_description": {
           "default_room": "Room ID (!...) or alias (#...). Aliases are validated before saving.",
           "verify_ssl": "Keep enabled for normal HTTPS Matrix homeservers.",
@@ -105,11 +98,7 @@
       "incoming": {
         "title": "Incoming & security",
         "description": "Control which incoming Matrix events Home Assistant may process. When incoming events are enabled, both allowlists must be non-empty.",
-        "data": {
-          "incoming_enabled": "Enable incoming events",
-          "allowed_users": "Allowed users",
-          "allowed_rooms": "Allowed rooms"
-        },
+        "data": {"incoming_enabled": "Enable incoming events", "allowed_users": "Allowed users", "allowed_rooms": "Allowed rooms"},
         "data_description": {
           "allowed_users": "Only events from these Matrix user IDs are processed.",
           "allowed_rooms": "Only events from these Matrix rooms are processed. Both user and room must match."
@@ -118,11 +107,7 @@
       "media": {
         "title": "Incoming media",
         "description": "Control downloading, retention and disk usage for incoming Matrix attachments.",
-        "data": {
-          "download_incoming_media": "Download and decrypt incoming media",
-          "incoming_media_retention_days": "Retention, days",
-          "incoming_media_max_mb": "Storage limit, MiB"
-        },
+        "data": {"download_incoming_media": "Download and decrypt incoming media", "incoming_media_retention_days": "Retention, days", "incoming_media_max_mb": "Storage limit, MiB"},
         "data_description": {
           "incoming_media_retention_days": "0 disables age-based cleanup. The storage limit still applies.",
           "incoming_media_max_mb": "Maximum total size of the incoming-media directory."
@@ -149,11 +134,7 @@
       "routes": {
         "title": "Notification routes",
         "description": "Manage named room groups graphically. Actions can use a route name instead of repeating Matrix room IDs.",
-        "menu_options": {
-          "route_add": "Add route",
-          "route_edit": "Edit route",
-          "route_delete": "Delete route"
-        }
+        "menu_options": {"route_add": "Add route", "route_edit": "Edit route", "route_delete": "Delete route"}
       },
       "route_add": {
         "title": "Add route",
@@ -161,21 +142,100 @@
         "data": {"route_name": "Route name", "route_rooms": "Rooms"},
         "data_description": {"route_rooms": "One or more Matrix room IDs or aliases."}
       },
-      "route_edit": {
-        "title": "Edit route",
-        "description": "Choose the route to change.",
-        "data": {"route_name": "Route"}
+      "route_edit": {"title": "Edit route", "description": "Choose the route to change.", "data": {"route_name": "Route"}},
+      "route_edit_details": {"title": "Edit {route_name}", "description": "Change the Matrix rooms used by route {route_name}.", "data": {"route_rooms": "Rooms"}},
+      "route_delete": {"title": "Delete route", "description": "Delete a saved route. Automations that reference the deleted route must be updated.", "data": {"route_name": "Route", "route_confirm": "Confirm deletion"}},
+      "control_panels": {
+        "title": "Native Matrix control panels",
+        "description": "Manage one live control message per existing Matrix room. Panel permissions can only narrow the account-level Matrix allowlists.",
+        "menu_options": {
+          "panel_add": "Add panel",
+          "panel_edit": "Edit panel",
+          "panel_delete": "Delete panel",
+          "panel_repair": "Repair panel message",
+          "panel_import": "Import panel YAML",
+          "panel_export_select": "Export panel YAML"
+        }
       },
-      "route_edit_details": {
-        "title": "Edit {route_name}",
-        "description": "Change the Matrix rooms used by route {route_name}.",
-        "data": {"route_rooms": "Rooms"}
+      "panel_add": {
+        "title": "Add control panel",
+        "description": "Choose an existing allowed Matrix room and the Home Assistant entities that will be rendered in its live control message.",
+        "data": {
+          "panel_id": "Panel ID",
+          "room_id": "Matrix room",
+          "title": "Panel title",
+          "enabled": "Enabled",
+          "entities": "Displayed entities",
+          "allowed_users": "Users allowed to control this panel",
+          "debounce": "State update debounce, seconds"
+        },
+        "data_description": {
+          "panel_id": "Stable local identifier. Keep it short and do not change it after automations start referring to it.",
+          "allowed_users": "Optional additional restriction. Empty means every account-authorized sender may use panel actions.",
+          "debounce": "Rapid Home Assistant state changes are coalesced before one Matrix edit is sent."
+        }
       },
-      "route_delete": {
-        "title": "Delete route",
-        "description": "Delete a saved route. Automations that reference the deleted route must be updated.",
-        "data": {"route_name": "Route", "route_confirm": "Confirm deletion"}
-      }
+      "panel_edit": {"title": "Edit control panel", "description": "Choose the panel to edit.", "data": {"panel_id": "Panel"}},
+      "panel_manage": {
+        "title": "Edit panel draft",
+        "description": "Changes stay in memory until Save panel is confirmed.",
+        "menu_options": {
+          "panel_edit_details": "Panel details and entities",
+          "panel_action_add": "Add action",
+          "panel_action_edit": "Edit action",
+          "panel_action_delete": "Delete action",
+          "panel_save": "Save panel",
+          "panel_cancel": "Discard changes"
+        }
+      },
+      "panel_edit_details": {
+        "title": "Edit {panel_id}",
+        "description": "Change room, displayed entities, user restriction or state update debounce. Existing actions are preserved.",
+        "data": {
+          "room_id": "Matrix room",
+          "title": "Panel title",
+          "enabled": "Enabled",
+          "entities": "Displayed entities",
+          "allowed_users": "Users allowed to control this panel",
+          "debounce": "State update debounce, seconds"
+        }
+      },
+      "panel_action_add": {
+        "title": "Add panel action",
+        "description": "Matrix carries only this stored action ID/reaction. The Home Assistant service, target and data remain local. Enable confirmation for risky actions such as locks, alarms, gates or garage doors.",
+        "data": {
+          "id": "Action ID",
+          "reaction": "Reaction",
+          "label": "Label",
+          "service": "Home Assistant service",
+          "target": "Target",
+          "data": "Advanced service data (YAML)",
+          "confirmation_required": "Require 30-second same-user confirmation"
+        },
+        "data_description": {"reaction": "Must be unique within this panel.", "data": "Optional mapping only. Matrix users cannot override these values."}
+      },
+      "panel_action_edit": {
+        "title": "Edit panel action",
+        "description": "Choose an action first, then edit its local safe definition.",
+        "data": {
+          "id": "Action ID",
+          "reaction": "Reaction",
+          "label": "Label",
+          "service": "Home Assistant service",
+          "target": "Target",
+          "data": "Advanced service data (YAML)",
+          "confirmation_required": "Require 30-second same-user confirmation"
+        }
+      },
+      "panel_action_delete": {"title": "Delete panel action", "description": "Remove an action from the in-memory panel draft.", "data": {"id": "Action", "panel_confirm": "Confirm deletion"}},
+      "panel_save": {"title": "Save control panel", "description": "Validate and save panel {panel_id}. Saving reloads Matrix Extended.", "data": {"panel_confirm": "Confirm save"}},
+      "panel_cancel": {"title": "Discard panel changes", "description": "Discard the current in-memory panel draft."},
+      "panel_delete": {"title": "Delete control panel", "description": "Remove the panel configuration. This does not grant or broaden any Matrix permissions.", "data": {"panel_id": "Panel", "panel_confirm": "Confirm deletion"}},
+      "panel_repair": {"title": "Repair control panel message", "description": "Use only after the panel root message was deleted or redacted. Repair creates one new root and does not change panel configuration.", "data": {"panel_id": "Panel"}},
+      "panel_import": {"title": "Import control panel YAML", "description": "Import exactly one panel. It is validated against the current account room/user allowlists before it can be saved.", "data": {"panel_yaml": "Panel YAML"}},
+      "panel_import_confirm": {"title": "Replace existing panel", "description": "A panel named {panel_id} already exists. Confirm to replace its configuration.", "data": {"panel_confirm": "Confirm replacement"}},
+      "panel_export_select": {"title": "Export control panel", "description": "Choose a panel to export.", "data": {"panel_id": "Panel"}},
+      "panel_export": {"title": "Export {panel_id}", "description": "Copy this validated YAML. Editing the field here does not change the saved panel.", "data": {"panel_yaml": "Panel YAML"}}
     },
     "error": {
       "cannot_connect": "Unable to validate the Matrix room with the current connection settings",
@@ -184,8 +244,17 @@
       "invalid_route_name": "Enter a route name",
       "route_exists": "A route with this name already exists",
       "route_needs_rooms": "Add at least one Matrix room",
-      "confirm_delete": "Confirm deletion to continue"
-    }
+      "confirm_delete": "Confirm deletion to continue",
+      "confirm_save": "Confirm saving the panel to continue",
+      "confirm_replace": "Confirm replacement to continue",
+      "invalid_panel": "The panel definition is invalid, duplicates another panel/room, or exceeds the account allowlists",
+      "invalid_panel_action": "The action is invalid. Check its ID, unique reaction, service, target and YAML data",
+      "invalid_panel_yaml": "The YAML does not contain one valid panel allowed by this Matrix account",
+      "panel_runtime_unavailable": "The Matrix account runtime is not available; reload the integration and try again",
+      "panel_not_needs_repair": "This panel does not currently require repair",
+      "panel_repair_failed": "Unable to create and bind a replacement Matrix control message"
+    },
+    "abort": {"panel_runtime_unavailable": "The Matrix account runtime is not available; reload the integration and try again"}
   },
   "services": {
     "send": {
@@ -206,88 +275,17 @@
         "actions": {"name": "Reaction actions", "description": "Explicit Home Assistant actions that allowed Matrix reactions may trigger."}
       }
     },
-    "send_media": {
-      "name": "Send Matrix media",
-      "description": "Open the Home Assistant Media Browser and send an item from Local Media, Frigate or another Media Source provider.",
-      "fields": {
-        "account": {"name": "Account"}, "target": {"name": "Rooms"}, "route": {"name": "Route"},
-        "media_picker": {"name": "Choose media", "description": "Browse all Home Assistant Media Source providers."},
-        "caption": {"name": "Caption", "description": "Optional Matrix caption."},
-        "voice": {"name": "Voice message", "description": "Mark selected audio as a native Matrix voice message."},
-        "thread_id": {"name": "Thread ID"}
-      }
-    },
-    "send_voice": {
-      "name": "Send Matrix voice message",
-      "description": "Synthesize text with Home Assistant TTS and send it as a native Matrix voice message.",
-      "fields": {
-        "account": {"name": "Account"}, "target": {"name": "Rooms"}, "route": {"name": "Route"},
-        "text": {"name": "Text", "description": "Text to synthesize."},
-        "tts_engine": {"name": "TTS engine", "description": "Home Assistant tts.* entity; empty uses the default."},
-        "language": {"name": "Language", "description": "Requested language; compatible locale variants are matched automatically."},
-        "tts_options": {"name": "TTS options", "description": "Provider-specific advanced options."},
-        "thread_id": {"name": "Thread ID"}
-      }
-    },
-    "transcribe_voice": {
-      "name": "Transcribe Matrix voice",
-      "description": "Transcribe downloaded Matrix voice through Home Assistant STT and optionally pass the transcript to Assist.",
-      "fields": {
-        "account": {"name": "Account"},
-        "path": {"name": "Incoming voice path", "description": "local_path from matrix_extended_media or a filename in this account's incoming-media directory."},
-        "stt_entity": {"name": "STT entity", "description": "Home Assistant stt.* entity; empty uses the default."},
-        "language": {"name": "Language"}, "audio_format": {"name": "Input audio format"}, "codec": {"name": "Input codec"},
-        "bit_rate": {"name": "Input bit depth"}, "sample_rate": {"name": "Input sample rate"}, "channels": {"name": "Input channels"},
-        "assist": {"name": "Run Home Assistant Assist", "description": "Explicitly pass the transcript to Conversation/Assist."},
-        "conversation_agent": {"name": "Conversation agent"}, "conversation_id": {"name": "Conversation ID"}
-      }
-    },
-    "send_location": {
-      "name": "Send Matrix location",
-      "description": "Send Matrix location data from coordinates or a Home Assistant entity.",
-      "fields": {
-        "account": {"name": "Account"}, "target": {"name": "Rooms"}, "route": {"name": "Route"},
-        "entity_id": {"name": "Location entity", "description": "Entity with latitude and longitude attributes."},
-        "latitude": {"name": "Latitude"}, "longitude": {"name": "Longitude"}, "description": {"name": "Description"}, "thread_id": {"name": "Thread ID"}
-      }
-    },
-    "reply": {
-      "name": "Reply to Matrix event",
-      "description": "Reply to an existing Matrix event using its event ID.",
-      "fields": {
-        "account": {"name": "Account"}, "room": {"name": "Room"}, "event_id": {"name": "Event ID"}, "message": {"name": "Message"},
-        "msgtype": {"name": "Message type"}, "format": {"name": "Format"}, "mention_users": {"name": "Mention users"},
-        "mention_room": {"name": "Mention room"}, "thread_id": {"name": "Thread ID"}
-      }
-    },
-    "react": {
-      "name": "React to Matrix event",
-      "description": "Add an emoji or text reaction to an existing Matrix event.",
-      "fields": {"account": {"name": "Account"}, "room": {"name": "Room"}, "event_id": {"name": "Event ID"}, "reaction": {"name": "Reaction"}}
-    },
-    "edit": {
-      "name": "Edit Matrix message",
-      "description": "Replace a previously sent text-like Matrix event.",
-      "fields": {"account": {"name": "Account"}, "room": {"name": "Room"}, "event_id": {"name": "Event ID"}, "message": {"name": "New message"}, "msgtype": {"name": "Message type"}, "format": {"name": "Format"}}
-    },
-    "redact": {
-      "name": "Redact Matrix event",
-      "description": "Redact an existing event from a Matrix room.",
-      "fields": {"account": {"name": "Account"}, "room": {"name": "Room"}, "event_id": {"name": "Event ID"}, "reason": {"name": "Reason"}}
-    },
-    "purge_media": {
-      "name": "Purge downloaded Matrix media",
-      "description": "Delete downloaded incoming Matrix media for one account and return removed file/byte counts.",
-      "fields": {"account": {"name": "Account"}}
-    },
-    "register_command": {
-      "name": "Register safe Matrix command",
-      "description": "Register or replace one exact allowlisted Matrix command. Incoming Matrix text cannot override its stored Home Assistant action, target or data."
-    },
-    "unregister_command": {
-      "name": "Unregister safe Matrix command",
-      "description": "Remove one registered safe Matrix command by stable ID."
-    }
+    "send_media": {"name": "Send Matrix media", "description": "Open the Home Assistant Media Browser and send an item from Local Media, Frigate or another Media Source provider.", "fields": {"account": {"name": "Account"}, "target": {"name": "Rooms"}, "route": {"name": "Route"}, "media_picker": {"name": "Choose media", "description": "Browse all Home Assistant Media Source providers."}, "caption": {"name": "Caption", "description": "Optional Matrix caption."}, "voice": {"name": "Voice message", "description": "Mark selected audio as a native Matrix voice message."}, "thread_id": {"name": "Thread ID"}}},
+    "send_voice": {"name": "Send Matrix voice message", "description": "Synthesize text with Home Assistant TTS and send it as a native Matrix voice message.", "fields": {"account": {"name": "Account"}, "target": {"name": "Rooms"}, "route": {"name": "Route"}, "text": {"name": "Text", "description": "Text to synthesize."}, "tts_engine": {"name": "TTS engine", "description": "Home Assistant tts.* entity; empty uses the default."}, "language": {"name": "Language", "description": "Requested language; compatible locale variants are matched automatically."}, "tts_options": {"name": "TTS options", "description": "Provider-specific advanced options."}, "thread_id": {"name": "Thread ID"}}},
+    "transcribe_voice": {"name": "Transcribe Matrix voice", "description": "Transcribe downloaded Matrix voice through Home Assistant STT and optionally pass the transcript to Assist.", "fields": {"account": {"name": "Account"}, "path": {"name": "Incoming voice path", "description": "local_path from matrix_extended_media or a filename in this account's incoming-media directory."}, "stt_entity": {"name": "STT entity", "description": "Home Assistant stt.* entity; empty uses the default."}, "language": {"name": "Language"}, "audio_format": {"name": "Input audio format"}, "codec": {"name": "Input codec"}, "bit_rate": {"name": "Input bit depth"}, "sample_rate": {"name": "Input sample rate"}, "channels": {"name": "Input channels"}, "assist": {"name": "Run Home Assistant Assist", "description": "Explicitly pass the transcript to Conversation/Assist."}, "conversation_agent": {"name": "Conversation agent"}, "conversation_id": {"name": "Conversation ID"}}},
+    "send_location": {"name": "Send Matrix location", "description": "Send Matrix location data from coordinates or a Home Assistant entity.", "fields": {"account": {"name": "Account"}, "target": {"name": "Rooms"}, "route": {"name": "Route"}, "entity_id": {"name": "Location entity", "description": "Entity with latitude and longitude attributes."}, "latitude": {"name": "Latitude"}, "longitude": {"name": "Longitude"}, "description": {"name": "Description"}, "thread_id": {"name": "Thread ID"}}},
+    "reply": {"name": "Reply to Matrix event", "description": "Reply to an existing Matrix event using its event ID.", "fields": {"account": {"name": "Account"}, "room": {"name": "Room"}, "event_id": {"name": "Event ID"}, "message": {"name": "Message"}, "msgtype": {"name": "Message type"}, "format": {"name": "Format"}, "mention_users": {"name": "Mention users"}, "mention_room": {"name": "Mention room"}, "thread_id": {"name": "Thread ID"}}},
+    "react": {"name": "React to Matrix event", "description": "Add an emoji or text reaction to an existing Matrix event.", "fields": {"account": {"name": "Account"}, "room": {"name": "Room"}, "event_id": {"name": "Event ID"}, "reaction": {"name": "Reaction"}}},
+    "edit": {"name": "Edit Matrix message", "description": "Replace a previously sent text-like Matrix event.", "fields": {"account": {"name": "Account"}, "room": {"name": "Room"}, "event_id": {"name": "Event ID"}, "message": {"name": "New message"}, "msgtype": {"name": "Message type"}, "format": {"name": "Format"}}},
+    "redact": {"name": "Redact Matrix event", "description": "Redact an existing event from a Matrix room.", "fields": {"account": {"name": "Account"}, "room": {"name": "Room"}, "event_id": {"name": "Event ID"}, "reason": {"name": "Reason"}}},
+    "purge_media": {"name": "Purge downloaded Matrix media", "description": "Delete downloaded incoming Matrix media for one account and return removed file/byte counts.", "fields": {"account": {"name": "Account"}}},
+    "register_command": {"name": "Register safe Matrix command", "description": "Register or replace one exact allowlisted Matrix command. Incoming Matrix text cannot override its stored Home Assistant action, target or data."},
+    "unregister_command": {"name": "Unregister safe Matrix command", "description": "Remove one registered safe Matrix command by stable ID."}
   },
   "selector": {
     "message_type": {"options": {"text": "Text", "notice": "Notice", "emote": "Action (/me)"}},

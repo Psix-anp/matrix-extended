@@ -35,6 +35,11 @@ jobs:
           set -euo pipefail
           version="$(python -c 'import json; print(json.load(open("custom_components/matrix_extended/manifest.json"))["version"])')"
           tag="v${version}"
+          if [[ "$version" =~ (a|b|rc)[0-9]+$ ]]; then
+            prerelease=true
+          else
+            prerelease=false
+          fi
           python - "$version" <<'PY'
           import re
           import sys
@@ -53,6 +58,7 @@ jobs:
           PY
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
 
       - name: Check whether release already exists
         id: existing
@@ -158,11 +164,17 @@ jobs:
           set -euo pipefail
           version="${{ steps.release.outputs.version }}"
           tag="${{ steps.release.outputs.tag }}"
-          gh release create "$tag" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "${{ github.event.workflow_run.head_sha }}" \
-            --title "Matrix Extended v${version}" \
-            --notes-file dist/release-notes.md \
-            --latest \
-            "dist/matrix_extended-ha-install-v${version}.zip" \
+          release_args=(
+            "$tag"
+            --repo "$GITHUB_REPOSITORY"
+            --target "${{ github.event.workflow_run.head_sha }}"
+            --title "Matrix Extended v${version}"
+            --notes-file dist/release-notes.md
+            "dist/matrix_extended-ha-install-v${version}.zip"
             "dist/matrix_extended-ha-install-v${version}.zip.sha256"
+          )
+          if [[ "${{ steps.release.outputs.prerelease }}" == "true" ]]; then
+            gh release create "${release_args[@]}" --prerelease
+          else
+            gh release create "${release_args[@]}" --latest
+          fi

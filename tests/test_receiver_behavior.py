@@ -84,17 +84,20 @@ class FakeBus:
 
 
 class FakeServices:
-    def __init__(self):
+    def __init__(self, error: Exception | None = None):
         self.calls = []
+        self.error = error
 
     async def async_call(self, domain, service, data, *, blocking, target):
         self.calls.append((domain, service, data, blocking, target))
+        if self.error is not None:
+            raise self.error
 
 
 class FakeHass:
-    def __init__(self):
+    def __init__(self, service_error: Exception | None = None):
         self.bus = FakeBus()
-        self.services = FakeServices()
+        self.services = FakeServices(service_error)
 
     async def async_add_executor_job(self, func, *args):
         return func(*args)
@@ -292,7 +295,27 @@ async def test_reaction_without_action_and_with_action(tmp_path) -> None:
     assert payload["action_executed"] is True
     assert payload["action_service"] == "light.turn_on"
     assert registry.calls == [{"room_id": "!home:example", "event_id": "$target", "reaction": "✅", "sender": "@user:example"}]
-    assert hass.services.calls[-1] == ("light", "turn_on", {"brightness_pct": 50}, False, None)
+    assert hass.services.calls[-1] == ("light", "turn_on", {"brightness_pct": 50}, True, None)
+
+
+@pytest.mark.asyncio
+async def test_reaction_action_failure_is_bounded_and_does_not_crash_receiver(tmp_path) -> None:
+    mod, const, _ = load_receiver()
+    hass = FakeHass(RuntimeError("token=abc123 " + "x" * 500))
+    registry = FakeRegistry(Action())
+    account = make_account(registry=registry)
+    receiver = mod.MatrixInboundReceiver(hass, entry_id="entry", account=account, incoming_dir=str(tmp_path), download_media=False)
+
+    await receiver.async_handle_reaction(
+        make_room(), make_event(key="💡", reacts_to="$target")
+    )
+
+    event_type, payload = hass.bus.events[-1]
+    assert event_type == const.EVENT_REACTION
+    assert payload["action_executed"] is False
+    assert "abc123" not in payload["action_error"]
+    assert "token=<redacted>" in payload["action_error"]
+    assert len(payload["action_error"]) <= 200
 
 
 @pytest.mark.asyncio

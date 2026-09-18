@@ -20,6 +20,8 @@ def test_release_workflow_contract() -> None:
     assert 'ci/scripts/build-release.py' in text
     assert 'gh release create' in text
     assert 'matrix_extended-ha-install-v${version}.zip' in text
+    assert 'prerelease=' in text
+    assert '--prerelease' in text
 
 
 def test_release_workflow_is_idempotent_and_can_backfill_russian_notes() -> None:

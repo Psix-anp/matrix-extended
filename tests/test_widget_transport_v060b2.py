@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 import sys
 import types
 
 import pytest
+
+ROOT = Path(__file__).parents[1]
+COMP = ROOT / "custom_components" / "matrix_extended"
 
 
 class FakeToDeviceMessage:
@@ -29,8 +33,13 @@ def load_transport():
     sys.modules["nio"] = nio
     sys.modules["nio.event_builders"] = builders
     sys.modules["nio.responses"] = responses
-    sys.modules.pop("custom_components.matrix_extended.widget_transport", None)
-    return importlib.import_module("custom_components.matrix_extended.widget_transport")
+
+    pkg_name = "matrix_extended_widget_transport_v060b2_testpkg"
+    package = types.ModuleType(pkg_name)
+    package.__path__ = [str(COMP)]
+    sys.modules[pkg_name] = package
+    sys.modules.pop(f"{pkg_name}.widget_transport", None)
+    return importlib.import_module(f"{pkg_name}.widget_transport")
 
 
 class FakeNioClient:

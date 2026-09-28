@@ -8,90 +8,87 @@ Design approved in chat on 2026-09-28. This written specification is the review 
 
 Add a graphical Matrix Widget control surface to Matrix Extended without giving the Widget a Home Assistant access token, without exposing arbitrary Home Assistant services to Matrix, and without replacing the reaction-based Native Matrix Control introduced in `0.6.0b1`.
 
-The Widget must reuse the same account allowlists, panel definitions, runtime generation model, confirmation model, and Safe Action execution boundary that already protect Native Matrix Control.
-
-The Widget is an additional input/output adapter over the existing control plane, not a second control system.
-
-## Product Outcome
-
-A configured Matrix room can show a graphical Home Assistant panel inside a compatible Matrix client. The first beta supports useful controls for common entity domains while keeping Home Assistant as the source of truth.
-
-The user can continue using the existing pinned reaction panel if the Matrix client does not support Widgets, if the Widget is unavailable, or if the user simply prefers the fallback.
+The Widget reuses the existing account allowlists, panel definitions, runtime generation, confirmation model, and Safe Action execution boundary. It is an additional adapter over the same control plane, not a second authorization/execution system.
 
 ## Scope
 
 `0.6.0b2` includes:
 
 - one Widget surface linked to an existing Matrix Extended control panel;
-- no direct Home Assistant API token in the Widget;
-- Matrix Widget API based communication;
-- Matrix to-device signalling between the Widget user's Matrix client and the Matrix Extended account;
-- account room/user allowlist enforcement;
-- panel-level user restrictions;
-- panel generation validation;
-- explicit low-risk entity controls;
-- existing predefined panel actions exposed as Widget buttons;
-- confirmation for actions that already require confirmation;
+- Matrix Widget API communication;
+- Matrix to-device signalling for Widget state/actions;
+- no Home Assistant token in the Widget;
+- account room/user allowlist enforcement and panel-level user restrictions;
+- panel generation validation and request de-duplication;
+- explicit bounded entity controls;
+- existing configured panel actions exposed as Widget buttons;
+- the existing dangerous-action confirmation model;
 - live state refresh from actual Home Assistant state;
-- reconnect/reload behavior without replaying stale control operations;
-- a versioned static Widget bundle and self-hosting support;
-- English and Russian UI strings;
-- diagnostics and real-stack browser E2E coverage;
-- clearer E2EE runtime/preflight failure reporting when `vodozemac` is unavailable;
-- updated real-stack compatibility pins for the current stable Home Assistant, Synapse, and Element versions selected when implementation starts.
+- reconnect/reload behavior without stale action replay;
+- a versioned static Widget bundle with self-hosting support;
+- Russian and English UI;
+- browser E2E against the real HA + Synapse + Element stack;
+- startup hardening for missing/unavailable E2EE runtime dependencies;
+- updated stable compatibility pins when implementation begins.
 
-`0.6.0b2` does not include:
+Not in `0.6.0b2`:
 
 - arbitrary Lovelace dashboards;
-- arbitrary Home Assistant service calls supplied by the Widget;
+- arbitrary HA service/target/data supplied by Matrix;
 - arbitrary Jinja/YAML supplied by the Widget;
-- camera or video streaming;
-- Media Browser;
-- history graphs;
-- drag-and-drop dashboard editing;
-- automatic Space creation;
-- automatic Matrix room creation;
-- cross-signing work;
-- sliding-sync work;
-- a requirement that the Widget replace the existing reaction panel;
-- experimental Matrix Widget features as a hard dependency when stable-compatible behaviour is available.
+- camera/video streaming or Media Browser;
+- history graphs or drag-and-drop dashboard editing;
+- automatic Matrix room/Space creation;
+- cross-signing/sliding-sync work;
+- mandatory use of experimental sticky/state Widget APIs.
 
-## Architectural Decision
+## Architectural Decision: To-Device Transport
 
-Use Matrix **to-device signalling** as the Widget transport.
+Use Matrix **to-device events** for Widget signalling.
 
-The Widget runs inside a Matrix client and requests narrowly-scoped Widget API capabilities to send and receive one Matrix Extended custom to-device event type. The Matrix client performs the actual authenticated Matrix send/receive operation.
+The Widget runs inside a compatible Matrix client and requests narrowly scoped Widget API capabilities for one Matrix Extended custom to-device event type. The Matrix client performs the authenticated Matrix operation.
 
-The Widget never receives a Home Assistant long-lived access token and never calls Home Assistant service APIs directly.
+This deliberately avoids custom room timeline traffic. Widget protocol messages should not create visible timeline noise and should not require the integration account to have room-state power merely to exchange live control data.
 
-The transport is intentionally not a custom room timeline event. This avoids timeline pollution, does not require custom state-event power levels, and matches the Matrix specification's intended use of send-to-device events for signalling data that should not persist in the room DAG.
+The existing reaction panel stays independent and usable as fallback.
 
-The existing reaction panel remains available and independent. A failure of the Widget transport must not break reaction control.
+### Exact integration device targeting
+
+Widget -> Matrix Extended traffic MUST target the exact Matrix Extended device ID, not `*`.
+
+The generated Widget configuration contains these non-secret identifiers:
+
+- Matrix Extended Matrix user ID;
+- Matrix Extended Matrix device ID;
+- panel ID;
+- room ID via Matrix Widget URL templating/configuration.
+
+This prevents a second active device logged into the same Matrix bot account from receiving and potentially executing the same control request.
+
+Matrix Extended -> authorized user state/result traffic may target device `*`: duplicate delivery to a user's other Matrix devices is harmless because only an active matching Widget consumes the custom event.
 
 ## Widget API Compatibility Boundary
 
-Widgets are still outside the final Matrix specification. Matrix Extended therefore treats Widget support as a client capability, not as a requirement for the integration.
+Widgets are not yet a final Matrix-spec feature. Widget support is therefore capability-gated, not required for the integration itself.
 
-The frontend uses `matrix-widget-api` and requests only the capabilities required for the Matrix Extended custom to-device event type:
+The frontend requests only:
 
-- send to-device for the Matrix Extended Widget protocol event;
-- receive to-device for the Matrix Extended Widget protocol event.
+- `org.matrix.msc3819.send.to_device:io.psix.matrix_extended.widget.v1`;
+- `org.matrix.msc3819.receive.to_device:io.psix.matrix_extended.widget.v1`.
 
-The implementation must verify the capability grant at runtime. If the current Matrix client refuses or lacks those capabilities, the Widget shows a clear unsupported-client state and points the user back to the reaction panel.
+If the current client refuses or lacks the required capability, the Widget displays an unsupported-client state and directs the user to the reaction-panel fallback.
 
-Experimental sticky/state Widget APIs may be investigated for later optimization, but `0.6.0b2` must not require them.
+Experimental sticky/state Widget capabilities are not a hard dependency for b2.
 
-## Protocol Event
+## Protocol
 
-Use one namespaced to-device event type for protocol version 1:
+Custom Matrix to-device event type:
 
 ```text
 io.psix.matrix_extended.widget.v1
 ```
 
-The direction and `op` field determine the message purpose.
-
-Common envelope:
+Common fields:
 
 ```json
 {
@@ -99,29 +96,31 @@ Common envelope:
   "op": "subscribe",
   "room_id": "!room:example.org",
   "panel_id": "living",
-  "generation": 7,
   "request_id": "optional-uuid"
 }
 ```
 
+`generation` is deliberately absent from the initial `subscribe`: a newly opened Widget does not know the current generation until Matrix Extended returns its first state snapshot.
+
 Allowed operations:
 
-- `subscribe` — Widget asks for the current panel snapshot and live refreshes;
-- `heartbeat` — refreshes the ephemeral subscription TTL;
-- `state` — Matrix Extended sends a complete current state snapshot;
-- `action` — Widget requests one bounded control intent or existing configured panel action;
-- `result` — Matrix Extended returns a bounded result for a request;
-- `error` — Matrix Extended returns a bounded/redacted protocol or authorization error.
-
-No protocol message may carry an arbitrary Home Assistant `domain.service`, target object, Jinja expression, or unrestricted service data object for execution.
+- `subscribe` - request current state/live updates;
+- `heartbeat` - refresh subscription TTL;
+- `state` - full bounded current state snapshot;
+- `action` - request one bounded entity control or existing configured panel action;
+- `confirm` - confirm/cancel one pending confirmation;
+- `result` - bounded action result;
+- `error` - bounded/redacted protocol or authorization error.
 
 Unknown schema versions or operations are rejected fail-closed.
+
+No request may carry an arbitrary `domain.service`, arbitrary HA target, Jinja expression, or unrestricted service-data mapping for execution.
 
 ## Subscription Model
 
 Widget state delivery is opt-in and ephemeral.
 
-When a Widget opens it sends `subscribe` with its room and panel identifiers. Matrix Extended validates the Matrix sender and the requested panel before creating an in-memory subscription.
+On load, Widget sends `subscribe` to the exact Matrix Extended device. Matrix Extended authenticates the Matrix sender and validates the requested room/panel before creating an in-memory subscription.
 
 Subscription key:
 
@@ -129,28 +128,28 @@ Subscription key:
 (panel_id, matrix_user_id)
 ```
 
-Properties:
+Rules:
 
-- subscriptions are not persisted across Home Assistant restart;
-- a successful subscribe immediately returns a full state snapshot;
-- the Widget sends a heartbeat periodically;
-- a subscription expires after a bounded TTL when heartbeats stop;
-- Matrix Extended sends state only to currently subscribed authorized users;
-- delivery targets `*` for the subscribed Matrix user so the active Matrix client device receives the update without needing a separate device-registration protocol;
-- other devices for the same Matrix user may receive the unknown custom to-device event and are expected to ignore it unless they host an active matching Widget.
+- not persisted across HA restart/reload;
+- immediate full snapshot after successful subscribe;
+- heartbeat refreshes TTL;
+- expired subscriptions are discarded;
+- only authorized subscribed users receive state;
+- state/result/error responses target the subscribed Matrix user with device `*`;
+- other devices ignore the custom event unless they host a matching Widget.
 
-Recommended initial timing:
+Initial timing target:
 
-- heartbeat every 30 seconds;
-- subscription TTL 90 seconds.
+- heartbeat: 30 s;
+- TTL: 90 s.
 
-The exact constants may be tuned by tests without changing the protocol contract.
+Exact timing may be tuned by tests without changing protocol semantics.
 
 ## State Snapshot
 
-Home Assistant remains the source of truth.
+Home Assistant is always the source of truth.
 
-Matrix Extended sends a complete bounded snapshot rather than incremental patches. Panels are intentionally small, and complete snapshots make reconnect and missed-message recovery deterministic.
+Send a complete bounded snapshot, not incremental patches. Panels are intentionally small; full snapshots make reconnect and missed-message recovery deterministic.
 
 Example:
 
@@ -170,9 +169,7 @@ Example:
       "domain": "light",
       "state": "on",
       "available": true,
-      "attributes": {
-        "brightness_pct": 65
-      },
+      "attributes": {"brightness_pct": 65},
       "controls": ["toggle", "brightness"]
     }
   ],
@@ -186,96 +183,86 @@ Example:
 }
 ```
 
-The snapshot is a presentation/control contract, not a raw Home Assistant state dump.
+This is a presentation/control contract, not a raw HA state dump. Only attributes required by supported adapters are emitted. Secrets and unrelated attributes are omitted.
 
-Only attributes required by the supported adapter are included. Secrets and unrelated entity attributes are omitted.
-
-Each snapshot contains:
-
-- panel ID;
-- room ID;
-- active panel generation;
-- monotonically increasing in-process revision;
-- localized/selected labels;
-- bounded per-domain state;
-- the list of controls the server currently permits;
-- existing configured panel actions suitable for Widget buttons.
-
-The Widget never assumes an operation is permitted solely from the entity domain. It renders controls from the server-provided `controls` list.
+The Widget renders controls from the server-provided `controls` list; it must not infer permission merely from the entity domain.
 
 ## Entity Control Policy
 
-Displaying an entity does not automatically grant every possible control for that domain.
+Displaying an entity does not automatically make it controllable.
 
-Per-entity Widget controls are explicitly enabled in panel configuration. The GUI should offer domain-appropriate choices and store only the selected control capabilities.
+Per-entity Widget controls are explicitly enabled in panel configuration. The GUI offers domain-appropriate choices.
 
 Initial adapters:
 
-### `light`
-
-Supported controls:
+### light
 
 - `toggle`;
-- `brightness` when supported by the entity.
+- `brightness` when supported.
 
-`brightness` accepts an integer percentage `0..100`. Matrix Extended converts it locally to the Home Assistant service payload for the fixed configured entity.
+Brightness accepts integer percent `0..100` and is converted locally to a fixed-entity HA service call.
 
-### `switch`
-
-Supported controls:
+### switch
 
 - `toggle`.
 
-### `cover`
-
-Supported controls:
+### cover
 
 - `open`;
 - `close`;
 - `stop`;
-- `position` when supported.
+- `position` when supported (`0..100`).
 
-`position` accepts integer `0..100`.
+All cover controls are opt-in because a cover can be curtains, a gate, or a garage door. Confirmation can be enabled per control.
 
-Cover controls are opt-in because a cover may represent curtains, a gate, or a garage door. Configuration can require confirmation for selected controls.
-
-### `climate`
-
-Supported controls:
+### climate
 
 - target temperature;
-- supported HVAC mode selection where safe and available.
+- supported HVAC mode selection.
 
-Temperature values are validated against the entity's current Home Assistant min/max/step capabilities before execution.
+Temperature is validated against current HA min/max/step capability.
 
-### `sensor`
-
-Read-only.
-
-### `binary_sensor`
+### sensor / binary_sensor
 
 Read-only.
 
-### `media_player`
+### media_player
 
-Supported controls where the entity reports support:
+Where HA reports support:
 
 - play/pause;
 - previous/next;
 - mute;
-- volume.
+- bounded volume.
 
-Volume is a normalized bounded value and is converted locally to the Home Assistant service format.
+### high-risk domains
 
-### Deferred/high-risk domains
-
-`lock` and `alarm_control_panel` are not exposed as generic automatic controls in the first Widget MVP. They may be represented through existing configured panel actions with `confirmation_required: true` until a dedicated high-risk adapter is designed and tested.
+`lock` and `alarm_control_panel` are not generic auto-controls in the first MVP. Use existing explicitly configured `PanelAction` definitions with confirmation until dedicated adapters are designed and tested.
 
 ## Existing Panel Actions
 
-Existing `PanelAction` definitions remain valid.
+Existing `PanelAction` definitions remain authoritative and can be rendered as Widget buttons.
 
-The Widget may render each configured action as a button. When pressed it sends only the stable action ID plus protocol context.
+Widget request contains only the stable action ID and protocol context:
+
+```json
+{
+  "schema": 1,
+  "op": "action",
+  "room_id": "!room:example.org",
+  "panel_id": "living",
+  "generation": 7,
+  "request_id": "uuid",
+  "kind": "panel_action",
+  "action_id": "movie_scene"
+}
+```
+
+The backend resolves the action against current local configuration. Service/target/data never come from the Widget.
+
+## Parameterized Entity Controls
+
+Sliders/selectors use bounded server-defined intents, not arbitrary service-data overrides.
 
 Example:
 
@@ -286,28 +273,7 @@ Example:
   "room_id": "!room:example.org",
   "panel_id": "living",
   "generation": 7,
-  "request_id": "d8d43d7e-...",
-  "kind": "panel_action",
-  "action_id": "movie_scene"
-}
-```
-
-Matrix Extended resolves `movie_scene` against the current local panel definition. The Widget does not provide the service, target, or stored action data.
-
-## Parameterized Control Intents
-
-Interactive sliders and selectors require bounded parameters. They are not implemented as arbitrary service-data overrides.
-
-Example brightness request:
-
-```json
-{
-  "schema": 1,
-  "op": "action",
-  "room_id": "!room:example.org",
-  "panel_id": "living",
-  "generation": 7,
-  "request_id": "5a7f...",
+  "request_id": "uuid",
   "kind": "entity_control",
   "entity_id": "light.living_room",
   "control": "brightness",
@@ -315,58 +281,44 @@ Example brightness request:
 }
 ```
 
-The backend must verify all of the following:
+Before execution, backend verifies:
 
-1. the panel is current and enabled;
-2. the sender is authorized for the account;
-3. the room is authorized for the account;
-4. the panel belongs to that room;
-5. the sender passes panel-level restrictions;
-6. the generation matches the active runtime generation;
-7. the entity is explicitly configured on the panel;
-8. the requested control is explicitly enabled for that entity;
-9. the entity's domain matches the adapter;
-10. the value matches the adapter schema/range/capability;
-11. any configured confirmation requirement is satisfied.
+1. panel is enabled/current;
+2. sender passes account allowlist;
+3. room passes account allowlist;
+4. panel is configured for that room;
+5. sender passes panel-level restriction;
+6. generation matches current runtime generation;
+7. entity is configured on the panel;
+8. requested control is explicitly enabled;
+9. domain matches the control adapter;
+10. value passes adapter schema/range/current HA capability;
+11. any required confirmation is satisfied.
 
-Only then does the backend construct the Home Assistant service call locally.
+Only then is a local HA service call constructed.
 
 ## Confirmation Flow
 
-The existing Native Matrix Control confirmation model remains the canonical dangerous-action model.
+The existing confirmation model remains canonical, but its storage becomes transport-neutral.
 
-For an action/control requiring confirmation:
+For a Widget action requiring confirmation:
 
-1. Widget sends the initial action request;
-2. backend creates a pending confirmation bound to sender, panel ID, action/control identity, generation, and request ID;
-3. Widget receives a result indicating `confirmation_required`;
-4. Widget renders explicit Confirm / Cancel controls with the existing 30-second timeout;
-5. Widget sends a bounded confirm/cancel operation referencing the pending confirmation identifier;
-6. backend verifies the same Matrix sender and active generation before execution.
+1. Widget sends action request;
+2. backend creates a pending confirmation bound to sender, panel/action-or-control identity, generation, and request ID;
+3. backend returns `confirmation_required` plus a short-lived opaque `confirmation_id`;
+4. Widget renders Confirm / Cancel with the existing 30-second timeout;
+5. Widget sends `confirm` referencing that ID;
+6. backend revalidates same sender and active generation before execution.
 
-A Home Assistant restart/reload invalidates pending confirmations.
+`confirmation_id` is single-use and in-memory only. HA restart/reload invalidates it.
 
-The existing reaction-based `✅` / `❌` flow remains valid for reaction-panel actions. Widget confirmation does not weaken or bypass it.
+Reaction-panel confirmations continue to use the existing Matrix reply/reaction flow. Both paths share the same safety invariants, not necessarily the same presentation token.
 
 ## Result Handling
 
-Every Widget action contains a `request_id` generated by the Widget.
+Each Widget action has a Widget-generated `request_id`.
 
-Backend returns a bounded result:
-
-```json
-{
-  "schema": 1,
-  "op": "result",
-  "room_id": "!room:example.org",
-  "panel_id": "living",
-  "generation": 7,
-  "request_id": "5a7f...",
-  "status": "accepted"
-}
-```
-
-Possible high-level statuses include:
+High-level result statuses:
 
 - `accepted`;
 - `confirmation_required`;
@@ -374,37 +326,40 @@ Possible high-level statuses include:
 - `rejected`;
 - `failed`.
 
-Successful service execution is not treated as proof that the physical entity reached the requested final state. The Widget reflects actual Home Assistant state from the next `state` snapshot.
+A successful service call is not proof of final device state. UI state changes only from subsequent actual HA state snapshots.
 
-Errors are bounded and sanitized. Tokens, stored service data, raw exception dumps, and sensitive provider responses must not be sent to the Widget.
+Errors sent to Widget are bounded/redacted. Never send tokens, stored service data, raw exception dumps, or provider secrets.
 
-## Security Model
+## Security and Replay Rules
 
-Authorization remains fail-closed.
+All Widget payload fields are untrusted input.
 
-A Widget action is accepted only if the authenticated Matrix sender is allowed at the account level and, when configured, at the panel level.
+Backend revalidates sender, room, panel, generation, entity/control/action and value against current local state.
 
-`room_id` in the to-device payload is untrusted input. The backend verifies it against the configured panel and account room allowlist.
+Additional replay protections:
 
-`panel_id`, `entity_id`, `control`, `action_id`, `generation`, and all values are untrusted input and are revalidated against current local configuration/runtime state.
+- stale generation rejected;
+- request IDs de-duplicated in a bounded in-memory window per sender/panel;
+- confirmations single-use and expiring;
+- state revision is ordering metadata only, never authorization;
+- Widget requests target the exact configured Matrix Extended device ID;
+- control requests are never placed in the persistent outbound notification queue.
 
-The protocol never trusts Widget-rendered state as authoritative.
+To-device transport is signalling, not the authorization boundary.
 
-Replay resistance:
+## needs_repair Behavior
 
-- stale panel generations are rejected;
-- request IDs are bounded-deduplicated for a short in-memory window per sender/panel;
-- confirmation identifiers are single-use;
-- pending confirmations expire;
-- state revisions are presentation ordering only and never authorization tokens.
+If the underlying Native Control panel runtime is `needs_repair`, Widget remains diagnostic/read-only for that panel and rejects control actions until the user performs the existing explicit Repair flow.
 
-To-device delivery is signalling transport, not the authorization boundary.
+Repair advances panel generation. Any Widget action carrying the previous generation is rejected.
+
+This keeps one lifecycle and prevents Widget control from silently bypassing a broken/replaced reaction-panel root.
 
 ## Widget Frontend
 
 Use a small TypeScript frontend without a heavyweight UI framework for the MVP.
 
-Repository layout:
+Suggested layout:
 
 ```text
 widget/
@@ -422,305 +377,261 @@ widget/
   dist/
 ```
 
-The frontend should:
+Frontend responsibilities:
 
 - instantiate `matrix-widget-api`;
-- request only the required to-device capabilities;
-- derive room/user/widget context from Matrix Widget URL templating and configured widget data;
-- subscribe on startup;
-- refresh the subscription with heartbeat;
-- render complete snapshots;
-- correlate action results with request IDs;
-- disable or hide controls not present in the server snapshot;
-- show connection/capability/authorization errors clearly;
-- never store Home Assistant credentials;
-- contain no provider-specific Home Assistant secrets.
+- request only required to-device capabilities;
+- read room/user/widget context from Widget URL templating/config;
+- read Matrix Extended user/device ID from non-secret generated Widget config;
+- subscribe on startup and heartbeat while active;
+- render full snapshots;
+- correlate results by request ID;
+- render only server-advertised controls;
+- show confirmation, capability, authorization and offline states;
+- never store HA credentials.
 
-The initial visual style is compact, touch-friendly, keyboard accessible, dark/light adaptive, and suitable for Element desktop/mobile Widget surfaces.
+UI target: compact, touch-friendly, keyboard accessible, dark/light adaptive, usable in Element desktop/mobile Widget surfaces.
 
-## Widget Distribution and Hosting
+## Distribution and Hosting
 
-The release pipeline builds a versioned static Widget bundle.
-
-Required release artifact:
+Release pipeline builds a versioned static bundle:
 
 ```text
 matrix_extended-widget-v0.6.0b2.zip
 ```
 
-The Widget URL is configurable in Matrix Extended so users can self-host the exact same static bundle.
+The Widget base URL is configurable so the same bundle can be self-hosted.
 
-The project may publish an official versioned static deployment, but protocol correctness must not depend on a mutable `latest` URL. A room/panel should be able to point at a versioned Widget bundle compatible with the backend protocol schema.
+An official hosted deployment may be provided, but protocol correctness must not depend on a mutable `latest` URL. Versioned Widget assets should remain compatible with protocol schema 1.
 
-The Widget URL contains no Home Assistant token or Matrix access token.
+No HA or Matrix access token is embedded in Widget URL/configuration.
 
-Room/user/widget identifiers should use Matrix Widget URL-template substitution where supported. Sensitive data must not be placed in query parameters or fragments.
+## Home Assistant Configuration UX
 
-## Widget Installation UX
+Under Native Matrix Control, add Widget configuration for a panel:
 
-The Home Assistant Options Flow gains a Widget subsection under Native Matrix Control.
-
-At minimum it provides:
-
-- Widget enabled/disabled for a panel;
+- enabled/disabled;
 - Widget base URL;
-- enabled per-entity Widget controls;
-- confirmation policy for controls that require it;
-- generated Matrix Widget URL/configuration data;
-- current Widget protocol compatibility/diagnostic status.
+- enabled controls per entity;
+- confirmation requirements where applicable;
+- generated Widget URL/config;
+- Matrix Extended user ID and current device ID embedded as non-secret routing metadata;
+- compatibility/diagnostic status.
 
-Automatic insertion of the Widget into the Matrix room is optional for `0.6.0b2` and must only be attempted when the Matrix account has the required room-state power. Failure to auto-install must not break the panel.
+Automatic insertion of a Widget into a room is optional for b2 and only allowed when the integration account already has the required room-state power. Failure must not affect the reaction panel.
 
-If reliable cross-client Widget state-event installation semantics are not available, `0.6.0b2` may ship with a generated configuration/URL and a documented manual add step rather than modifying room power levels or inventing unsafe behaviour.
+If cross-client auto-install semantics are unreliable, b2 ships a generated URL/config and a documented manual add step rather than changing power levels or inventing client-specific unsafe behavior.
 
 ## Backend Components
 
-The existing `ControlPanelManager`, `ControlPanelRuntimeStore`, `PendingConfirmationRegistry`, panel definitions, and `SafeActionExecutor` remain authoritative.
+Existing `ControlPanelManager`, `ControlPanelRuntimeStore`, `PendingConfirmationRegistry`, panel definitions, and `SafeActionExecutor` stay authoritative.
 
-New responsibilities should be isolated approximately as:
+New responsibilities:
 
 ```text
 widget_protocol.py
-  schema validation
-  bounded message parsing/dumping
+  schema validation and bounded parsing/dumping
 
 widget_sessions.py
-  subscriber TTLs
-  request dedupe
-  state revision tracking
+  subscriber TTL, request dedupe, revisions
 
 widget_controls.py
-  domain adapters
-  supported state projection
-  bounded control validation
-  local HA service-call construction
+  domain adapters, snapshot projection, bounded control validation
 
 widget_transport.py
-  Matrix to-device send/receive adapter
-  no authorization policy of its own
+  Matrix custom to-device send/receive only
 
 widget/
-  static TypeScript frontend
+  TypeScript frontend
 ```
 
-`ControlPanelManager` should expose/reuse current panel state and authorization/execution hooks rather than duplicate root-message lifecycle logic in the Widget code.
+Widget code should reuse ControlPanelManager authorization/state/execution hooks rather than duplicate root lifecycle logic.
 
 ## Matrix Client Changes
 
-The Matrix client wrapper needs bounded helpers for custom to-device traffic and callbacks.
+Add bounded wrapper capabilities for:
 
-Required capabilities:
+- custom to-device callback registration;
+- sending a custom to-device event to a specific user/device set;
+- exact-device Widget -> integration routing;
+- user `*` delivery for state/results;
+- preserving existing E2EE/key housekeeping.
 
-- register a to-device callback for the Matrix Extended Widget protocol event;
-- send a custom to-device event to a user, targeting `*` devices;
-- preserve existing matrix-nio E2EE/key-maintenance behaviour;
-- keep Widget signalling independent of room-event outbox semantics.
+Before choosing encrypted vs plaintext custom to-device payloads, run an explicit interoperability probe with matrix-nio 0.26.0 and the pinned Element version.
 
-The implementation must test how matrix-nio 0.26.0 exposes custom encrypted and unencrypted to-device events before deciding whether protocol messages are sent with to-device encryption enabled in the first beta.
-
-If encrypted custom to-device interoperability is reliable in the tested Element + matrix-nio stack, use it. If not, the protocol may use plaintext to-device transport only after confirming that no secrets/service payloads are present and all authorization remains sender/room/panel based. This choice must be documented explicitly in the release notes.
+If encrypted custom to-device events work reliably end-to-end, use them. If not, plaintext to-device may be used only because protocol payloads contain no access tokens or arbitrary service payloads and authorization is still sender/room/panel based. The release notes must state the tested transport behavior.
 
 ## E2EE Runtime Preflight Hardening
 
-`0.6.0b2` also hardens the integration startup path based on the observed `0.5.8` field failure where matrix-nio raised a raw `ImportWarning` because its E2EE runtime dependency was not visible at import time.
-
-Before constructing an E2EE-enabled `AsyncClientConfig`, Matrix Extended must detect and report whether the E2EE runtime is actually usable.
+Before constructing an E2EE-enabled `AsyncClientConfig`, detect whether the E2EE runtime is actually usable.
 
 Requirements:
 
-- no raw `ImportWarning` traceback as the only user-facing explanation;
-- log a direct message naming the missing/unavailable E2EE runtime dependency;
+- do not leave a raw matrix-nio `ImportWarning` as the only explanation;
+- log a direct dependency/runtime message;
 - fail closed when E2EE is required;
-- expose a Home Assistant repair/config-entry diagnostic path where feasible;
-- add a regression test that simulates `nio.crypto.ENCRYPTION_ENABLED == False`;
-- keep the manifest requirement for `matrix-nio[e2e]` / `vodozemac` explicit.
+- expose a HA repair/config-entry diagnostic path where feasible;
+- regression-test `nio.crypto.ENCRYPTION_ENABLED == False`;
+- keep `matrix-nio[e2e]` / `vodozemac` explicit in manifest requirements.
 
-This is diagnostics/hardening, not a relaxation of E2EE policy.
-
-## State Update Flow
-
-Widget state follows the existing event-driven Home Assistant model.
+## State Update and Outage Flow
 
 ```text
 HA state change
-  -> existing panel debounce/dirty path
-  -> render/update reaction panel as today
-  -> project bounded Widget snapshot
-  -> compare Widget snapshot hash/revision
-  -> send latest complete snapshot to active subscribers only
+  -> existing panel debounce/state path
+  -> reaction panel update as today
+  -> bounded Widget snapshot projection
+  -> snapshot hash compare
+  -> latest full snapshot to active subscribers
 ```
 
-The backend should not emit a Widget state message when the projected snapshot is unchanged.
+Do not send a state message when projected state did not change.
 
-During Synapse/Matrix outage, stale Widget snapshots are not queued individually. The backend retains current Home Assistant state. After reconnection, the next subscribe/heartbeat/current-state refresh sends one current complete snapshot.
+During Matrix outage, do not queue every Widget snapshot. Keep current HA state; after reconnect the next subscribe/heartbeat/refresh gets one current snapshot.
 
-Widget actions are not stored in the persistent outbound notification outbox. A control request must either be processed in the live session or fail visibly; it must never execute minutes later merely because Matrix connectivity returned.
+Widget control actions are never persisted for later execution. If they cannot be processed live, they fail visibly.
 
 ## Restart and Recovery
 
-On Home Assistant restart/reload:
+On HA restart/reload:
 
-- panel configuration and runtime generation restore as in `0.6.0b1`;
-- pending confirmations are dropped;
-- Widget subscriptions are dropped;
-- request dedupe cache is dropped;
-- the existing Matrix control root remains stable;
-- no Widget action is replayed;
-- an open Widget re-subscribes and receives a fresh complete snapshot.
-
-If the panel root is `needs_repair`, the Widget may still show diagnostic state but must not bypass the explicit Repair lifecycle for the reaction panel root.
-
-A repaired panel advances generation. Old Widget actions carrying the previous generation are rejected.
+- panel config/runtime generation restore as b1;
+- pending confirmations drop;
+- Widget subscriptions drop;
+- request dedupe cache drops;
+- existing reaction-panel root remains stable;
+- no Widget action replays;
+- open Widget re-subscribes and receives fresh state.
 
 ## Diagnostics
 
-Extend the disabled-by-default control-panel diagnostic data with bounded Widget information:
+Extend disabled-by-default control-panel diagnostics with bounded Widget fields:
 
-- Widget enabled;
-- protocol schema version;
+- enabled;
+- protocol schema;
 - active subscriber count;
-- last subscribe timestamp;
-- last state-send timestamp;
-- last bounded Widget transport error;
-- last action status/action kind without service payload;
+- last subscribe/state-send timestamps;
+- last bounded transport error;
+- last action kind/status;
 - capability/compatibility state where observable.
 
-Do not expose:
-
-- Matrix access tokens;
-- HA tokens;
-- raw service data;
-- confirmation secrets/identifiers beyond what is safe for diagnostics;
-- raw to-device contents containing user-provided values beyond bounded non-sensitive summaries.
+Never expose tokens, raw service data, confirmation secrets, or raw sensitive payloads.
 
 ## Compatibility and CI
 
-At implementation start, update the real-stack test pins to the then-current stable versions of:
+When implementation starts, update real-stack pins to the then-current stable:
 
 - Home Assistant 2026.9.x;
 - Synapse stable;
 - Element Web stable.
 
-Keep the previous `0.6.0b1` tested stack available as a regression reference where practical.
-
-An optional non-blocking compatibility lane may track the next Synapse/Element release candidate, but pre-release upstream software must not become a publication gate for Matrix Extended stable/beta releases.
+Keep the b1 stack as a regression reference where practical. An optional non-blocking lane may track the next upstream RC, but upstream pre-releases are not publication gates.
 
 ## Test Strategy
 
-### Python unit/contract tests
+### Backend tests
 
-Cover:
-
-- protocol schema parsing and rejection;
-- sender/room/panel authorization;
-- panel-level restrictions;
+- protocol schema/rejection;
+- exact integration device routing;
+- account and panel authorization;
 - generation checks;
 - request dedupe;
-- subscription TTL and heartbeat;
-- snapshot projection and secret/attribute filtering;
-- each entity-domain adapter;
-- parameter range validation;
-- unsupported control rejection;
+- subscribe/heartbeat/expiry;
+- bounded state projection;
+- secret/attribute filtering;
+- each entity adapter and range validation;
 - existing PanelAction resolution;
-- confirmation creation/confirm/cancel/expiry;
-- state hash/no-op suppression;
+- confirmation create/confirm/cancel/expiry;
+- needs_repair read-only behavior;
+- state no-op suppression;
 - restart semantics;
-- E2EE runtime preflight failure.
+- E2EE preflight failure.
 
-### Widget frontend tests
+### Frontend tests
 
-Cover:
-
-- capability request/grant/denial;
-- subscribe/heartbeat lifecycle;
-- full snapshot rendering;
-- unsupported/read-only entity rendering;
-- button actions;
-- sliders/selectors with debouncing where appropriate;
-- pending result UI;
+- capability grant/denial;
+- subscribe/heartbeat;
+- snapshot rendering;
+- read-only/unsupported rendering;
+- buttons/sliders/selectors;
+- result correlation;
 - confirmation UI;
-- stale generation refresh;
-- offline/unsupported-client messages;
+- stale-generation refresh;
+- offline/unsupported-client states;
 - Russian/English strings.
 
-### Real-stack E2E
-
-The publication gate must exercise a real Home Assistant + Synapse + Element Web stack and an actual Widget iframe.
-
-Required scenarios:
+### Real-stack browser E2E publication gate
 
 1. install exact build artifact;
-2. connect Matrix Extended with E2EE runtime healthy;
-3. create/use a Native Control panel;
-4. load the Widget in Element;
-5. grant required Widget capabilities;
+2. connect Matrix Extended with E2EE healthy;
+3. use Native Control panel;
+4. load Widget in Element iframe;
+5. grant required capabilities;
 6. subscribe and receive current HA state;
-7. change HA state and observe Widget refresh;
-8. toggle a light from Widget and observe actual HA state then Widget refresh;
-9. exercise one bounded numeric control, such as brightness;
-10. execute one existing configured panel action;
-11. exercise a confirmation-required action;
-12. reject unauthorized sender;
-13. reject unauthorized room/panel combination;
-14. reject stale generation;
-15. restart Home Assistant and verify re-subscribe/current state;
-16. stop/restart Synapse and verify no stale action replay;
-17. verify reaction-panel control still works;
-18. verify Widget protocol traffic does not create user-visible room timeline spam;
-19. verify no background task leaks;
-20. verify package integrity, HACS validation, and Hassfest.
+7. HA state change refreshes Widget;
+8. Widget toggles light and actual HA state changes;
+9. one bounded numeric control works;
+10. one existing panel action works;
+11. confirmation-required action works and cannot be bypassed;
+12. unauthorized sender rejected;
+13. wrong room/panel rejected;
+14. stale generation rejected;
+15. `needs_repair` is read-only until Repair;
+16. HA restart -> re-subscribe/current state, no replay;
+17. Synapse outage/recovery -> no stale action replay;
+18. reaction fallback still works;
+19. Widget protocol creates no visible room timeline spam;
+20. no background-task leaks;
+21. package integrity, HACS and Hassfest pass.
 
 ## Release Packaging
 
-`0.6.0b2` remains a GitHub Pre-release.
+`0.6.0b2` is a Pre-release.
 
-Release artifacts include at least:
+Artifacts:
 
-- Home Assistant install ZIP;
-- install ZIP SHA256;
-- versioned Widget static bundle ZIP;
-- Widget bundle SHA256 when release tooling supports it cleanly.
+- HA install ZIP + SHA256;
+- versioned Widget bundle ZIP + SHA256 when cleanly supported by release tooling.
 
 Release notes must state:
 
-- Widget support is beta;
+- Widget is beta;
 - tested Matrix clients;
-- whether to-device payload transport is encrypted in the tested implementation;
-- manual/automatic Widget installation limitations;
-- reaction panel remains supported fallback;
-- no Home Assistant token is given to the Widget.
+- custom to-device encryption behavior;
+- manual/automatic installation limitations;
+- reaction panel remains supported;
+- Widget receives no HA access token.
 
 ## Acceptance Criteria
 
-`0.6.0b2` is publishable only when all of the following are true:
+Publish only when:
 
-- existing `0.6.0b1` reaction-panel behaviour remains green;
-- Widget can display live state for the initial domain set;
-- Widget can execute explicitly enabled bounded controls;
-- Widget can execute existing predefined panel actions;
+- all b1 reaction-panel behavior stays green;
+- initial domains display live state;
+- explicitly enabled bounded controls execute;
+- configured panel actions execute;
 - dangerous actions cannot bypass confirmation;
-- arbitrary Matrix payloads cannot select arbitrary HA services/targets/data;
-- stale generation/replayed request tests pass;
-- restart/outage tests prove no delayed action execution;
-- Widget receives no HA access token;
-- timeline-spam E2E check passes;
-- E2EE runtime preflight produces a clear failure instead of the raw dependency `ImportWarning` path;
-- real-stack browser E2E passes on the pinned current-stable test matrix;
-- HACS and Hassfest pass;
-- release install ZIP and Widget bundle are verified before publication.
+- arbitrary Matrix payloads cannot select arbitrary HA service/target/data;
+- duplicate/stale/replay tests pass;
+- exact-device integration routing is verified;
+- outage/restart proves no delayed control execution;
+- Widget receives no HA token;
+- room timeline remains clean;
+- E2EE preflight gives a clear dependency/runtime failure;
+- real-stack browser E2E passes;
+- HACS/Hassfest pass;
+- install and Widget artifacts are verified.
 
-## Deferred Work After 0.6.0b2
+## Deferred After 0.6.0b2
 
-Candidate work for `0.6.0b3` or later:
+Candidate b3/later work:
 
-- richer `media_player` metadata and artwork;
-- dedicated `lock` adapter;
-- dedicated `alarm_control_panel` adapter;
+- richer media metadata/artwork;
+- dedicated lock/alarm adapters;
 - camera snapshot tiles;
-- multiple Widget pages/sections;
-- configurable layouts;
-- history graphs;
-- automatic room/Space provisioning;
-- automatic Widget state-event installation across more Matrix clients;
-- optional sticky-event optimization when MSC support is mature;
+- multiple pages/sections;
+- configurable layouts/history graphs;
+- room/Space provisioning;
+- broader auto-install support;
+- optional sticky-event optimization when mature;
 - broader Matrix client compatibility beyond the tested Element path.

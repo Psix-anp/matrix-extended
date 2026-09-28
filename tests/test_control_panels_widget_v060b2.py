@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+import importlib
+from pathlib import Path
+import sys
+import types
+
 import pytest
 
-from custom_components.matrix_extended.control_panels import (
-    dump_panel_yaml,
-    load_panel_yaml,
-    normalize_control_panels,
-)
+ROOT = Path(__file__).parents[1]
+COMP = ROOT / "custom_components" / "matrix_extended"
+PKG = "matrix_extended_widget_panels_v060b2_testpkg"
+package = types.ModuleType(PKG)
+package.__path__ = [str(COMP)]
+sys.modules[PKG] = package
+panels = importlib.import_module(f"{PKG}.control_panels")
+
+dump_panel_yaml = panels.dump_panel_yaml
+load_panel_yaml = panels.load_panel_yaml
+normalize_control_panels = panels.normalize_control_panels
 
 OWNER = "@owner:matrix.test"
 ROOM = "!room:matrix.test"

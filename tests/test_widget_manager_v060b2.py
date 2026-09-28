@@ -1,19 +1,34 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import importlib
+from pathlib import Path
+import sys
+import types
 from uuid import uuid4
 
 import pytest
 
-from custom_components.matrix_extended.control_panels import (
-    ControlPanelDefinition,
-    PanelAction,
-    PanelEntity,
-)
-from custom_components.matrix_extended.safe_actions import SafeActionDefinition, ServiceActionHandler
-from custom_components.matrix_extended.widget_manager import WidgetControlManager
-from custom_components.matrix_extended.widget_protocol import WIDGET_EVENT_TYPE
-from custom_components.matrix_extended.widget_sessions import WidgetSessionRegistry
+ROOT = Path(__file__).parents[1]
+COMP = ROOT / "custom_components" / "matrix_extended"
+PKG = "matrix_extended_widget_manager_v060b2_testpkg"
+package = types.ModuleType(PKG)
+package.__path__ = [str(COMP)]
+sys.modules[PKG] = package
+panels_mod = importlib.import_module(f"{PKG}.control_panels")
+safe_mod = importlib.import_module(f"{PKG}.safe_actions")
+manager_mod = importlib.import_module(f"{PKG}.widget_manager")
+protocol_mod = importlib.import_module(f"{PKG}.widget_protocol")
+sessions_mod = importlib.import_module(f"{PKG}.widget_sessions")
+
+ControlPanelDefinition = panels_mod.ControlPanelDefinition
+PanelAction = panels_mod.PanelAction
+PanelEntity = panels_mod.PanelEntity
+SafeActionDefinition = safe_mod.SafeActionDefinition
+ServiceActionHandler = safe_mod.ServiceActionHandler
+WidgetControlManager = manager_mod.WidgetControlManager
+WIDGET_EVENT_TYPE = protocol_mod.WIDGET_EVENT_TYPE
+WidgetSessionRegistry = sessions_mod.WidgetSessionRegistry
 
 ROOM = "!living:matrix.test"
 OWNER = "@owner:matrix.test"

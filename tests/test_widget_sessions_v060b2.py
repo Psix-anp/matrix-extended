@@ -1,6 +1,17 @@
 from __future__ import annotations
 
-from custom_components.matrix_extended.widget_sessions import WidgetSessionRegistry
+import importlib
+from pathlib import Path
+import sys
+import types
+
+ROOT = Path(__file__).parents[1]
+COMP = ROOT / "custom_components" / "matrix_extended"
+PKG = "matrix_extended_widget_sessions_v060b2_testpkg"
+package = types.ModuleType(PKG)
+package.__path__ = [str(COMP)]
+sys.modules[PKG] = package
+WidgetSessionRegistry = importlib.import_module(f"{PKG}.widget_sessions").WidgetSessionRegistry
 
 
 class Clock:

@@ -1,19 +1,29 @@
 from __future__ import annotations
 
+import importlib
+from pathlib import Path
+import sys
+import types
 from uuid import uuid4
 
 import pytest
 
-from custom_components.matrix_extended.widget_protocol import (
-    WIDGET_EVENT_TYPE,
-    WIDGET_SCHEMA,
-    WidgetActionRequest,
-    WidgetConfirmRequest,
-    WidgetHeartbeatRequest,
-    WidgetSubscribeRequest,
-    build_widget_message,
-    parse_widget_request,
-)
+ROOT = Path(__file__).parents[1]
+COMP = ROOT / "custom_components" / "matrix_extended"
+PKG = "matrix_extended_widget_protocol_v060b2_testpkg"
+package = types.ModuleType(PKG)
+package.__path__ = [str(COMP)]
+sys.modules[PKG] = package
+protocol = importlib.import_module(f"{PKG}.widget_protocol")
+
+WIDGET_EVENT_TYPE = protocol.WIDGET_EVENT_TYPE
+WIDGET_SCHEMA = protocol.WIDGET_SCHEMA
+WidgetActionRequest = protocol.WidgetActionRequest
+WidgetConfirmRequest = protocol.WidgetConfirmRequest
+WidgetHeartbeatRequest = protocol.WidgetHeartbeatRequest
+WidgetSubscribeRequest = protocol.WidgetSubscribeRequest
+build_widget_message = protocol.build_widget_message
+parse_widget_request = protocol.parse_widget_request
 
 ROOM = "!living:matrix.test"
 PANEL = "living"

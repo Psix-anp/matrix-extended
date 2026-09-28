@@ -28,7 +28,7 @@
 
 - Forged `room_id`, `panel_id`, `entity_id`, `control`, or `generation` in a valid to-device envelope must be rejected without executing HA services — covered in Task 5 authorization tests.
 - Duplicate/replayed `request_id` must not execute the same action twice — covered in Task 2 session/dedupe tests and Task 5 manager tests.
-- A Widget opened on an unsupported Matrix client must fail visibly without breaking reaction controls — covered in Task 7 frontend tests and Task 8 real-stack fallback test.
+- A Widget opened on an unsupported Matrix client must fail visibly without breaking reaction controls — covered in Task 8 frontend tests and Task 9 real-stack fallback test.
 - HA entities becoming unavailable or losing a supported feature at runtime must remove/disable that Widget control rather than emitting an invalid service call — covered in Task 4 adapter tests.
 - Missing `vodozemac` / E2EE runtime support must produce a bounded startup diagnostic instead of leaking raw `ImportWarning` as the user-facing failure — covered in Task 6 preflight tests.
 
@@ -227,7 +227,7 @@ Use `SafeActionExecutor.async_execute(...)` for both panel actions and adapter-g
 
 - [ ] **Step 6: Run Widget + Native Control regression tests**
 
-Run: `pytest -q tests/test_widget_manager_v060b2.py tests/test_control_panel_manager_v060.py tests/test_control_panel_runtime_v060.py tests/test_safe_action_executor_v060.py`
+Run: `pytest -q tests/test_widget_manager_v060b2.py tests/test_control_panel_manager_v060.py tests/test_control_panel_runtime_v060.py tests/test_safe_actions_v060.py`
 
 Expected: PASS with no reaction-panel regressions.
 
@@ -272,7 +272,7 @@ Expose only non-secret Widget diagnostics: enabled panel count, active subscript
 
 - [ ] **Step 5: Run integration setup/client regressions**
 
-Run: `pytest -q tests/test_setup_widget_v060b2.py tests/test_e2ee_preflight_v060b2.py tests/test_setup_control_panels_v060.py tests/test_client_e2ee.py tests/test_sensor*.py`
+Run: `pytest -q tests/test_setup_widget_v060b2.py tests/test_e2ee_preflight_v060b2.py tests/test_setup_control_panels_v060.py tests/test_client_e2ee.py tests/test_control_panel_diagnostics_v060.py`
 
 Expected: PASS.
 
@@ -313,7 +313,7 @@ Keep current Control Panels entry point; add Widget as a panel subflow rather th
 
 - [ ] **Step 4: Run config/translation tests**
 
-Run: `pytest -q tests/test_config_flow_widget_v060b2.py tests/test_config_flow_control_panels_v060.py tests/test_config_flow_ui_schema.py tests/test_translations.py`
+Run: `pytest -q tests/test_config_flow_widget_v060b2.py tests/test_config_flow_control_panels_v060.py tests/test_settings_ui_contract.py tests/test_integration_structure.py`
 
 Expected: PASS.
 

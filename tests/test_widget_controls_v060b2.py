@@ -1,14 +1,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import importlib
+from pathlib import Path
+import sys
+import types
 
 import pytest
 
-from custom_components.matrix_extended.control_panels import PanelEntity
-from custom_components.matrix_extended.widget_controls import (
-    build_control_action,
-    project_entity,
-)
+ROOT = Path(__file__).parents[1]
+COMP = ROOT / "custom_components" / "matrix_extended"
+PKG = "matrix_extended_widget_controls_v060b2_testpkg"
+package = types.ModuleType(PKG)
+package.__path__ = [str(COMP)]
+sys.modules[PKG] = package
+panels = importlib.import_module(f"{PKG}.control_panels")
+controls = importlib.import_module(f"{PKG}.widget_controls")
+
+PanelEntity = panels.PanelEntity
+build_control_action = controls.build_control_action
+project_entity = controls.project_entity
 
 
 @dataclass

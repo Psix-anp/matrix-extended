@@ -6,15 +6,11 @@
         "title": "Подключение Matrix",
         "description": "Подключите Matrix-аккаунт. Пароль используется только один раз для получения access token и не сохраняется. E2EE лучше оставить включённым, если вы намеренно не используете незашифрованные комнаты.",
         "data": {
-          "homeserver": "URL homeserver",
-          "user_id": "Matrix ID пользователя",
-          "password": "Пароль",
-          "default_room": "Комната по умолчанию",
-          "verify_ssl": "Проверять TLS-сертификат",
+          "homeserver": "URL homeserver", "user_id": "Matrix ID пользователя", "password": "Пароль",
+          "default_room": "Комната по умолчанию", "verify_ssl": "Проверять TLS-сертификат",
           "require_e2ee": "Требовать сквозное шифрование комнат назначения",
           "incoming_enabled": "Принимать входящие события Matrix",
-          "allowed_users": "Разрешённые Matrix-пользователи",
-          "allowed_rooms": "Разрешённые Matrix-комнаты",
+          "allowed_users": "Разрешённые Matrix-пользователи", "allowed_rooms": "Разрешённые Matrix-комнаты",
           "download_incoming_media": "Скачивать и расшифровывать входящие медиа"
         },
         "data_description": {
@@ -29,9 +25,7 @@
       "invalid_auth": "Неверные данные авторизации Matrix",
       "invalid_room": "Некорректный alias или ID комнаты"
     },
-    "abort": {
-      "already_configured": "Этот Matrix-аккаунт уже настроен"
-    }
+    "abort": {"already_configured": "Этот Matrix-аккаунт уже настроен"}
   },
   "entity": {
     "binary_sensor": {
@@ -39,32 +33,19 @@
       "e2ee_ready": {"name": "Готовность E2EE"}
     },
     "sensor": {
-      "user_id": {"name": "ID пользователя"},
-      "device_id": {"name": "ID устройства"},
+      "user_id": {"name": "ID пользователя"}, "device_id": {"name": "ID устройства"},
       "default_room": {"name": "Комната по умолчанию"},
       "default_room_encryption": {
         "name": "Шифрование комнаты по умолчанию",
-        "state": {
-          "encrypted": "Зашифрована",
-          "not_encrypted": "Не зашифрована",
-          "unknown": "Не определено"
-        }
+        "state": {"encrypted": "Зашифрована", "not_encrypted": "Не зашифрована", "unknown": "Не определено"}
       },
       "last_send": {"name": "Последняя успешная отправка"},
-      "last_error": {
-        "name": "Последняя ошибка",
-        "state": {"none": "Ошибок нет"}
-      },
+      "last_error": {"name": "Последняя ошибка", "state": {"none": "Ошибок нет"}},
       "last_receive": {
         "name": "Последнее входящее событие",
         "state": {
-          "message": "Сообщение",
-          "reply": "Ответ",
-          "reaction": "Реакция",
-          "media": "Медиа",
-          "location": "Геопозиция",
-          "edit": "Изменение",
-          "redaction": "Удаление"
+          "message": "Сообщение", "reply": "Ответ", "reaction": "Реакция", "media": "Медиа",
+          "location": "Геопозиция", "edit": "Изменение", "redaction": "Удаление"
         }
       },
       "outbox_size": {"name": "Размер очереди отправки"},
@@ -72,9 +53,7 @@
       "last_command": {"name": "Последняя команда"},
       "control_panels": {"name": "Панели управления"}
     },
-    "select": {
-      "default_room": {"name": "Комната по умолчанию"}
-    }
+    "select": {"default_room": {"name": "Комната по умолчанию"}}
   },
   "options": {
     "step": {
@@ -82,22 +61,15 @@
         "title": "Настройки Matrix Extended",
         "description": "Выберите раздел. Основные настройки интеграции редактируются графически — JSON/YAML для настройки Matrix Extended не нужен.",
         "menu_options": {
-          "general": "Основное",
-          "incoming": "Входящие и безопасность",
-          "media": "Входящие медиа",
-          "voice_assist": "Voice Assist",
-          "routes": "Маршруты уведомлений",
+          "general": "Основное", "incoming": "Входящие и безопасность", "media": "Входящие медиа",
+          "voice_assist": "Voice Assist", "routes": "Маршруты уведомлений",
           "control_panels": "Нативные панели управления Matrix"
         }
       },
       "general": {
         "title": "Основное",
         "description": "Измените комнату по умолчанию, проверку TLS и политику E2EE. После сохранения интеграция перезагрузится.",
-        "data": {
-          "default_room": "Комната по умолчанию",
-          "verify_ssl": "Проверять TLS-сертификат",
-          "require_e2ee": "Требовать E2EE"
-        },
+        "data": {"default_room": "Комната по умолчанию", "verify_ssl": "Проверять TLS-сертификат", "require_e2ee": "Требовать E2EE"},
         "data_description": {
           "default_room": "ID комнаты (!...) или alias (#...). Alias проверяется перед сохранением.",
           "verify_ssl": "Для обычных HTTPS Matrix homeserver оставляйте включённым.",
@@ -107,11 +79,7 @@
       "incoming": {
         "title": "Входящие и безопасность",
         "description": "Определяет, какие входящие события Matrix разрешено передавать в Home Assistant. При включённых входящих событиях оба allowlist должны быть заполнены.",
-        "data": {
-          "incoming_enabled": "Принимать входящие события",
-          "allowed_users": "Разрешённые пользователи",
-          "allowed_rooms": "Разрешённые комнаты"
-        },
+        "data": {"incoming_enabled": "Принимать входящие события", "allowed_users": "Разрешённые пользователи", "allowed_rooms": "Разрешённые комнаты"},
         "data_description": {
           "allowed_users": "Обрабатываются только события от этих Matrix ID.",
           "allowed_rooms": "Обрабатываются только события из этих Matrix-комнат. Должны совпасть и пользователь, и комната."
@@ -120,11 +88,7 @@
       "media": {
         "title": "Входящие медиа",
         "description": "Управление скачиванием, сроком хранения и использованием диска для входящих вложений Matrix.",
-        "data": {
-          "download_incoming_media": "Скачивать и расшифровывать входящие медиа",
-          "incoming_media_retention_days": "Хранить, дней",
-          "incoming_media_max_mb": "Лимит хранилища, МиБ"
-        },
+        "data": {"download_incoming_media": "Скачивать и расшифровывать входящие медиа", "incoming_media_retention_days": "Хранить, дней", "incoming_media_max_mb": "Лимит хранилища, МиБ"},
         "data_description": {
           "incoming_media_retention_days": "0 отключает очистку по возрасту; лимит объёма продолжает действовать.",
           "incoming_media_max_mb": "Максимальный общий размер каталога входящих медиа Matrix Extended."
@@ -134,14 +98,10 @@
         "title": "Voice Assist",
         "description": "Необязательная автоматическая цепочка для нативных голосовых Matrix: расшифровка и скачивание, STT, Home Assistant Conversation/Assist и ответ обратно в Matrix. Отдельные allowlist Voice Assist могут только дополнительно сузить обычные входящие allowlist.",
         "data": {
-          "voice_assist_enabled": "Включить автоматический Voice Assist",
-          "voice_assist_stt_entity": "Сущность STT",
-          "voice_assist_language": "Язык",
-          "voice_assist_conversation_agent": "Conversation agent",
-          "voice_assist_reply_mode": "Режим ответа",
-          "voice_assist_tts_entity": "Сущность TTS",
-          "voice_assist_allowed_users": "Разрешённые пользователи",
-          "voice_assist_allowed_rooms": "Разрешённые комнаты"
+          "voice_assist_enabled": "Включить автоматический Voice Assist", "voice_assist_stt_entity": "Сущность STT",
+          "voice_assist_language": "Язык", "voice_assist_conversation_agent": "Conversation agent",
+          "voice_assist_reply_mode": "Режим ответа", "voice_assist_tts_entity": "Сущность TTS",
+          "voice_assist_allowed_users": "Разрешённые пользователи", "voice_assist_allowed_rooms": "Разрешённые комнаты"
         },
         "data_description": {
           "voice_assist_allowed_users": "Необязательное дополнительное ограничение. Пусто — использовать обычный allowlist входящих пользователей.",
@@ -151,42 +111,18 @@
       "routes": {
         "title": "Маршруты уведомлений",
         "description": "Графическое управление именованными группами комнат. В действиях можно указать имя маршрута вместо повторения Matrix room ID.",
-        "menu_options": {
-          "route_add": "Добавить маршрут",
-          "route_edit": "Изменить маршрут",
-          "route_delete": "Удалить маршрут"
-        }
+        "menu_options": {"route_add": "Добавить маршрут", "route_edit": "Изменить маршрут", "route_delete": "Удалить маршрут"}
       },
-      "route_add": {
-        "title": "Добавить маршрут",
-        "description": "Создайте переиспользуемый маршрут уведомлений.",
-        "data": {"route_name": "Имя маршрута", "route_rooms": "Комнаты"},
-        "data_description": {"route_rooms": "Один или несколько ID/alias комнат Matrix."}
-      },
-      "route_edit": {
-        "title": "Изменить маршрут",
-        "description": "Выберите маршрут для изменения.",
-        "data": {"route_name": "Маршрут"}
-      },
-      "route_edit_details": {
-        "title": "Изменить {route_name}",
-        "description": "Измените Matrix-комнаты маршрута {route_name}.",
-        "data": {"route_rooms": "Комнаты"}
-      },
-      "route_delete": {
-        "title": "Удалить маршрут",
-        "description": "Удаляет сохранённый маршрут. Автоматизации со ссылкой на удалённый маршрут нужно будет изменить.",
-        "data": {"route_name": "Маршрут", "route_confirm": "Подтвердить удаление"}
-      },
+      "route_add": {"title": "Добавить маршрут", "description": "Создайте переиспользуемый маршрут уведомлений.", "data": {"route_name": "Имя маршрута", "route_rooms": "Комнаты"}, "data_description": {"route_rooms": "Один или несколько ID/alias комнат Matrix."}},
+      "route_edit": {"title": "Изменить маршрут", "description": "Выберите маршрут для изменения.", "data": {"route_name": "Маршрут"}},
+      "route_edit_details": {"title": "Изменить {route_name}", "description": "Измените Matrix-комнаты маршрута {route_name}.", "data": {"route_rooms": "Комнаты"}},
+      "route_delete": {"title": "Удалить маршрут", "description": "Удаляет сохранённый маршрут. Автоматизации со ссылкой на удалённый маршрут нужно будет изменить.", "data": {"route_name": "Маршрут", "route_confirm": "Подтвердить удаление"}},
       "control_panels": {
         "title": "Нативные панели управления Matrix",
         "description": "Управление одним живым control-message в каждой существующей Matrix-комнате. Права панели могут только сужать общие allowlist аккаунта.",
         "menu_options": {
-          "panel_add": "Добавить панель",
-          "panel_edit": "Изменить панель",
-          "panel_delete": "Удалить панель",
-          "panel_repair": "Восстановить сообщение панели",
-          "panel_import": "Импортировать YAML панели",
+          "panel_add": "Добавить панель", "panel_edit": "Изменить панель", "panel_delete": "Удалить панель",
+          "panel_repair": "Восстановить сообщение панели", "panel_import": "Импортировать YAML панели",
           "panel_export_select": "Экспортировать YAML панели"
         }
       },
@@ -194,12 +130,8 @@
         "title": "Добавить панель управления",
         "description": "Выберите существующую разрешённую Matrix-комнату и сущности Home Assistant, которые будут отображаться в живом сообщении панели.",
         "data": {
-          "panel_id": "ID панели",
-          "room_id": "Matrix-комната",
-          "title": "Заголовок панели",
-          "enabled": "Включена",
-          "entities": "Отображаемые сущности",
-          "allowed_users": "Пользователи с правом управления",
+          "panel_id": "ID панели", "room_id": "Matrix-комната", "title": "Заголовок панели", "enabled": "Включена",
+          "entities": "Отображаемые сущности", "allowed_users": "Пользователи с правом управления",
           "debounce": "Debounce обновления состояния, секунд"
         },
         "data_description": {
@@ -208,130 +140,74 @@
           "debounce": "Быстрые изменения состояний Home Assistant объединяются перед одной правкой Matrix-сообщения."
         }
       },
-      "panel_edit": {
-        "title": "Изменить панель управления",
-        "description": "Выберите панель для изменения.",
-        "data": {"panel_id": "Панель"}
-      },
+      "panel_edit": {"title": "Изменить панель управления", "description": "Выберите панель для изменения.", "data": {"panel_id": "Панель"}},
       "panel_manage": {
         "title": "Редактирование панели",
         "description": "Изменения остаются в памяти до явного подтверждения сохранения.",
         "menu_options": {
           "panel_edit_details": "Параметры и сущности панели",
-          "panel_action_add": "Добавить действие",
-          "panel_action_edit": "Изменить действие",
-          "panel_action_delete": "Удалить действие",
-          "panel_save": "Сохранить панель",
+          "panel_widget": "Matrix-виджет",
+          "panel_widget_entity": "Управление сущностями в виджете",
+          "panel_action_add": "Добавить действие", "panel_action_edit": "Изменить действие",
+          "panel_action_delete": "Удалить действие", "panel_save": "Сохранить панель",
           "panel_cancel": "Отменить изменения"
         }
       },
       "panel_edit_details": {
         "title": "Изменить {panel_id}",
-        "description": "Измените комнату, отображаемые сущности, ограничение пользователей или debounce. Уже настроенные действия сохраняются.",
-        "data": {
-          "room_id": "Matrix-комната",
-          "title": "Заголовок панели",
-          "enabled": "Включена",
-          "entities": "Отображаемые сущности",
-          "allowed_users": "Пользователи с правом управления",
-          "debounce": "Debounce обновления состояния, секунд"
-        }
+        "description": "Измените комнату, отображаемые сущности, ограничение пользователей или debounce. Действия и настройки Widget сохраняются.",
+        "data": {"room_id": "Matrix-комната", "title": "Заголовок панели", "enabled": "Включена", "entities": "Отображаемые сущности", "allowed_users": "Пользователи с правом управления", "debounce": "Debounce обновления состояния, секунд"}
+      },
+      "panel_widget": {
+        "title": "Matrix-виджет",
+        "description": "Включите графический Widget для панели и укажите его версионированный HTTPS URL. Сгенерированная конфигурация содержит только идентификаторы, без токенов:\n{widget_config}",
+        "data": {"widget_enabled": "Включить Widget", "widget_url": "Базовый URL Widget"},
+        "data_description": {"widget_url": "Используйте HTTPS; HTTP разрешён только для localhost при разработке. Не помещайте в URL токены Home Assistant или Matrix."}
+      },
+      "panel_widget_entity": {
+        "title": "Управление сущностью в Widget",
+        "description": "Сначала выберите сущность, затем разрешите только нужные ограниченные действия. Действия с подтверждением должны также входить в список разрешённых. Сущность: {entity_id}",
+        "data": {"widget_entity_id": "Сущность", "widget_controls": "Разрешённые действия Widget", "confirm_controls": "Действия, требующие подтверждения"}
       },
       "panel_action_add": {
         "title": "Добавить действие панели",
         "description": "Matrix передаёт только сохранённые ID действия и реакцию. Сервис Home Assistant, цель и данные остаются локально. Для замков, сигнализации, ворот и гаража включайте подтверждение.",
-        "data": {
-          "id": "ID действия",
-          "reaction": "Реакция",
-          "label": "Подпись",
-          "service": "Сервис Home Assistant",
-          "target": "Цель",
-          "data": "Дополнительные данные сервиса (YAML)",
-          "confirmation_required": "Требовать 30-секундное подтверждение того же пользователя"
-        },
-        "data_description": {
-          "reaction": "Реакция должна быть уникальной внутри этой панели.",
-          "data": "Необязательный YAML mapping. Пользователь Matrix не может переопределить эти значения."
-        }
+        "data": {"id": "ID действия", "reaction": "Реакция", "label": "Подпись", "service": "Сервис Home Assistant", "target": "Цель", "data": "Дополнительные данные сервиса (YAML)", "confirmation_required": "Требовать 30-секундное подтверждение того же пользователя"},
+        "data_description": {"reaction": "Реакция должна быть уникальной внутри этой панели.", "data": "Необязательный YAML mapping. Пользователь Matrix не может переопределить эти значения."}
       },
       "panel_action_edit": {
         "title": "Изменить действие панели",
         "description": "Сначала выберите действие, затем измените его локальное безопасное определение.",
-        "data": {
-          "id": "ID действия",
-          "reaction": "Реакция",
-          "label": "Подпись",
-          "service": "Сервис Home Assistant",
-          "target": "Цель",
-          "data": "Дополнительные данные сервиса (YAML)",
-          "confirmation_required": "Требовать 30-секундное подтверждение того же пользователя"
-        }
+        "data": {"id": "ID действия", "reaction": "Реакция", "label": "Подпись", "service": "Сервис Home Assistant", "target": "Цель", "data": "Дополнительные данные сервиса (YAML)", "confirmation_required": "Требовать 30-секундное подтверждение того же пользователя"}
       },
-      "panel_action_delete": {
-        "title": "Удалить действие панели",
-        "description": "Удалить действие из текущего черновика панели.",
-        "data": {"id": "Действие", "panel_confirm": "Подтвердить удаление"}
-      },
-      "panel_save": {
-        "title": "Сохранить панель управления",
-        "description": "Проверить и сохранить панель {panel_id}. После сохранения Matrix Extended перезагрузится.",
-        "data": {"panel_confirm": "Подтвердить сохранение"}
-      },
-      "panel_cancel": {
-        "title": "Отменить изменения панели",
-        "description": "Удалить текущий черновик из памяти без изменения сохранённой конфигурации."
-      },
-      "panel_delete": {
-        "title": "Удалить панель управления",
-        "description": "Удалить конфигурацию панели. Это не расширяет права и allowlist Matrix.",
-        "data": {"panel_id": "Панель", "panel_confirm": "Подтвердить удаление"}
-      },
-      "panel_repair": {
-        "title": "Восстановить сообщение панели",
-        "description": "Используйте только если корневое сообщение панели было удалено или redacted. Будет создан ровно один новый root без изменения конфигурации панели.",
-        "data": {"panel_id": "Панель"}
-      },
-      "panel_import": {
-        "title": "Импорт панели из YAML",
-        "description": "Импортируется ровно одна панель. Перед сохранением она проверяется относительно текущих allowlist комнат и пользователей аккаунта.",
-        "data": {"panel_yaml": "YAML панели"}
-      },
-      "panel_import_confirm": {
-        "title": "Заменить существующую панель",
-        "description": "Панель {panel_id} уже существует. Подтвердите замену её конфигурации.",
-        "data": {"panel_confirm": "Подтвердить замену"}
-      },
-      "panel_export_select": {
-        "title": "Экспорт панели управления",
-        "description": "Выберите панель для экспорта.",
-        "data": {"panel_id": "Панель"}
-      },
-      "panel_export": {
-        "title": "Экспорт {panel_id}",
-        "description": "Скопируйте этот проверенный YAML. Изменение поля здесь не меняет сохранённую панель.",
-        "data": {"panel_yaml": "YAML панели"}
-      }
+      "panel_action_delete": {"title": "Удалить действие панели", "description": "Удалить действие из текущего черновика панели.", "data": {"id": "Действие", "panel_confirm": "Подтвердить удаление"}},
+      "panel_save": {"title": "Сохранить панель управления", "description": "Проверить и сохранить панель {panel_id}. После сохранения Matrix Extended перезагрузится.", "data": {"panel_confirm": "Подтвердить сохранение"}},
+      "panel_cancel": {"title": "Отменить изменения панели", "description": "Удалить текущий черновик из памяти без изменения сохранённой конфигурации."},
+      "panel_delete": {"title": "Удалить панель управления", "description": "Удалить конфигурацию панели. Это не расширяет права и allowlist Matrix.", "data": {"panel_id": "Панель", "panel_confirm": "Подтвердить удаление"}},
+      "panel_repair": {"title": "Восстановить сообщение панели", "description": "Используйте только если корневое сообщение панели было удалено или redacted. Будет создан ровно один новый root без изменения конфигурации панели.", "data": {"panel_id": "Панель"}},
+      "panel_import": {"title": "Импорт панели из YAML", "description": "Импортируется ровно одна панель. Перед сохранением она проверяется относительно текущих allowlist комнат и пользователей аккаунта.", "data": {"panel_yaml": "YAML панели"}},
+      "panel_import_confirm": {"title": "Заменить существующую панель", "description": "Панель {panel_id} уже существует. Подтвердите замену её конфигурации.", "data": {"panel_confirm": "Подтвердить замену"}},
+      "panel_export_select": {"title": "Экспорт панели управления", "description": "Выберите панель для экспорта.", "data": {"panel_id": "Панель"}},
+      "panel_export": {"title": "Экспорт {panel_id}", "description": "Скопируйте этот проверенный YAML. Изменение поля здесь не меняет сохранённую панель.", "data": {"panel_yaml": "YAML панели"}}
     },
     "error": {
       "cannot_connect": "Не удалось проверить Matrix-комнату с текущими параметрами соединения",
       "invalid_room": "Некорректный alias или ID комнаты",
       "required_when_incoming": "Обязательно при включённых входящих событиях",
-      "invalid_route_name": "Введите имя маршрута",
-      "route_exists": "Маршрут с таким именем уже существует",
-      "route_needs_rooms": "Добавьте хотя бы одну Matrix-комнату",
-      "confirm_delete": "Подтвердите удаление",
-      "confirm_save": "Подтвердите сохранение панели",
-      "confirm_replace": "Подтвердите замену панели",
+      "invalid_route_name": "Введите имя маршрута", "route_exists": "Маршрут с таким именем уже существует",
+      "route_needs_rooms": "Добавьте хотя бы одну Matrix-комнату", "confirm_delete": "Подтвердите удаление",
+      "confirm_save": "Подтвердите сохранение панели", "confirm_replace": "Подтвердите замену панели",
       "invalid_panel": "Конфигурация панели некорректна, конфликтует с другой панелью/комнатой или выходит за allowlist аккаунта",
       "invalid_panel_action": "Действие некорректно. Проверьте ID, уникальность реакции, сервис, цель и YAML-данные",
       "invalid_panel_yaml": "YAML не содержит одну допустимую панель для этого Matrix-аккаунта",
       "panel_runtime_unavailable": "Runtime Matrix-аккаунта недоступен; перезагрузите интеграцию и повторите",
       "panel_not_needs_repair": "Эта панель сейчас не требует восстановления",
-      "panel_repair_failed": "Не удалось создать и привязать новое сообщение панели"
+      "panel_repair_failed": "Не удалось создать и привязать новое сообщение панели",
+      "widget_url_required": "При включённом Widget необходимо указать базовый URL",
+      "invalid_widget": "Настройки Widget или выбранные действия сущности некорректны",
+      "confirm_controls_subset": "Действия с подтверждением должны входить в список разрешённых действий Widget"
     },
-    "abort": {
-      "panel_runtime_unavailable": "Runtime Matrix-аккаунта недоступен; перезагрузите интеграцию и повторите"
-    }
+    "abort": {"panel_runtime_unavailable": "Runtime Matrix-аккаунта недоступен; перезагрузите интеграцию и повторите"}
   },
   "services": {
     "send": {
@@ -352,88 +228,17 @@
         "actions": {"name": "Действия по реакциям", "description": "Явно разрешённые действия Home Assistant, запускаемые разрешёнными реакциями Matrix."}
       }
     },
-    "send_media": {
-      "name": "Отправить медиа Matrix",
-      "description": "Открыть медиабраузер Home Assistant и отправить элемент из Local Media, Frigate или другого Media Source.",
-      "fields": {
-        "account": {"name": "Аккаунт"}, "target": {"name": "Комнаты"}, "route": {"name": "Маршрут"},
-        "media_picker": {"name": "Выбрать медиа", "description": "Просмотр всех провайдеров Home Assistant Media Source."},
-        "caption": {"name": "Подпись", "description": "Необязательная подпись к медиа."},
-        "voice": {"name": "Голосовое сообщение", "description": "Пометить выбранное аудио как нативное голосовое Matrix."},
-        "thread_id": {"name": "ID ветки"}
-      }
-    },
-    "send_voice": {
-      "name": "Отправить голосовое сообщение Matrix",
-      "description": "Синтезировать текст через Home Assistant TTS и отправить полученное аудио как нативное голосовое Matrix.",
-      "fields": {
-        "account": {"name": "Аккаунт"}, "target": {"name": "Комнаты"}, "route": {"name": "Маршрут"},
-        "text": {"name": "Текст", "description": "Текст для синтеза."},
-        "tts_engine": {"name": "Движок TTS", "description": "Сущность Home Assistant tts.*; пусто — движок по умолчанию."},
-        "language": {"name": "Язык", "description": "Запрошенный язык; совместимые варианты локали подбираются автоматически."},
-        "tts_options": {"name": "Параметры TTS", "description": "Расширенные параметры конкретного TTS-провайдера."},
-        "thread_id": {"name": "ID ветки"}
-      }
-    },
-    "transcribe_voice": {
-      "name": "Распознать голосовое Matrix",
-      "description": "Распознать скачанное голосовое через Home Assistant STT и, при явном включении, передать текст в Assist.",
-      "fields": {
-        "account": {"name": "Аккаунт"},
-        "path": {"name": "Путь к голосовому файлу", "description": "local_path из matrix_extended_media или имя файла в каталоге входящих медиа аккаунта."},
-        "stt_entity": {"name": "Сущность STT", "description": "Home Assistant stt.*; пусто — STT по умолчанию."},
-        "language": {"name": "Язык"}, "audio_format": {"name": "Формат входного аудио"}, "codec": {"name": "Кодек"},
-        "bit_rate": {"name": "Разрядность"}, "sample_rate": {"name": "Частота дискретизации"}, "channels": {"name": "Каналы"},
-        "assist": {"name": "Запустить Home Assistant Assist", "description": "Явно передать распознанный текст в Conversation/Assist."},
-        "conversation_agent": {"name": "Агент диалога"}, "conversation_id": {"name": "ID диалога"}
-      }
-    },
-    "send_location": {
-      "name": "Отправить геопозицию Matrix",
-      "description": "Отправить геопозицию Matrix по координатам или из сущности Home Assistant.",
-      "fields": {
-        "account": {"name": "Аккаунт"}, "target": {"name": "Комнаты"}, "route": {"name": "Маршрут"},
-        "entity_id": {"name": "Сущность с координатами", "description": "Сущность с атрибутами latitude и longitude."},
-        "latitude": {"name": "Широта"}, "longitude": {"name": "Долгота"}, "description": {"name": "Описание"}, "thread_id": {"name": "ID ветки"}
-      }
-    },
-    "reply": {
-      "name": "Ответить на событие Matrix",
-      "description": "Ответить на существующее Matrix-событие по его event ID.",
-      "fields": {
-        "account": {"name": "Аккаунт"}, "room": {"name": "Комната"}, "event_id": {"name": "ID события"}, "message": {"name": "Сообщение"},
-        "msgtype": {"name": "Тип сообщения"}, "format": {"name": "Формат"}, "mention_users": {"name": "Упомянуть пользователей"},
-        "mention_room": {"name": "Упомянуть комнату"}, "thread_id": {"name": "ID ветки"}
-      }
-    },
-    "react": {
-      "name": "Поставить реакцию Matrix",
-      "description": "Добавить emoji или текстовую реакцию к существующему Matrix-событию.",
-      "fields": {"account": {"name": "Аккаунт"}, "room": {"name": "Комната"}, "event_id": {"name": "ID события"}, "reaction": {"name": "Реакция"}}
-    },
-    "edit": {
-      "name": "Изменить сообщение Matrix",
-      "description": "Заменить ранее отправленное текстовое Matrix-событие.",
-      "fields": {"account": {"name": "Аккаунт"}, "room": {"name": "Комната"}, "event_id": {"name": "ID события"}, "message": {"name": "Новое сообщение"}, "msgtype": {"name": "Тип сообщения"}, "format": {"name": "Формат"}}
-    },
-    "redact": {
-      "name": "Удалить событие Matrix",
-      "description": "Выполнить Matrix redaction существующего события.",
-      "fields": {"account": {"name": "Аккаунт"}, "room": {"name": "Комната"}, "event_id": {"name": "ID события"}, "reason": {"name": "Причина"}}
-    },
-    "purge_media": {
-      "name": "Очистить скачанные медиа Matrix",
-      "description": "Удалить скачанные входящие Matrix-медиа выбранного аккаунта и вернуть количество файлов/байт.",
-      "fields": {"account": {"name": "Аккаунт"}}
-    },
-    "register_command": {
-      "name": "Зарегистрировать безопасную Matrix-команду",
-      "description": "Зарегистрировать или заменить точную разрешённую Matrix-команду. Входящий текст Matrix не может переопределить сохранённое действие Home Assistant, цель или данные."
-    },
-    "unregister_command": {
-      "name": "Удалить безопасную Matrix-команду",
-      "description": "Удалить зарегистрированную безопасную Matrix-команду по стабильному ID."
-    }
+    "send_media": {"name": "Отправить медиа Matrix", "description": "Открыть медиабраузер Home Assistant и отправить элемент из Local Media, Frigate или другого Media Source.", "fields": {"account": {"name": "Аккаунт"}, "target": {"name": "Комнаты"}, "route": {"name": "Маршрут"}, "media_picker": {"name": "Выбрать медиа", "description": "Просмотр всех провайдеров Home Assistant Media Source."}, "caption": {"name": "Подпись", "description": "Необязательная подпись к медиа."}, "voice": {"name": "Голосовое сообщение", "description": "Пометить выбранное аудио как нативное голосовое Matrix."}, "thread_id": {"name": "ID ветки"}}},
+    "send_voice": {"name": "Отправить голосовое сообщение Matrix", "description": "Синтезировать текст через Home Assistant TTS и отправить полученное аудио как нативное голосовое Matrix.", "fields": {"account": {"name": "Аккаунт"}, "target": {"name": "Комнаты"}, "route": {"name": "Маршрут"}, "text": {"name": "Текст", "description": "Текст для синтеза."}, "tts_engine": {"name": "Движок TTS", "description": "Сущность Home Assistant tts.*; пусто — движок по умолчанию."}, "language": {"name": "Язык", "description": "Запрошенный язык; совместимые варианты локали подбираются автоматически."}, "tts_options": {"name": "Параметры TTS", "description": "Расширенные параметры конкретного TTS-провайдера."}, "thread_id": {"name": "ID ветки"}}},
+    "transcribe_voice": {"name": "Распознать голосовое Matrix", "description": "Распознать скачанное голосовое через Home Assistant STT и, при явном включении, передать текст в Assist.", "fields": {"account": {"name": "Аккаунт"}, "path": {"name": "Путь к голосовому файлу", "description": "local_path из matrix_extended_media или имя файла в каталоге входящих медиа аккаунта."}, "stt_entity": {"name": "Сущность STT", "description": "Home Assistant stt.*; пусто — STT по умолчанию."}, "language": {"name": "Язык"}, "audio_format": {"name": "Формат входного аудио"}, "codec": {"name": "Кодек"}, "bit_rate": {"name": "Разрядность"}, "sample_rate": {"name": "Частота дискретизации"}, "channels": {"name": "Каналы"}, "assist": {"name": "Запустить Home Assistant Assist", "description": "Явно передать распознанный текст в Conversation/Assist."}, "conversation_agent": {"name": "Агент диалога"}, "conversation_id": {"name": "ID диалога"}}},
+    "send_location": {"name": "Отправить геопозицию Matrix", "description": "Отправить геопозицию Matrix по координатам или из сущности Home Assistant.", "fields": {"account": {"name": "Аккаунт"}, "target": {"name": "Комнаты"}, "route": {"name": "Маршрут"}, "entity_id": {"name": "Сущность с координатами", "description": "Сущность с атрибутами latitude и longitude."}, "latitude": {"name": "Широта"}, "longitude": {"name": "Долгота"}, "description": {"name": "Описание"}, "thread_id": {"name": "ID ветки"}}},
+    "reply": {"name": "Ответить на событие Matrix", "description": "Ответить на существующее Matrix-событие по его event ID.", "fields": {"account": {"name": "Аккаунт"}, "room": {"name": "Комната"}, "event_id": {"name": "ID события"}, "message": {"name": "Сообщение"}, "msgtype": {"name": "Тип сообщения"}, "format": {"name": "Формат"}, "mention_users": {"name": "Упомянуть пользователей"}, "mention_room": {"name": "Упомянуть комнату"}, "thread_id": {"name": "ID ветки"}}},
+    "react": {"name": "Поставить реакцию Matrix", "description": "Добавить emoji или текстовую реакцию к существующему Matrix-событию.", "fields": {"account": {"name": "Аккаунт"}, "room": {"name": "Комната"}, "event_id": {"name": "ID события"}, "reaction": {"name": "Реакция"}}},
+    "edit": {"name": "Изменить сообщение Matrix", "description": "Заменить ранее отправленное текстовое Matrix-событие.", "fields": {"account": {"name": "Аккаунт"}, "room": {"name": "Комната"}, "event_id": {"name": "ID события"}, "message": {"name": "Новое сообщение"}, "msgtype": {"name": "Тип сообщения"}, "format": {"name": "Формат"}}},
+    "redact": {"name": "Удалить событие Matrix", "description": "Выполнить Matrix redaction существующего события.", "fields": {"account": {"name": "Аккаунт"}, "room": {"name": "Комната"}, "event_id": {"name": "ID события"}, "reason": {"name": "Причина"}}},
+    "purge_media": {"name": "Очистить скачанные медиа Matrix", "description": "Удалить скачанные входящие Matrix-медиа выбранного аккаунта и вернуть количество файлов/байт.", "fields": {"account": {"name": "Аккаунт"}}},
+    "register_command": {"name": "Зарегистрировать безопасную Matrix-команду", "description": "Зарегистрировать или заменить точную разрешённую Matrix-команду. Входящий текст Matrix не может переопределить сохранённое действие Home Assistant, цель или данные."},
+    "unregister_command": {"name": "Удалить безопасную Matrix-команду", "description": "Удалить зарегистрированную безопасную Matrix-команду по стабильному ID."}
   },
   "selector": {
     "message_type": {"options": {"text": "Текст", "notice": "Уведомление", "emote": "Действие (/me)"}},

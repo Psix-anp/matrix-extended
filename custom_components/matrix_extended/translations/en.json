@@ -29,9 +29,7 @@
       "invalid_auth": "Invalid Matrix credentials",
       "invalid_room": "The default room alias or ID is invalid"
     },
-    "abort": {
-      "already_configured": "This Matrix account is already configured"
-    }
+    "abort": {"already_configured": "This Matrix account is already configured"}
   },
   "entity": {
     "binary_sensor": {
@@ -44,24 +42,15 @@
       "default_room": {"name": "Default room"},
       "default_room_encryption": {
         "name": "Default room encryption",
-        "state": {
-          "encrypted": "Encrypted",
-          "not_encrypted": "Not encrypted",
-          "unknown": "Unknown"
-        }
+        "state": {"encrypted": "Encrypted", "not_encrypted": "Not encrypted", "unknown": "Unknown"}
       },
       "last_send": {"name": "Last successful send"},
       "last_error": {"name": "Last error", "state": {"none": "No errors"}},
       "last_receive": {
         "name": "Last incoming event",
         "state": {
-          "message": "Message",
-          "reply": "Reply",
-          "reaction": "Reaction",
-          "media": "Media",
-          "location": "Location",
-          "edit": "Edit",
-          "redaction": "Redaction"
+          "message": "Message", "reply": "Reply", "reaction": "Reaction", "media": "Media",
+          "location": "Location", "edit": "Edit", "redaction": "Redaction"
         }
       },
       "outbox_size": {"name": "Outbox size"},
@@ -77,11 +66,8 @@
         "title": "Matrix Extended settings",
         "description": "Choose a section. Matrix Extended settings are graphical; JSON or YAML is not required for integration setup.",
         "menu_options": {
-          "general": "General",
-          "incoming": "Incoming & security",
-          "media": "Incoming media",
-          "voice_assist": "Voice Assist",
-          "routes": "Notification routes",
+          "general": "General", "incoming": "Incoming & security", "media": "Incoming media",
+          "voice_assist": "Voice Assist", "routes": "Notification routes",
           "control_panels": "Native Matrix control panels"
         }
       },
@@ -117,14 +103,10 @@
         "title": "Voice Assist",
         "description": "Optional automatic pipeline for native Matrix voice messages: decrypt/download, STT, Home Assistant Conversation/Assist, then reply in Matrix. Voice-specific allowlists only narrow the normal incoming allowlists.",
         "data": {
-          "voice_assist_enabled": "Enable automatic Voice Assist",
-          "voice_assist_stt_entity": "STT entity",
-          "voice_assist_language": "Language",
-          "voice_assist_conversation_agent": "Conversation agent",
-          "voice_assist_reply_mode": "Reply mode",
-          "voice_assist_tts_entity": "TTS entity",
-          "voice_assist_allowed_users": "Allowed users",
-          "voice_assist_allowed_rooms": "Allowed rooms"
+          "voice_assist_enabled": "Enable automatic Voice Assist", "voice_assist_stt_entity": "STT entity",
+          "voice_assist_language": "Language", "voice_assist_conversation_agent": "Conversation agent",
+          "voice_assist_reply_mode": "Reply mode", "voice_assist_tts_entity": "TTS entity",
+          "voice_assist_allowed_users": "Allowed users", "voice_assist_allowed_rooms": "Allowed rooms"
         },
         "data_description": {
           "voice_assist_allowed_users": "Optional additional restriction. Leave empty to use the normal incoming user allowlist.",
@@ -136,12 +118,7 @@
         "description": "Manage named room groups graphically. Actions can use a route name instead of repeating Matrix room IDs.",
         "menu_options": {"route_add": "Add route", "route_edit": "Edit route", "route_delete": "Delete route"}
       },
-      "route_add": {
-        "title": "Add route",
-        "description": "Create a reusable notification route.",
-        "data": {"route_name": "Route name", "route_rooms": "Rooms"},
-        "data_description": {"route_rooms": "One or more Matrix room IDs or aliases."}
-      },
+      "route_add": {"title": "Add route", "description": "Create a reusable notification route.", "data": {"route_name": "Route name", "route_rooms": "Rooms"}, "data_description": {"route_rooms": "One or more Matrix room IDs or aliases."}},
       "route_edit": {"title": "Edit route", "description": "Choose the route to change.", "data": {"route_name": "Route"}},
       "route_edit_details": {"title": "Edit {route_name}", "description": "Change the Matrix rooms used by route {route_name}.", "data": {"route_rooms": "Rooms"}},
       "route_delete": {"title": "Delete route", "description": "Delete a saved route. Automations that reference the deleted route must be updated.", "data": {"route_name": "Route", "route_confirm": "Confirm deletion"}},
@@ -149,11 +126,8 @@
         "title": "Native Matrix control panels",
         "description": "Manage one live control message per existing Matrix room. Panel permissions can only narrow the account-level Matrix allowlists.",
         "menu_options": {
-          "panel_add": "Add panel",
-          "panel_edit": "Edit panel",
-          "panel_delete": "Delete panel",
-          "panel_repair": "Repair panel message",
-          "panel_import": "Import panel YAML",
+          "panel_add": "Add panel", "panel_edit": "Edit panel", "panel_delete": "Delete panel",
+          "panel_repair": "Repair panel message", "panel_import": "Import panel YAML",
           "panel_export_select": "Export panel YAML"
         }
       },
@@ -161,12 +135,8 @@
         "title": "Add control panel",
         "description": "Choose an existing allowed Matrix room and the Home Assistant entities that will be rendered in its live control message.",
         "data": {
-          "panel_id": "Panel ID",
-          "room_id": "Matrix room",
-          "title": "Panel title",
-          "enabled": "Enabled",
-          "entities": "Displayed entities",
-          "allowed_users": "Users allowed to control this panel",
+          "panel_id": "Panel ID", "room_id": "Matrix room", "title": "Panel title", "enabled": "Enabled",
+          "entities": "Displayed entities", "allowed_users": "Users allowed to control this panel",
           "debounce": "State update debounce, seconds"
         },
         "data_description": {
@@ -181,51 +151,39 @@
         "description": "Changes stay in memory until Save panel is confirmed.",
         "menu_options": {
           "panel_edit_details": "Panel details and entities",
-          "panel_action_add": "Add action",
-          "panel_action_edit": "Edit action",
-          "panel_action_delete": "Delete action",
-          "panel_save": "Save panel",
+          "panel_widget": "Matrix Widget",
+          "panel_widget_entity": "Widget entity controls",
+          "panel_action_add": "Add action", "panel_action_edit": "Edit action",
+          "panel_action_delete": "Delete action", "panel_save": "Save panel",
           "panel_cancel": "Discard changes"
         }
       },
       "panel_edit_details": {
         "title": "Edit {panel_id}",
-        "description": "Change room, displayed entities, user restriction or state update debounce. Existing actions are preserved.",
-        "data": {
-          "room_id": "Matrix room",
-          "title": "Panel title",
-          "enabled": "Enabled",
-          "entities": "Displayed entities",
-          "allowed_users": "Users allowed to control this panel",
-          "debounce": "State update debounce, seconds"
-        }
+        "description": "Change room, displayed entities, user restriction or state update debounce. Existing actions and Widget settings are preserved.",
+        "data": {"room_id": "Matrix room", "title": "Panel title", "enabled": "Enabled", "entities": "Displayed entities", "allowed_users": "Users allowed to control this panel", "debounce": "State update debounce, seconds"}
+      },
+      "panel_widget": {
+        "title": "Matrix Widget",
+        "description": "Enable the graphical Widget for this panel and set its versioned HTTPS base URL. Generated configuration (contains IDs only, no tokens):\n{widget_config}",
+        "data": {"widget_enabled": "Enable Widget", "widget_url": "Widget base URL"},
+        "data_description": {"widget_url": "Use HTTPS except for localhost development. The URL must not contain Home Assistant or Matrix credentials."}
+      },
+      "panel_widget_entity": {
+        "title": "Widget entity controls",
+        "description": "Choose an entity first, then allow only the bounded controls the Widget may request. Confirmation controls must also be enabled controls. Entity: {entity_id}",
+        "data": {"widget_entity_id": "Entity", "widget_controls": "Allowed Widget controls", "confirm_controls": "Controls requiring confirmation"}
       },
       "panel_action_add": {
         "title": "Add panel action",
         "description": "Matrix carries only this stored action ID/reaction. The Home Assistant service, target and data remain local. Enable confirmation for risky actions such as locks, alarms, gates or garage doors.",
-        "data": {
-          "id": "Action ID",
-          "reaction": "Reaction",
-          "label": "Label",
-          "service": "Home Assistant service",
-          "target": "Target",
-          "data": "Advanced service data (YAML)",
-          "confirmation_required": "Require 30-second same-user confirmation"
-        },
+        "data": {"id": "Action ID", "reaction": "Reaction", "label": "Label", "service": "Home Assistant service", "target": "Target", "data": "Advanced service data (YAML)", "confirmation_required": "Require 30-second same-user confirmation"},
         "data_description": {"reaction": "Must be unique within this panel.", "data": "Optional mapping only. Matrix users cannot override these values."}
       },
       "panel_action_edit": {
         "title": "Edit panel action",
         "description": "Choose an action first, then edit its local safe definition.",
-        "data": {
-          "id": "Action ID",
-          "reaction": "Reaction",
-          "label": "Label",
-          "service": "Home Assistant service",
-          "target": "Target",
-          "data": "Advanced service data (YAML)",
-          "confirmation_required": "Require 30-second same-user confirmation"
-        }
+        "data": {"id": "Action ID", "reaction": "Reaction", "label": "Label", "service": "Home Assistant service", "target": "Target", "data": "Advanced service data (YAML)", "confirmation_required": "Require 30-second same-user confirmation"}
       },
       "panel_action_delete": {"title": "Delete panel action", "description": "Remove an action from the in-memory panel draft.", "data": {"id": "Action", "panel_confirm": "Confirm deletion"}},
       "panel_save": {"title": "Save control panel", "description": "Validate and save panel {panel_id}. Saving reloads Matrix Extended.", "data": {"panel_confirm": "Confirm save"}},
@@ -241,18 +199,18 @@
       "cannot_connect": "Unable to validate the Matrix room with the current connection settings",
       "invalid_room": "The room alias or ID is invalid",
       "required_when_incoming": "Required while incoming events are enabled",
-      "invalid_route_name": "Enter a route name",
-      "route_exists": "A route with this name already exists",
-      "route_needs_rooms": "Add at least one Matrix room",
-      "confirm_delete": "Confirm deletion to continue",
-      "confirm_save": "Confirm saving the panel to continue",
-      "confirm_replace": "Confirm replacement to continue",
+      "invalid_route_name": "Enter a route name", "route_exists": "A route with this name already exists",
+      "route_needs_rooms": "Add at least one Matrix room", "confirm_delete": "Confirm deletion to continue",
+      "confirm_save": "Confirm saving the panel to continue", "confirm_replace": "Confirm replacement to continue",
       "invalid_panel": "The panel definition is invalid, duplicates another panel/room, or exceeds the account allowlists",
       "invalid_panel_action": "The action is invalid. Check its ID, unique reaction, service, target and YAML data",
       "invalid_panel_yaml": "The YAML does not contain one valid panel allowed by this Matrix account",
       "panel_runtime_unavailable": "The Matrix account runtime is not available; reload the integration and try again",
       "panel_not_needs_repair": "This panel does not currently require repair",
-      "panel_repair_failed": "Unable to create and bind a replacement Matrix control message"
+      "panel_repair_failed": "Unable to create and bind a replacement Matrix control message",
+      "widget_url_required": "A Widget base URL is required when the Widget is enabled",
+      "invalid_widget": "The Widget configuration or selected entity controls are invalid",
+      "confirm_controls_subset": "Confirmation controls must also be enabled Widget controls"
     },
     "abort": {"panel_runtime_unavailable": "The Matrix account runtime is not available; reload the integration and try again"}
   },

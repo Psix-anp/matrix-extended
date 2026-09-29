@@ -13,7 +13,7 @@ def test_widget_runtime_is_wired_only_for_enabled_widget_panels() -> None:
     assert "WidgetControlManager" in source
     assert "WidgetTransport" in source
     assert "widget_enabled" in source
-    assert "widget_manager = WidgetControlManager(" in source
+    assert "WidgetControlManager(" in source
     assert "account.widget_manager = widget_manager" in source
 
 

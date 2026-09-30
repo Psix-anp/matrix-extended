@@ -7,10 +7,10 @@ export interface PendingConfirmationView {
   expiresIn: number;
 }
 
-type Messages = typeof en;
+type Messages = { [K in keyof typeof en]: string };
 
 function messages(locale: WidgetLocale): Messages {
-  return locale === "ru" ? (ru as Messages) : en;
+  return locale === "ru" ? ru : en;
 }
 
 function escapeHtml(value: unknown): string {

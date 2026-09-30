@@ -10,10 +10,11 @@ import re
 import secrets
 import sys
 import time
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
+from uuid import uuid4
 
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
@@ -130,12 +131,7 @@ def _wait_state(token: str, entity_id: str, expected: str, timeout: float = 30) 
 
 
 def _set_targets_off(token: str) -> None:
-    _ha(
-        token,
-        "POST",
-        "/api/services/input_boolean/turn_off",
-        {"entity_id": [SAFE_TARGET, DANGEROUS_TARGET]},
-    )
+    _ha(token, "POST", "/api/services/input_boolean/turn_off", {"entity_id": [SAFE_TARGET, DANGEROUS_TARGET]})
     _wait_state(token, SAFE_TARGET, "off")
     _wait_state(token, DANGEROUS_TARGET, "off")
 
@@ -147,48 +143,27 @@ def _configure_widget() -> dict[str, Any]:
     entry_id = str(ha_env["entry_id"])
     _set_targets_off(token)
 
-    start = _ha(
-        token,
-        "POST",
-        "/api/config/config_entries/options/flow",
-        {"handler": entry_id},
-    )
+    start = _ha(token, "POST", "/api/config/config_entries/options/flow", {"handler": entry_id})
     _expect(start, kind="menu", step="init")
     flow_id = str(start["flow_id"])
     _expect(_flow_post(token, flow_id, {"next_step_id": "control_panels"}), kind="menu", step="control_panels")
     _expect(_flow_post(token, flow_id, {"next_step_id": "panel_edit"}), kind="form", step="panel_edit")
     _expect(_flow_post(token, flow_id, {"panel_id": PANEL_ID}), kind="menu", step="panel_manage")
-
     _expect(_flow_post(token, flow_id, {"next_step_id": "panel_edit_details"}), kind="form", step="panel_edit_details")
-    entities = [*LEGACY_ENTITIES, WIDGET_SAFE_ENTITY, WIDGET_DANGEROUS_ENTITY]
     _expect(
-        _flow_post(
-            token,
-            flow_id,
-            {
-                "room_id": matrix_env["room_id"],
-                "title": PANEL_TITLE,
-                "enabled": True,
-                "entities": entities,
-                "allowed_users": [matrix_env["user_user_id"]],
-                "debounce": 0.5,
-            },
-        ),
-        kind="menu",
-        step="panel_manage",
+        _flow_post(token, flow_id, {
+            "room_id": matrix_env["room_id"],
+            "title": PANEL_TITLE,
+            "enabled": True,
+            "entities": [*LEGACY_ENTITIES, WIDGET_SAFE_ENTITY, WIDGET_DANGEROUS_ENTITY],
+            "allowed_users": [matrix_env["user_user_id"]],
+            "debounce": 0.5,
+        }),
+        kind="menu", step="panel_manage",
     )
 
     _expect(_flow_post(token, flow_id, {"next_step_id": "panel_widget"}), kind="form", step="panel_widget")
-    _expect(
-        _flow_post(
-            token,
-            flow_id,
-            {"widget_enabled": True, "widget_url": WIDGET_URL},
-        ),
-        kind="menu",
-        step="panel_manage",
-    )
-
+    _expect(_flow_post(token, flow_id, {"widget_enabled": True, "widget_url": WIDGET_URL}), kind="menu", step="panel_manage")
     widget_form = _flow_post(token, flow_id, {"next_step_id": "panel_widget"})
     _expect(widget_form, kind="form", step="panel_widget")
     widget_text = str(widget_form.get("description_placeholders", {}).get("widget_config") or "")
@@ -204,26 +179,14 @@ def _configure_widget() -> dict[str, Any]:
     integration_device_id = str(widget_config.get("data", {}).get("integration_device_id") or "")
     if not integration_device_id:
         raise RuntimeError("generated Widget config has no integration_device_id")
-    _expect(
-        _flow_post(token, flow_id, {"widget_enabled": True, "widget_url": WIDGET_URL}),
-        kind="menu",
-        step="panel_manage",
-    )
+    _expect(_flow_post(token, flow_id, {"widget_enabled": True, "widget_url": WIDGET_URL}), kind="menu", step="panel_manage")
 
-    for entity_id, confirm in (
-        (WIDGET_SAFE_ENTITY, []),
-        (WIDGET_DANGEROUS_ENTITY, ["toggle"]),
-    ):
+    for entity_id, confirm in ((WIDGET_SAFE_ENTITY, []), (WIDGET_DANGEROUS_ENTITY, ["toggle"])):
         _expect(_flow_post(token, flow_id, {"next_step_id": "panel_widget_entity"}), kind="form", step="panel_widget_entity")
         _expect(_flow_post(token, flow_id, {"widget_entity_id": entity_id}), kind="form", step="panel_widget_entity")
         _expect(
-            _flow_post(
-                token,
-                flow_id,
-                {"widget_controls": ["toggle"], "confirm_controls": confirm},
-            ),
-            kind="menu",
-            step="panel_manage",
+            _flow_post(token, flow_id, {"widget_controls": ["toggle"], "confirm_controls": confirm}),
+            kind="menu", step="panel_manage",
         )
 
     _expect(_flow_post(token, flow_id, {"next_step_id": "panel_save"}), kind="form", step="panel_save")
@@ -239,28 +202,11 @@ def _configure_widget() -> dict[str, Any]:
     content["creatorUserId"] = matrix_env["bot_user_id"]
     room = quote(str(matrix_env["room_id"]), safe="")
     state_key = quote(widget_id, safe="")
+    _request_json(MATRIX_URL, "PUT", f"/_matrix/client/v3/rooms/{room}/state/im.vector.modular.widgets/{state_key}", token=matrix_env["bot_access_token"], json_body=content)
     _request_json(
-        MATRIX_URL,
-        "PUT",
-        f"/_matrix/client/v3/rooms/{room}/state/im.vector.modular.widgets/{state_key}",
+        MATRIX_URL, "PUT", f"/_matrix/client/v3/rooms/{room}/state/io.element.widgets.layout/",
         token=matrix_env["bot_access_token"],
-        json_body=content,
-    )
-    _request_json(
-        MATRIX_URL,
-        "PUT",
-        f"/_matrix/client/v3/rooms/{room}/state/io.element.widgets.layout/",
-        token=matrix_env["bot_access_token"],
-        json_body={
-            "widgets": {
-                widget_id: {
-                    "container": "top",
-                    "index": 0,
-                    "width": 100,
-                    "height": 55,
-                }
-            }
-        },
+        json_body={"widgets": {widget_id: {"container": "top", "index": 0, "width": 100, "height": 55}}},
     )
 
     state = {
@@ -272,10 +218,7 @@ def _configure_widget() -> dict[str, Any]:
         "room_id": matrix_env["room_id"],
     }
     _write(WIDGET_STATE_PATH, state)
-    print(
-        "Native Widget configured: "
-        f"panel={PANEL_ID} widget={widget_id} integration_device_id={integration_device_id}"
-    )
+    print(f"Native Widget configured: panel={PANEL_ID} widget={widget_id} integration_device_id={integration_device_id}")
     return state
 
 
@@ -283,44 +226,19 @@ def _sync(token: str, since: str | None = None, timeout_ms: int = 0) -> dict[str
     query = {"timeout": str(timeout_ms)}
     if since:
         query["since"] = since
-    return _request_json(
-        MATRIX_URL,
-        "GET",
-        "/_matrix/client/v3/sync?" + urlencode(query),
-        token=token,
-        timeout=max(20, timeout_ms / 1000 + 10),
-    )
+    return _request_json(MATRIX_URL, "GET", "/_matrix/client/v3/sync?" + urlencode(query), token=token, timeout=max(20, timeout_ms / 1000 + 10))
 
 
-def _send_widget_to_device(
-    matrix_env: Mapping[str, Any],
-    widget_state: Mapping[str, Any],
-    content: Mapping[str, Any],
-) -> None:
+def _send_widget_to_device(matrix_env: Mapping[str, Any], widget_state: Mapping[str, Any], content: Mapping[str, Any]) -> None:
     event_type = quote(WIDGET_EVENT_TYPE, safe="")
-    txn = secrets.token_hex(12)
     _request_json(
-        MATRIX_URL,
-        "PUT",
-        f"/_matrix/client/v3/sendToDevice/{event_type}/{txn}",
+        MATRIX_URL, "PUT", f"/_matrix/client/v3/sendToDevice/{event_type}/{secrets.token_hex(12)}",
         token=str(matrix_env["user_access_token"]),
-        json_body={
-            "messages": {
-                str(widget_state["integration_user_id"]): {
-                    str(widget_state["integration_device_id"]): dict(content)
-                }
-            }
-        },
+        json_body={"messages": {str(widget_state["integration_user_id"]): {str(widget_state["integration_device_id"]): dict(content)}}},
     )
 
 
-def _wait_to_device(
-    token: str,
-    since: str,
-    predicate,
-    *,
-    timeout: float = 30,
-) -> tuple[dict[str, Any], str]:
+def _wait_to_device(token: str, since: str, predicate: Callable[[dict[str, Any]], bool], *, timeout: float = 30) -> tuple[dict[str, Any], str]:
     deadline = time.monotonic() + timeout
     cursor = since
     while time.monotonic() < deadline:
@@ -335,90 +253,53 @@ def _wait_to_device(
     raise TimeoutError("expected Widget to-device response was not observed")
 
 
+def _subscribe_snapshot(matrix_env: Mapping[str, Any], widget_state: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
+    user_token = str(matrix_env["user_access_token"])
+    cursor = str(_sync(user_token).get("next_batch"))
+    _send_widget_to_device(matrix_env, widget_state, {
+        "schema": 1, "op": "subscribe", "room_id": widget_state["room_id"], "panel_id": PANEL_ID, "generation": 0,
+    })
+    return _wait_to_device(user_token, cursor, lambda content: content.get("op") == "state" and content.get("panel_id") == PANEL_ID)
+
+
 def _backend_transport_regression() -> int:
     matrix_env = _read(MATRIX_ENV_PATH)
     widget_state = _read(WIDGET_STATE_PATH)
-    ha_env = _read(HA_ENV_PATH)
-    ha_token = str(ha_env["access_token"])
+    ha_token = str(_read(HA_ENV_PATH)["access_token"])
     user_token = str(matrix_env["user_access_token"])
-    cursor = str(_sync(user_token).get("next_batch"))
-
-    subscribe = {
-        "schema": 1,
-        "op": "subscribe",
-        "room_id": widget_state["room_id"],
-        "panel_id": PANEL_ID,
-        "generation": 0,
-    }
-    _send_widget_to_device(matrix_env, widget_state, subscribe)
-    snapshot, cursor = _wait_to_device(
-        user_token,
-        cursor,
-        lambda content: content.get("op") == "state" and content.get("panel_id") == PANEL_ID,
-    )
+    snapshot, cursor = _subscribe_snapshot(matrix_env, widget_state)
     generation = int(snapshot["generation"])
     if generation < 1:
         raise RuntimeError(f"invalid Widget generation: {generation}")
 
     _set_targets_off(ha_token)
-    stale_id = str(secrets.token_hex(16))
-    stale = {
-        "schema": 1,
-        "op": "action",
-        "room_id": widget_state["room_id"],
-        "panel_id": PANEL_ID,
-        "generation": generation - 1,
-        "request_id": stale_id,
-        "kind": "entity_control",
-        "entity_id": WIDGET_SAFE_ENTITY,
-        "control": "toggle",
-    }
-    _send_widget_to_device(matrix_env, widget_state, stale)
-    stale_error, cursor = _wait_to_device(
-        user_token,
-        cursor,
-        lambda content: content.get("op") == "error" and content.get("status") == "stale_generation",
-    )
+    stale_id = str(uuid4())
+    _send_widget_to_device(matrix_env, widget_state, {
+        "schema": 1, "op": "action", "room_id": widget_state["room_id"], "panel_id": PANEL_ID,
+        "generation": generation - 1, "request_id": stale_id, "kind": "entity_control",
+        "entity_id": WIDGET_SAFE_ENTITY, "control": "toggle",
+    })
+    stale_error, cursor = _wait_to_device(user_token, cursor, lambda content: content.get("op") == "error" and content.get("status") == "stale_generation")
     if stale_error.get("status") != "stale_generation" or _state(ha_token, SAFE_TARGET) != "off":
         raise RuntimeError("stale_generation request was not rejected fail-closed")
 
-    duplicate_id = str(secrets.token_hex(16))
+    duplicate_id = str(uuid4())
     action = {
-        "schema": 1,
-        "op": "action",
-        "room_id": widget_state["room_id"],
-        "panel_id": PANEL_ID,
-        "generation": generation,
-        "request_id": duplicate_id,
-        "kind": "entity_control",
-        "entity_id": WIDGET_SAFE_ENTITY,
-        "control": "toggle",
+        "schema": 1, "op": "action", "room_id": widget_state["room_id"], "panel_id": PANEL_ID,
+        "generation": generation, "request_id": duplicate_id, "kind": "entity_control",
+        "entity_id": WIDGET_SAFE_ENTITY, "control": "toggle",
     }
     _send_widget_to_device(matrix_env, widget_state, action)
-    accepted, cursor = _wait_to_device(
-        user_token,
-        cursor,
-        lambda content: content.get("op") == "result" and content.get("request_id") == duplicate_id,
-    )
+    accepted, cursor = _wait_to_device(user_token, cursor, lambda content: content.get("op") == "result" and content.get("request_id") == duplicate_id)
     if accepted.get("status") != "accepted":
         raise RuntimeError(f"first duplicate test action was not accepted: {accepted}")
     _wait_state(ha_token, SAFE_TARGET, "on")
-
     _send_widget_to_device(matrix_env, widget_state, action)
-    duplicate, cursor = _wait_to_device(
-        user_token,
-        cursor,
-        lambda content: content.get("op") == "result"
-        and content.get("request_id") == duplicate_id
-        and content.get("status") == "duplicate_request",
-    )
+    duplicate, _ = _wait_to_device(user_token, cursor, lambda content: content.get("op") == "result" and content.get("request_id") == duplicate_id and content.get("status") == "duplicate_request")
     if duplicate.get("status") != "duplicate_request":
         raise RuntimeError("duplicate_request was not rejected")
     _set_targets_off(ha_token)
-    print(
-        "Widget backend transport regression ok: subscribe/state, stale_generation, "
-        "duplicate_request, exact integration_device_id"
-    )
+    print("Widget backend transport regression ok: subscribe/state, stale_generation, duplicate_request, exact integration_device_id")
     return generation
 
 
@@ -436,87 +317,114 @@ def _dismiss_optional_dialogs(page: Page) -> None:
             pass
 
 
-def _browser_verify() -> None:
+def _open_widget(page: Page, room_id: str, *, approve_if_prompted: bool) -> Any:
+    page.goto(_room_url(room_id), wait_until="domcontentloaded", timeout=60000)
+    page.get_by_text(ROOM_NAME, exact=True).first.wait_for(state="visible", timeout=60000)
+    _dismiss_optional_dialogs(page)
+    prompt = page.locator(".mx_WidgetCapabilitiesPromptDialog")
+    try:
+        prompt.wait_for(state="visible", timeout=10000 if approve_if_prompted else 2500)
+    except PlaywrightTimeoutError:
+        pass
+    else:
+        if not approve_if_prompted:
+            raise RuntimeError("Widget capabilities were unexpectedly forgotten")
+        prompt.get_by_role("button", name="Approve").click(timeout=5000)
+    selector = 'iframe[src*="127.0.0.1:8090"]'
+    page.locator(selector).first.wait_for(state="attached", timeout=60000)
+    frame = page.frame_locator(selector).first
+    frame.locator(".widget-shell").wait_for(state="visible", timeout=60000)
+    frame.locator('.connection-status[data-state="connected"]').wait_for(state="visible", timeout=60000)
+    frame.get_by_text(PANEL_TITLE, exact=True).wait_for(state="visible", timeout=30000)
+    return frame
+
+
+def _browser_session(*, restart: bool = False) -> None:
     matrix_env = _read(MATRIX_ENV_PATH)
-    ha_env = _read(HA_ENV_PATH)
-    widget_state = _read(WIDGET_STATE_PATH)
-    token = str(ha_env["access_token"])
+    token = str(_read(HA_ENV_PATH)["access_token"])
     _set_targets_off(token)
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-
     with sync_playwright() as playwright:
-        context = playwright.chromium.launch_persistent_context(
-            str(PROFILE_DIR),
-            headless=True,
-            viewport={"width": 1440, "height": 1050},
-            device_scale_factor=1,
-        )
+        context = playwright.chromium.launch_persistent_context(str(PROFILE_DIR), headless=True, viewport={"width": 1440, "height": 1050}, device_scale_factor=1)
         page = context.pages[0] if context.pages else context.new_page()
         try:
-            page.goto(_room_url(str(matrix_env["room_id"])), wait_until="domcontentloaded", timeout=60000)
-            page.get_by_text(ROOM_NAME, exact=True).first.wait_for(state="visible", timeout=60000)
-            _dismiss_optional_dialogs(page)
-
-            prompt = page.locator(".mx_WidgetCapabilitiesPromptDialog")
-            prompt.wait_for(state="visible", timeout=60000)
-            prompt.get_by_role("button", name="Approve").click(timeout=5000)
-
-            iframe = page.locator('iframe[src*="127.0.0.1:8090"]').first
-            iframe.wait_for(state="attached", timeout=60000)
-            frame = page.frame_locator('iframe[src*="127.0.0.1:8090"]').first
-            frame.locator(".widget-shell").wait_for(state="visible", timeout=60000)
-            frame.locator('.connection-status[data-state="connected"]').wait_for(state="visible", timeout=60000)
-            frame.get_by_text(PANEL_TITLE, exact=True).wait_for(state="visible", timeout=30000)
-
-            safe = frame.locator(
-                f'button[data-entity="{WIDGET_SAFE_ENTITY}"][data-control="toggle"]'
-            )
+            frame = _open_widget(page, str(matrix_env["room_id"]), approve_if_prompted=not restart)
+            safe = frame.locator(f'button[data-entity="{WIDGET_SAFE_ENTITY}"][data-control="toggle"]')
             safe.wait_for(state="visible", timeout=30000)
             safe.click()
             _wait_state(token, SAFE_TARGET, "on", timeout=30)
-
-            dangerous = frame.locator(
-                f'button[data-entity="{WIDGET_DANGEROUS_ENTITY}"][data-control="toggle"]'
-            )
-            dangerous.wait_for(state="visible", timeout=30000)
-            dangerous.click()
-            dialog = frame.locator('[role="dialog"]')
-            dialog.wait_for(state="visible", timeout=30000)
-            if _state(token, DANGEROUS_TARGET) != "off":
-                raise RuntimeError("confirmation_required Widget control executed before approval")
-            dialog.locator('button[data-confirm="true"]').click()
-            _wait_state(token, DANGEROUS_TARGET, "on", timeout=30)
-
-            page.screenshot(path=str(SCREENSHOT_DIR / "04-element-native-widget.png"), full_page=False)
-            print(
-                "Element Widget E2E ok: capability approval, real iframe, safe action, "
-                "confirmation_required action and HA state round-trip"
-            )
+            if not restart:
+                dangerous = frame.locator(f'button[data-entity="{WIDGET_DANGEROUS_ENTITY}"][data-control="toggle"]')
+                dangerous.wait_for(state="visible", timeout=30000)
+                dangerous.click()
+                dialog = frame.locator('[role="dialog"]')
+                dialog.wait_for(state="visible", timeout=30000)
+                if _state(token, DANGEROUS_TARGET) != "off":
+                    raise RuntimeError("confirmation_required Widget control executed before approval")
+                dialog.locator('button[data-confirm="true"]').click()
+                _wait_state(token, DANGEROUS_TARGET, "on", timeout=30)
+            screenshot = "05-element-widget-after-ha-restart.png" if restart else "04-element-native-widget.png"
+            page.screenshot(path=str(SCREENSHOT_DIR / screenshot), full_page=False)
+            print("Element Widget restart E2E ok: resubscribed and executed HA action" if restart else "Element Widget E2E ok: capability approval, real iframe, safe action, confirmation_required action and HA state round-trip")
         except Exception:
-            page.screenshot(path=str(SCREENSHOT_DIR / "failure-native-widget.png"), full_page=False)
+            page.screenshot(path=str(SCREENSHOT_DIR / ("failure-native-widget-restart.png" if restart else "failure-native-widget-initial.png")), full_page=False)
             raise
         finally:
             context.close()
+    _set_targets_off(token)
 
 
-def configure() -> None:
-    _configure_widget()
-    _backend_transport_regression()
+def _verify_recovery() -> None:
+    matrix_env = _read(MATRIX_ENV_PATH)
+    widget_state = _read(WIDGET_STATE_PATH)
+    ha_token = str(_read(HA_ENV_PATH)["access_token"])
+    user_token = str(matrix_env["user_access_token"])
+    _wait_state(ha_token, SAFE_TARGET, "off", timeout=30)
+    snapshot, cursor = _subscribe_snapshot(matrix_env, widget_state)
+    generation = int(snapshot["generation"])
+    entities = {item.get("entity_id"): item for item in snapshot.get("entities", []) if isinstance(item, dict)}
+    safe = entities.get(WIDGET_SAFE_ENTITY)
+    if not isinstance(safe, dict) or safe.get("state") != "off":
+        raise RuntimeError(f"recovered Widget snapshot is not current: {safe}")
 
+    deadline = time.monotonic() + 2.5
+    extra_states = 0
+    while time.monotonic() < deadline:
+        response = _sync(user_token, cursor, 700)
+        cursor = str(response["next_batch"])
+        for event in response.get("to_device", {}).get("events", []):
+            if event.get("type") == WIDGET_EVENT_TYPE and event.get("content", {}).get("op") == "state":
+                extra_states += 1
+    if extra_states:
+        raise RuntimeError(f"Widget recovery snapshot storm detected: {extra_states} extra states")
 
-def verify() -> None:
-    _browser_verify()
+    stale_id = str(uuid4())
+    _send_widget_to_device(matrix_env, widget_state, {
+        "schema": 1, "op": "action", "room_id": widget_state["room_id"], "panel_id": PANEL_ID,
+        "generation": generation - 1, "request_id": stale_id, "kind": "entity_control",
+        "entity_id": WIDGET_SAFE_ENTITY, "control": "toggle",
+    })
+    error, _ = _wait_to_device(user_token, cursor, lambda content: content.get("op") == "error" and content.get("status") == "stale_generation")
+    if error.get("status") != "stale_generation" or _state(ha_token, SAFE_TARGET) != "off":
+        raise RuntimeError("stale Widget action executed after reconnect")
+    print("Widget recovery ok: one current snapshot, no replay storm, stale action rejected")
 
 
 def main() -> int:
-    if len(sys.argv) != 2 or sys.argv[1] not in {"configure", "verify"}:
-        print("usage: widget-e2e.py {configure|verify}", file=sys.stderr)
+    modes = {"configure", "verify", "verify-recovery", "verify-restart"}
+    if len(sys.argv) != 2 or sys.argv[1] not in modes:
+        print("usage: widget-e2e.py {configure|verify|verify-recovery|verify-restart}", file=sys.stderr)
         return 2
-    if sys.argv[1] == "configure":
-        configure()
+    mode = sys.argv[1]
+    if mode == "configure":
+        _configure_widget(); _backend_transport_regression()
+    elif mode == "verify":
+        _browser_session(restart=False)
+    elif mode == "verify-recovery":
+        _verify_recovery()
     else:
-        verify()
+        _browser_session(restart=True)
     return 0
 
 

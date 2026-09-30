@@ -16,8 +16,9 @@ import {
 } from "./protocol";
 import { renderPanelHtml, type PendingConfirmationView } from "./render";
 
-const root = document.querySelector<HTMLElement>("#app");
-if (!root) throw new Error("Missing #app root");
+const rootElement = document.querySelector<HTMLElement>("#app");
+if (!rootElement) throw new Error("Missing #app root");
+const root: HTMLElement = rootElement;
 
 const locale: WidgetLocale = navigator.language.toLowerCase().startsWith("ru") ? "ru" : "en";
 const config = parseWidgetConfig(window.location.hash);

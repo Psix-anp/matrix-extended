@@ -60,20 +60,30 @@ jobs:
           PY
 
   real_stack:
-    name: Real HA 2026.9.2 + Synapse 1.160.0 + Element 1.12.26
+    name: Real HA 2026.9.4 + Synapse 1.161.0 + Element 1.12.30 + Widget
     needs:
       - fast
       - manifest_runtime
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Build Native Matrix Widget
+        run: |
+          cd widget
+          npm install --no-audit --no-fund
+          npx tsc --noEmit
+          npm test
+          npm run build
       - name: Generate disposable Synapse config
         run: ci/scripts/prepare-synapse.sh
-      - name: Start Synapse 1.160.0
+      - name: Start Synapse 1.161.0
         run: |
           E2E_UID="$(id -u)" E2E_GID="$(id -g)" docker compose -f compose.test.yml up -d synapse
       - name: Wait for Matrix Client API
@@ -105,7 +115,11 @@ jobs:
         run: |
           python -m pip install playwright==1.62.0 "matrix-nio[e2e]==0.26.0"
           python -m playwright install --with-deps chromium
-      - name: Start Element Web 1.12.26
+      - name: Start Matrix Widget
+        run: docker compose -f compose.test.yml up -d --no-deps widget
+      - name: Wait for Matrix Widget
+        run: python ci/scripts/wait-http.py http://127.0.0.1:8090/index.html 90
+      - name: Start Element Web 1.12.30
         run: docker compose -f compose.test.yml up -d --no-deps element
       - name: Wait for Element Web
         run: python ci/scripts/wait-http.py http://127.0.0.1:8080/config.json 90
@@ -113,7 +127,7 @@ jobs:
         run: python ci/scripts/element-e2e.py login
       - name: Prepare Home Assistant config
         run: ci/scripts/prepare-ha.sh
-      - name: Start Home Assistant 2026.9.2
+      - name: Start Home Assistant 2026.9.4
         run: docker compose -f compose.test.yml up -d homeassistant
       - name: Wait for Home Assistant onboarding API
         run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
@@ -137,6 +151,10 @@ jobs:
         run: python ci/scripts/verify-ha-entities.py
       - name: Verify Element decrypts text and renders rich Matrix events
         run: python ci/scripts/element-e2e.py verify-message-rich
+      - name: Configure Native Matrix Widget and verify backend transport security
+        run: python ci/scripts/widget-e2e.py configure
+      - name: Verify Native Matrix Widget in Element
+        run: python ci/scripts/widget-e2e.py verify
       - name: Verify graphical send_media executes in real Home Assistant
         run: python ci/scripts/verify-runtime.py send-media
       - name: Verify image_proxy_stream Media Source uses a native image frame
@@ -161,12 +179,16 @@ jobs:
         run: python ci/scripts/ha-reconnect.py verify-reconnect
       - name: Verify Native Matrix Control recovery coalesces to the latest state
         run: python ci/scripts/matrix-control-e2e.py verify-recovery
+      - name: Verify Native Matrix Widget recovery sends one current snapshot
+        run: python ci/scripts/widget-e2e.py verify-recovery
       - name: Restart Home Assistant
         run: docker compose -f compose.test.yml restart homeassistant
       - name: Wait for Home Assistant after restart
         run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
       - name: Verify config entry after Home Assistant restart
         run: python ci/scripts/ha-e2e.py verify-restart
+      - name: Verify Native Matrix Widget resubscribes after Home Assistant restart
+        run: python ci/scripts/widget-e2e.py verify-restart
       - name: Verify rich last incoming event sensor after Matrix reaction
         run: python ci/scripts/verify-runtime.py last-receive
       - name: Verify Native Matrix Control root stability and explicit Repair after restart
@@ -188,7 +210,7 @@ jobs:
         run: |
           mkdir -p .ci
           docker compose -f compose.test.yml ps | tee .ci/failure-stack.log
-          docker compose -f compose.test.yml logs --no-color --tail=500 homeassistant synapse element | tee -a .ci/failure-stack.log
+          docker compose -f compose.test.yml logs --no-color --tail=500 homeassistant synapse element widget | tee -a .ci/failure-stack.log
       - name: Upload stack diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -202,31 +224,45 @@ jobs:
         run: docker compose -f compose.test.yml down -v --remove-orphans
 
   package:
-    name: Verified install ZIP
+    name: Verified HA + Widget ZIPs
     needs:
       - fast
       - manifest_runtime
       - real_stack
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Build and verify install archive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Build Native Matrix Widget
+        run: |
+          cd widget
+          npm install --no-audit --no-fund
+          npx tsc --noEmit
+          npm test
+          npm run build
+      - name: Build and verify release archives
         id: release
         run: |
+          set -euo pipefail
           version="$(python -c 'import json; print(json.load(open("custom_components/matrix_extended/manifest.json"))["version"])')"
           python ci/scripts/build-release.py
           sha256sum "dist/matrix_extended-ha-install-v${version}.zip" > "dist/matrix_extended-ha-install-v${version}.zip.sha256"
+          sha256sum "dist/matrix_extended-widget-v${version}.zip" > "dist/matrix_extended-widget-v${version}.zip.sha256"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-      - name: Upload verified install archive
+      - name: Upload verified release archives
         uses: actions/upload-artifact@v4
         with:
-          name: matrix_extended-ha-install-v${{ steps.release.outputs.version }}
+          name: matrix_extended-release-v${{ steps.release.outputs.version }}
           path: |
             dist/matrix_extended-ha-install-v${{ steps.release.outputs.version }}.zip
             dist/matrix_extended-ha-install-v${{ steps.release.outputs.version }}.zip.sha256
+            dist/matrix_extended-widget-v${{ steps.release.outputs.version }}.zip
+            dist/matrix_extended-widget-v${{ steps.release.outputs.version }}.zip.sha256
           if-no-files-found: error
           compression-level: 0

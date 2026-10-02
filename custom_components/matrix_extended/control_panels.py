@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 
@@ -14,6 +15,16 @@ DEFAULT_PANEL_DEBOUNCE = 1.5
 MIN_PANEL_DEBOUNCE = 0.25
 MAX_PANEL_DEBOUNCE = 10.0
 
+_WIDGET_CONTROLS: dict[str, frozenset[str]] = {
+    "light": frozenset({"toggle", "brightness"}),
+    "switch": frozenset({"toggle"}),
+    "cover": frozenset({"open", "close", "stop", "position"}),
+    "climate": frozenset({"temperature", "hvac_mode"}),
+    "sensor": frozenset(),
+    "binary_sensor": frozenset(),
+    "media_player": frozenset({"play_pause", "previous", "next", "mute", "volume"}),
+}
+
 
 @dataclass(slots=True, frozen=True)
 class PanelEntity:
@@ -21,6 +32,8 @@ class PanelEntity:
 
     entity_id: str
     label: str
+    widget_controls: tuple[str, ...] = ()
+    confirm_controls: tuple[str, ...] = ()
 
 
 @dataclass(slots=True, frozen=True)
@@ -45,6 +58,8 @@ class ControlPanelDefinition:
     actions: tuple[PanelAction, ...]
     allowed_users: tuple[str, ...]
     debounce: float = DEFAULT_PANEL_DEBOUNCE
+    widget_enabled: bool = False
+    widget_url: str | None = None
 
 
 def _sequence(value: Any, *, name: str) -> Sequence[Any]:
@@ -85,6 +100,17 @@ def _parse_users(value: Any, *, account_allowed_users: set[str]) -> tuple[str, .
     return tuple(users)
 
 
+def _parse_control_list(value: Any, *, name: str) -> tuple[str, ...]:
+    items: list[str] = []
+    seen: set[str] = set()
+    for raw in _sequence(value, name=name):
+        item = _required_text(raw, name=name)
+        if item not in seen:
+            seen.add(item)
+            items.append(item)
+    return tuple(items)
+
+
 def _parse_entities(value: Any) -> tuple[PanelEntity, ...]:
     entities: list[PanelEntity] = []
     seen: set[str] = set()
@@ -98,7 +124,29 @@ def _parse_entities(value: Any) -> tuple[PanelEntity, ...]:
             raise ValueError(f"duplicate entity: {entity_id}")
         seen.add(entity_id)
         label = str(raw.get("label") or entity_id).strip() or entity_id
-        entities.append(PanelEntity(entity_id=entity_id, label=label))
+        domain = entity_id.split(".", 1)[0]
+        widget_controls = _parse_control_list(
+            raw.get("widget_controls", []), name="widget_controls"
+        )
+        allowed = _WIDGET_CONTROLS.get(domain, frozenset())
+        for control in widget_controls:
+            if control not in allowed:
+                raise ValueError(
+                    f"widget control {control!r} is not supported for {domain}"
+                )
+        confirm_controls = _parse_control_list(
+            raw.get("confirm_controls", []), name="confirm_controls"
+        )
+        if not set(confirm_controls).issubset(widget_controls):
+            raise ValueError("confirm_controls must be enabled widget controls")
+        entities.append(
+            PanelEntity(
+                entity_id=entity_id,
+                label=label,
+                widget_controls=widget_controls,
+                confirm_controls=confirm_controls,
+            )
+        )
     return tuple(entities)
 
 
@@ -140,6 +188,19 @@ def _parse_actions(value: Any) -> tuple[PanelAction, ...]:
     return tuple(actions)
 
 
+def _parse_widget_url(value: Any) -> str | None:
+    if value is None or str(value).strip() == "":
+        return None
+    if not isinstance(value, str):
+        raise ValueError("widget_url must be a URL")
+    url = value.strip()
+    parsed = urlparse(url)
+    local = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+    if not parsed.hostname or parsed.scheme not in ({"http", "https"} if local else {"https"}):
+        raise ValueError("widget_url must use HTTPS (HTTP is allowed only for localhost)")
+    return url
+
+
 def _parse_panel(
     raw: Mapping[str, Any],
     *,
@@ -174,6 +235,10 @@ def _parse_panel(
             account_allowed_users=account_allowed_users,
         ),
         debounce=debounce,
+        widget_enabled=_bool(
+            raw.get("widget_enabled"), name="widget_enabled", default=False
+        ),
+        widget_url=_parse_widget_url(raw.get("widget_url")),
     )
 
 
@@ -220,19 +285,29 @@ def _dump_panel(panel: ControlPanelDefinition) -> dict[str, Any]:
                 "confirmation_required": item.action.confirmation_required,
             }
         )
-    return {
+    entities: list[dict[str, Any]] = []
+    for item in panel.entities:
+        entity: dict[str, Any] = {"entity_id": item.entity_id, "label": item.label}
+        if item.widget_controls:
+            entity["widget_controls"] = list(item.widget_controls)
+        if item.confirm_controls:
+            entity["confirm_controls"] = list(item.confirm_controls)
+        entities.append(entity)
+    result: dict[str, Any] = {
         "panel_id": panel.panel_id,
         "room_id": panel.room_id,
         "title": panel.title,
         "enabled": panel.enabled,
-        "entities": [
-            {"entity_id": item.entity_id, "label": item.label}
-            for item in panel.entities
-        ],
+        "entities": entities,
         "actions": actions,
         "allowed_users": list(panel.allowed_users),
         "debounce": panel.debounce,
     }
+    if panel.widget_enabled:
+        result["widget_enabled"] = True
+    if panel.widget_url is not None:
+        result["widget_url"] = panel.widget_url
+    return result
 
 
 def dump_panel_yaml(panel: ControlPanelDefinition) -> str:

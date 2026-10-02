@@ -1,6 +1,6 @@
 services:
   synapse:
-    image: matrixdotorg/synapse:v1.160.0
+    image: matrixdotorg/synapse:v1.161.0
     restart: "no"
     ports:
       - "127.0.0.1:8008:8008"
@@ -17,7 +17,7 @@ services:
       retries: 30
 
   element:
-    image: vectorim/element-web:v1.12.26
+    image: vectorim/element-web:v1.12.30
     restart: "no"
     ports:
       - "127.0.0.1:8080:80"
@@ -27,8 +27,16 @@ services:
       synapse:
         condition: service_healthy
 
+  widget:
+    image: nginx:1.29-alpine
+    restart: "no"
+    ports:
+      - "127.0.0.1:8090:80"
+    volumes:
+      - ./widget/dist:/usr/share/nginx/html:ro
+
   homeassistant:
-    image: ghcr.io/home-assistant/home-assistant:2026.9.2
+    image: ghcr.io/home-assistant/home-assistant:2026.9.4
     restart: "no"
     ports:
       - "127.0.0.1:8123:8123"

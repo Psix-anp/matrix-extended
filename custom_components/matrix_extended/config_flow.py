@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 import secrets
 from typing import Any
 
@@ -71,16 +72,23 @@ from .const import (
 )
 from .control_panels import (
     DEFAULT_PANEL_DEBOUNCE,
+    _WIDGET_CONTROLS,
     dump_panel_yaml,
     load_panel_yaml,
     normalize_control_panels,
 )
 from .routing import normalize_routing_profiles
+from .widget_config import build_widget_config
 
 CONF_PASSWORD = "password"
 CONF_PANEL_OPERATION = "panel_operation"
 CONF_PANEL_CONFIRM = "panel_confirm"
 CONF_PANEL_YAML = "panel_yaml"
+CONF_PANEL_WIDGET_ENABLED = "widget_enabled"
+CONF_PANEL_WIDGET_URL = "widget_url"
+CONF_PANEL_WIDGET_ENTITY_ID = "widget_entity_id"
+CONF_PANEL_WIDGET_CONTROLS = "widget_controls"
+CONF_PANEL_CONFIRM_CONTROLS = "confirm_controls"
 
 _PANEL_OPERATION_DETAILS = "details"
 _PANEL_OPERATION_ACTION_ADD = "action_add"
@@ -166,9 +174,7 @@ class MatrixExtendedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 await self.async_set_unique_id(f"{homeserver}|{details.user_id}")
                 self._abort_if_unique_id_configured()
-                allowed_users = _list(user_input.get(CONF_ALLOWED_USERS)) or [
-                    details.user_id
-                ]
+                allowed_users = _list(user_input.get(CONF_ALLOWED_USERS)) or [details.user_id]
                 allowed_rooms = _list(user_input.get(CONF_ALLOWED_ROOMS)) or [
                     user_input[CONF_DEFAULT_ROOM]
                 ]
@@ -186,9 +192,7 @@ class MatrixExtendedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_INCOMING_ENABLED: user_input[CONF_INCOMING_ENABLED],
                         CONF_ALLOWED_USERS: allowed_users,
                         CONF_ALLOWED_ROOMS: allowed_rooms,
-                        CONF_DOWNLOAD_INCOMING_MEDIA: user_input[
-                            CONF_DOWNLOAD_INCOMING_MEDIA
-                        ],
+                        CONF_DOWNLOAD_INCOMING_MEDIA: user_input[CONF_DOWNLOAD_INCOMING_MEDIA],
                     },
                 )
 
@@ -197,15 +201,11 @@ class MatrixExtendedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_HOMESERVER): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
                 ),
-                vol.Required(CONF_USER_ID): selector.TextSelector(
-                    selector.TextSelectorConfig()
-                ),
+                vol.Required(CONF_USER_ID): selector.TextSelector(selector.TextSelectorConfig()),
                 vol.Required(CONF_PASSWORD): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
                 ),
-                vol.Required(CONF_DEFAULT_ROOM): selector.TextSelector(
-                    selector.TextSelectorConfig()
-                ),
+                vol.Required(CONF_DEFAULT_ROOM): selector.TextSelector(selector.TextSelectorConfig()),
                 vol.Optional(CONF_VERIFY_SSL, default=True): selector.BooleanSelector(),
                 vol.Optional(CONF_REQUIRE_E2EE, default=True): selector.BooleanSelector(),
                 vol.Optional(CONF_INCOMING_ENABLED, default=True): selector.BooleanSelector(),
@@ -215,9 +215,7 @@ class MatrixExtendedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_ALLOWED_ROOMS, default=[]): selector.TextSelector(
                     selector.TextSelectorConfig(multiple=True)
                 ),
-                vol.Optional(
-                    CONF_DOWNLOAD_INCOMING_MEDIA, default=True
-                ): selector.BooleanSelector(),
+                vol.Optional(CONF_DOWNLOAD_INCOMING_MEDIA, default=True): selector.BooleanSelector(),
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
@@ -232,6 +230,7 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         self._panel_id: str | None = None
         self._panel_draft: dict[str, Any] | None = None
         self._panel_action_id: str | None = None
+        self._panel_widget_entity_id: str | None = None
         self._panel_import_pending: dict[str, Any] | None = None
 
     def _value(self, key: str, default: Any = None) -> Any:
@@ -307,6 +306,7 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                 self._panel_id = panel_id
                 self._panel_draft = panel
                 self._panel_action_id = None
+                self._panel_widget_entity_id = None
                 return True
         return False
 
@@ -344,6 +344,7 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         self._panel_id = None
         self._panel_draft = None
         self._panel_action_id = None
+        self._panel_widget_entity_id = None
         self._panel_import_pending = None
 
     def _panel_details_schema(
@@ -355,32 +356,12 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         default_room = current_room or (room_options[0] if room_options else "")
         schema: dict[Any, Any] = {}
         if include_id:
-            schema[
-                vol.Required(
-                    CONF_PANEL_ID,
-                    default=str(current.get(CONF_PANEL_ID, "")),
-                )
-            ] = selector.TextSelector(selector.TextSelectorConfig())
-        schema[
-            vol.Required(
-                CONF_PANEL_ROOM_ID,
-                default=default_room,
-            )
-        ] = selector.SelectSelector(
+            schema[vol.Required(CONF_PANEL_ID, default=str(current.get(CONF_PANEL_ID, "")))] = selector.TextSelector(selector.TextSelectorConfig())
+        schema[vol.Required(CONF_PANEL_ROOM_ID, default=default_room)] = selector.SelectSelector(
             selector.SelectSelectorConfig(options=room_options)
         )
-        schema[
-            vol.Required(
-                CONF_PANEL_TITLE,
-                default=str(current.get(CONF_PANEL_TITLE, "")),
-            )
-        ] = selector.TextSelector(selector.TextSelectorConfig())
-        schema[
-            vol.Optional(
-                CONF_PANEL_ENABLED,
-                default=bool(current.get(CONF_PANEL_ENABLED, True)),
-            )
-        ] = selector.BooleanSelector()
+        schema[vol.Required(CONF_PANEL_TITLE, default=str(current.get(CONF_PANEL_TITLE, "")))] = selector.TextSelector(selector.TextSelectorConfig())
+        schema[vol.Optional(CONF_PANEL_ENABLED, default=bool(current.get(CONF_PANEL_ENABLED, True)))] = selector.BooleanSelector()
         schema[
             vol.Optional(
                 CONF_PANEL_ENTITIES,
@@ -391,24 +372,14 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                 ],
             )
         ] = selector.EntitySelector(selector.EntitySelectorConfig(multiple=True))
-        schema[
-            vol.Optional(
-                CONF_PANEL_ALLOWED_USERS,
-                default=_list(current.get(CONF_PANEL_ALLOWED_USERS, [])),
-            )
-        ] = selector.TextSelector(selector.TextSelectorConfig(multiple=True))
+        schema[vol.Optional(CONF_PANEL_ALLOWED_USERS, default=_list(current.get(CONF_PANEL_ALLOWED_USERS, [])))] = selector.TextSelector(selector.TextSelectorConfig(multiple=True))
         schema[
             vol.Optional(
                 CONF_PANEL_DEBOUNCE,
                 default=float(current.get(CONF_PANEL_DEBOUNCE, DEFAULT_PANEL_DEBOUNCE)),
             )
         ] = selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0.25,
-                max=10.0,
-                step=0.25,
-                mode=selector.NumberSelectorMode.BOX,
-            )
+            selector.NumberSelectorConfig(min=0.25, max=10.0, step=0.25, mode=selector.NumberSelectorMode.BOX)
         )
         return vol.Schema(schema)
 
@@ -425,13 +396,23 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             if include_id
             else str(previous[CONF_PANEL_ID]).strip()
         )
-        entities = [
-            {
+        previous_entities = {
+            str(item.get(CONF_PANEL_ENTITY_ID)): item
+            for item in previous.get(CONF_PANEL_ENTITIES, [])
+            if isinstance(item, dict) and item.get(CONF_PANEL_ENTITY_ID)
+        }
+        entities: list[dict[str, Any]] = []
+        for entity_id in _list(user_input.get(CONF_PANEL_ENTITIES, [])):
+            old = previous_entities.get(entity_id, {})
+            entity = {
                 CONF_PANEL_ENTITY_ID: entity_id,
-                CONF_PANEL_ENTITY_LABEL: entity_id,
+                CONF_PANEL_ENTITY_LABEL: str(old.get(CONF_PANEL_ENTITY_LABEL) or entity_id),
             }
-            for entity_id in _list(user_input.get(CONF_PANEL_ENTITIES, []))
-        ]
+            if old.get(CONF_PANEL_WIDGET_CONTROLS):
+                entity[CONF_PANEL_WIDGET_CONTROLS] = _list(old.get(CONF_PANEL_WIDGET_CONTROLS))
+            if old.get(CONF_PANEL_CONFIRM_CONTROLS):
+                entity[CONF_PANEL_CONFIRM_CONTROLS] = _list(old.get(CONF_PANEL_CONFIRM_CONTROLS))
+            entities.append(entity)
         return {
             CONF_PANEL_ID: panel_id,
             CONF_PANEL_ROOM_ID: str(user_input[CONF_PANEL_ROOM_ID]).strip(),
@@ -439,12 +420,10 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             CONF_PANEL_ENABLED: bool(user_input.get(CONF_PANEL_ENABLED, True)),
             CONF_PANEL_ENTITIES: entities,
             CONF_PANEL_ACTIONS: deepcopy(previous.get(CONF_PANEL_ACTIONS, [])),
-            CONF_PANEL_ALLOWED_USERS: _list(
-                user_input.get(CONF_PANEL_ALLOWED_USERS, [])
-            ),
-            CONF_PANEL_DEBOUNCE: float(
-                user_input.get(CONF_PANEL_DEBOUNCE, DEFAULT_PANEL_DEBOUNCE)
-            ),
+            CONF_PANEL_ALLOWED_USERS: _list(user_input.get(CONF_PANEL_ALLOWED_USERS, [])),
+            CONF_PANEL_DEBOUNCE: float(user_input.get(CONF_PANEL_DEBOUNCE, DEFAULT_PANEL_DEBOUNCE)),
+            CONF_PANEL_WIDGET_ENABLED: bool(previous.get(CONF_PANEL_WIDGET_ENABLED, False)),
+            CONF_PANEL_WIDGET_URL: previous.get(CONF_PANEL_WIDGET_URL),
         }
 
     @staticmethod
@@ -458,42 +437,15 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         action = current or {}
         return vol.Schema(
             {
-                vol.Required(
-                    CONF_PANEL_ACTION_ID,
-                    default=str(action.get(CONF_PANEL_ACTION_ID, "")),
-                ): selector.TextSelector(selector.TextSelectorConfig()),
-                vol.Required(
-                    CONF_PANEL_ACTION_REACTION,
-                    default=str(action.get(CONF_PANEL_ACTION_REACTION, "")),
-                ): selector.TextSelector(selector.TextSelectorConfig()),
-                vol.Required(
-                    CONF_PANEL_ACTION_LABEL,
-                    default=str(action.get(CONF_PANEL_ACTION_LABEL, "")),
-                ): selector.TextSelector(selector.TextSelectorConfig()),
-                vol.Required(
-                    CONF_PANEL_ACTION_SERVICE,
-                    default=str(action.get(CONF_PANEL_ACTION_SERVICE, "")),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=self._panel_service_options(),
-                        custom_value=True,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
+                vol.Required(CONF_PANEL_ACTION_ID, default=str(action.get(CONF_PANEL_ACTION_ID, ""))): selector.TextSelector(selector.TextSelectorConfig()),
+                vol.Required(CONF_PANEL_ACTION_REACTION, default=str(action.get(CONF_PANEL_ACTION_REACTION, ""))): selector.TextSelector(selector.TextSelectorConfig()),
+                vol.Required(CONF_PANEL_ACTION_LABEL, default=str(action.get(CONF_PANEL_ACTION_LABEL, ""))): selector.TextSelector(selector.TextSelectorConfig()),
+                vol.Required(CONF_PANEL_ACTION_SERVICE, default=str(action.get(CONF_PANEL_ACTION_SERVICE, ""))): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=self._panel_service_options(), custom_value=True, mode=selector.SelectSelectorMode.DROPDOWN)
                 ),
-                vol.Optional(
-                    CONF_PANEL_ACTION_TARGET,
-                    default=deepcopy(action.get(CONF_PANEL_ACTION_TARGET, {})),
-                ): selector.TargetSelector(),
-                vol.Optional(
-                    CONF_PANEL_ACTION_DATA,
-                    default=self._action_data_text(action),
-                ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
-                vol.Optional(
-                    CONF_PANEL_ACTION_CONFIRMATION_REQUIRED,
-                    default=bool(
-                        action.get(CONF_PANEL_ACTION_CONFIRMATION_REQUIRED, False)
-                    ),
-                ): selector.BooleanSelector(),
+                vol.Optional(CONF_PANEL_ACTION_TARGET, default=deepcopy(action.get(CONF_PANEL_ACTION_TARGET, {}))): selector.TargetSelector(),
+                vol.Optional(CONF_PANEL_ACTION_DATA, default=self._action_data_text(action)): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
+                vol.Optional(CONF_PANEL_ACTION_CONFIRMATION_REQUIRED, default=bool(action.get(CONF_PANEL_ACTION_CONFIRMATION_REQUIRED, False))): selector.BooleanSelector(),
             }
         )
 
@@ -508,41 +460,22 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             parsed_data = {}
         return {
             CONF_PANEL_ACTION_ID: str(user_input[CONF_PANEL_ACTION_ID]).strip(),
-            CONF_PANEL_ACTION_REACTION: str(
-                user_input[CONF_PANEL_ACTION_REACTION]
-            ).strip(),
+            CONF_PANEL_ACTION_REACTION: str(user_input[CONF_PANEL_ACTION_REACTION]).strip(),
             CONF_PANEL_ACTION_LABEL: str(user_input[CONF_PANEL_ACTION_LABEL]).strip(),
-            CONF_PANEL_ACTION_SERVICE: str(
-                user_input[CONF_PANEL_ACTION_SERVICE]
-            ).strip(),
-            CONF_PANEL_ACTION_TARGET: deepcopy(
-                user_input.get(CONF_PANEL_ACTION_TARGET, {})
-            ),
+            CONF_PANEL_ACTION_SERVICE: str(user_input[CONF_PANEL_ACTION_SERVICE]).strip(),
+            CONF_PANEL_ACTION_TARGET: deepcopy(user_input.get(CONF_PANEL_ACTION_TARGET, {})),
             CONF_PANEL_ACTION_DATA: parsed_data,
-            CONF_PANEL_ACTION_CONFIRMATION_REQUIRED: bool(
-                user_input.get(CONF_PANEL_ACTION_CONFIRMATION_REQUIRED, False)
-            ),
+            CONF_PANEL_ACTION_CONFIRMATION_REQUIRED: bool(user_input.get(CONF_PANEL_ACTION_CONFIRMATION_REQUIRED, False)),
         }
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Show the settings menu."""
         return self.async_show_menu(
             step_id="init",
-            menu_options=[
-                "general",
-                "incoming",
-                "media",
-                "voice_assist",
-                "routes",
-                "control_panels",
-            ],
+            menu_options=["general", "incoming", "media", "voice_assist", "routes", "control_panels"],
         )
 
-    async def async_step_general(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_general(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Edit connection defaults and encryption policy."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -565,38 +498,22 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                 connection_data = dict(self._entry.data)
                 connection_data[CONF_DEFAULT_ROOM] = room
                 connection_data[CONF_VERIFY_SSL] = verify_ssl
-                self.hass.config_entries.async_update_entry(
-                    self._entry, data=connection_data
-                )
+                self.hass.config_entries.async_update_entry(self._entry, data=connection_data)
                 options = dict(self._entry.options)
                 options.pop(CONF_DEFAULT_ROOM, None)
                 options.pop(CONF_VERIFY_SSL, None)
                 options[CONF_REQUIRE_E2EE] = bool(user_input[CONF_REQUIRE_E2EE])
                 return self.async_create_entry(title="", data=options)
-
         schema = vol.Schema(
             {
-                vol.Required(
-                    CONF_DEFAULT_ROOM,
-                    default=self._entry.data[CONF_DEFAULT_ROOM],
-                ): selector.TextSelector(selector.TextSelectorConfig()),
-                vol.Optional(
-                    CONF_VERIFY_SSL,
-                    default=self._entry.data.get(CONF_VERIFY_SSL, True),
-                ): selector.BooleanSelector(),
-                vol.Optional(
-                    CONF_REQUIRE_E2EE,
-                    default=self._value(CONF_REQUIRE_E2EE, True),
-                ): selector.BooleanSelector(),
+                vol.Required(CONF_DEFAULT_ROOM, default=self._entry.data[CONF_DEFAULT_ROOM]): selector.TextSelector(selector.TextSelectorConfig()),
+                vol.Optional(CONF_VERIFY_SSL, default=self._entry.data.get(CONF_VERIFY_SSL, True)): selector.BooleanSelector(),
+                vol.Optional(CONF_REQUIRE_E2EE, default=self._value(CONF_REQUIRE_E2EE, True)): selector.BooleanSelector(),
             }
         )
-        return self.async_show_form(
-            step_id="general", data_schema=schema, errors=errors
-        )
+        return self.async_show_form(step_id="general", data_schema=schema, errors=errors)
 
-    async def async_step_incoming(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_incoming(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Edit inbound event security allowlists."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -608,217 +525,78 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             if enabled and not rooms:
                 errors[CONF_ALLOWED_ROOMS] = "required_when_incoming"
             if not errors:
-                return self._finish(
-                    {
-                        CONF_INCOMING_ENABLED: enabled,
-                        CONF_ALLOWED_USERS: users,
-                        CONF_ALLOWED_ROOMS: rooms,
-                    }
-                )
-
+                return self._finish({CONF_INCOMING_ENABLED: enabled, CONF_ALLOWED_USERS: users, CONF_ALLOWED_ROOMS: rooms})
         schema = vol.Schema(
             {
-                vol.Optional(
-                    CONF_INCOMING_ENABLED,
-                    default=self._value(CONF_INCOMING_ENABLED, True),
-                ): selector.BooleanSelector(),
-                vol.Optional(
-                    CONF_ALLOWED_USERS,
-                    default=self._value(
-                        CONF_ALLOWED_USERS, [self._entry.data[CONF_USER_ID]]
-                    ),
-                ): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
-                vol.Optional(
-                    CONF_ALLOWED_ROOMS,
-                    default=self._value(
-                        CONF_ALLOWED_ROOMS,
-                        [self._entry.data[CONF_DEFAULT_ROOM]],
-                    ),
-                ): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
+                vol.Optional(CONF_INCOMING_ENABLED, default=self._value(CONF_INCOMING_ENABLED, True)): selector.BooleanSelector(),
+                vol.Optional(CONF_ALLOWED_USERS, default=self._value(CONF_ALLOWED_USERS, [self._entry.data[CONF_USER_ID]])): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
+                vol.Optional(CONF_ALLOWED_ROOMS, default=self._value(CONF_ALLOWED_ROOMS, [self._entry.data[CONF_DEFAULT_ROOM]])): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
             }
         )
-        return self.async_show_form(
-            step_id="incoming", data_schema=schema, errors=errors
-        )
+        return self.async_show_form(step_id="incoming", data_schema=schema, errors=errors)
 
-    async def async_step_media(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_media(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Edit incoming media download and retention settings."""
         if user_input is not None:
             return self._finish(
                 {
-                    CONF_DOWNLOAD_INCOMING_MEDIA: bool(
-                        user_input[CONF_DOWNLOAD_INCOMING_MEDIA]
-                    ),
-                    CONF_INCOMING_MEDIA_RETENTION_DAYS: int(
-                        user_input[CONF_INCOMING_MEDIA_RETENTION_DAYS]
-                    ),
-                    CONF_INCOMING_MEDIA_MAX_MB: int(
-                        user_input[CONF_INCOMING_MEDIA_MAX_MB]
-                    ),
+                    CONF_DOWNLOAD_INCOMING_MEDIA: bool(user_input[CONF_DOWNLOAD_INCOMING_MEDIA]),
+                    CONF_INCOMING_MEDIA_RETENTION_DAYS: int(user_input[CONF_INCOMING_MEDIA_RETENTION_DAYS]),
+                    CONF_INCOMING_MEDIA_MAX_MB: int(user_input[CONF_INCOMING_MEDIA_MAX_MB]),
                 }
             )
-
         schema = vol.Schema(
             {
-                vol.Optional(
-                    CONF_DOWNLOAD_INCOMING_MEDIA,
-                    default=self._value(CONF_DOWNLOAD_INCOMING_MEDIA, True),
-                ): selector.BooleanSelector(),
-                vol.Optional(
-                    CONF_INCOMING_MEDIA_RETENTION_DAYS,
-                    default=self._value(
-                        CONF_INCOMING_MEDIA_RETENTION_DAYS,
-                        DEFAULT_INCOMING_MEDIA_RETENTION_DAYS,
-                    ),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=0,
-                        max=365,
-                        step=1,
-                        mode=selector.NumberSelectorMode.BOX,
-                    )
-                ),
-                vol.Optional(
-                    CONF_INCOMING_MEDIA_MAX_MB,
-                    default=self._value(
-                        CONF_INCOMING_MEDIA_MAX_MB, DEFAULT_INCOMING_MEDIA_MAX_MB
-                    ),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=16,
-                        max=4096,
-                        step=1,
-                        mode=selector.NumberSelectorMode.BOX,
-                    )
-                ),
+                vol.Optional(CONF_DOWNLOAD_INCOMING_MEDIA, default=self._value(CONF_DOWNLOAD_INCOMING_MEDIA, True)): selector.BooleanSelector(),
+                vol.Optional(CONF_INCOMING_MEDIA_RETENTION_DAYS, default=self._value(CONF_INCOMING_MEDIA_RETENTION_DAYS, DEFAULT_INCOMING_MEDIA_RETENTION_DAYS)): selector.NumberSelector(selector.NumberSelectorConfig(min=0, max=365, step=1, mode=selector.NumberSelectorMode.BOX)),
+                vol.Optional(CONF_INCOMING_MEDIA_MAX_MB, default=self._value(CONF_INCOMING_MEDIA_MAX_MB, DEFAULT_INCOMING_MEDIA_MAX_MB)): selector.NumberSelector(selector.NumberSelectorConfig(min=16, max=4096, step=1, mode=selector.NumberSelectorMode.BOX)),
             }
         )
         return self.async_show_form(step_id="media", data_schema=schema)
 
-    async def async_step_voice_assist(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_voice_assist(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Edit automatic Matrix voice-to-Assist settings."""
         if user_input is not None:
             return self._finish(
                 {
-                    CONF_VOICE_ASSIST_ENABLED: bool(
-                        user_input.get(CONF_VOICE_ASSIST_ENABLED, False)
-                    ),
-                    CONF_VOICE_ASSIST_STT_ENTITY: user_input.get(
-                        CONF_VOICE_ASSIST_STT_ENTITY
-                    ),
-                    CONF_VOICE_ASSIST_LANGUAGE: user_input.get(
-                        CONF_VOICE_ASSIST_LANGUAGE
-                    ),
-                    CONF_VOICE_ASSIST_CONVERSATION_AGENT: user_input.get(
-                        CONF_VOICE_ASSIST_CONVERSATION_AGENT
-                    ),
-                    CONF_VOICE_ASSIST_REPLY_MODE: user_input.get(
-                        CONF_VOICE_ASSIST_REPLY_MODE, "text"
-                    ),
-                    CONF_VOICE_ASSIST_TTS_ENTITY: user_input.get(
-                        CONF_VOICE_ASSIST_TTS_ENTITY
-                    ),
-                    CONF_VOICE_ASSIST_ALLOWED_USERS: _list(
-                        user_input.get(CONF_VOICE_ASSIST_ALLOWED_USERS, [])
-                    ),
-                    CONF_VOICE_ASSIST_ALLOWED_ROOMS: _list(
-                        user_input.get(CONF_VOICE_ASSIST_ALLOWED_ROOMS, [])
-                    ),
+                    CONF_VOICE_ASSIST_ENABLED: bool(user_input.get(CONF_VOICE_ASSIST_ENABLED, False)),
+                    CONF_VOICE_ASSIST_STT_ENTITY: user_input.get(CONF_VOICE_ASSIST_STT_ENTITY),
+                    CONF_VOICE_ASSIST_LANGUAGE: user_input.get(CONF_VOICE_ASSIST_LANGUAGE),
+                    CONF_VOICE_ASSIST_CONVERSATION_AGENT: user_input.get(CONF_VOICE_ASSIST_CONVERSATION_AGENT),
+                    CONF_VOICE_ASSIST_REPLY_MODE: user_input.get(CONF_VOICE_ASSIST_REPLY_MODE, "text"),
+                    CONF_VOICE_ASSIST_TTS_ENTITY: user_input.get(CONF_VOICE_ASSIST_TTS_ENTITY),
+                    CONF_VOICE_ASSIST_ALLOWED_USERS: _list(user_input.get(CONF_VOICE_ASSIST_ALLOWED_USERS, [])),
+                    CONF_VOICE_ASSIST_ALLOWED_ROOMS: _list(user_input.get(CONF_VOICE_ASSIST_ALLOWED_ROOMS, [])),
                 }
             )
-
         schema = vol.Schema(
             {
-                vol.Optional(
-                    CONF_VOICE_ASSIST_ENABLED,
-                    default=self._value(CONF_VOICE_ASSIST_ENABLED, False),
-                ): selector.BooleanSelector(),
-                vol.Optional(
-                    CONF_VOICE_ASSIST_STT_ENTITY,
-                    description={
-                        "suggested_value": self._value(CONF_VOICE_ASSIST_STT_ENTITY)
-                    },
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="stt")
-                ),
-                vol.Optional(
-                    CONF_VOICE_ASSIST_LANGUAGE,
-                    description={
-                        "suggested_value": self._value(CONF_VOICE_ASSIST_LANGUAGE)
-                    },
-                ): selector.TextSelector(selector.TextSelectorConfig()),
-                vol.Optional(
-                    CONF_VOICE_ASSIST_CONVERSATION_AGENT,
-                    description={
-                        "suggested_value": self._value(
-                            CONF_VOICE_ASSIST_CONVERSATION_AGENT
-                        )
-                    },
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="conversation")
-                ),
-                vol.Optional(
-                    CONF_VOICE_ASSIST_REPLY_MODE,
-                    default=self._value(CONF_VOICE_ASSIST_REPLY_MODE, "text"),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=["text", "voice", "both"],
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Optional(
-                    CONF_VOICE_ASSIST_TTS_ENTITY,
-                    description={
-                        "suggested_value": self._value(CONF_VOICE_ASSIST_TTS_ENTITY)
-                    },
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="tts")
-                ),
-                vol.Optional(
-                    CONF_VOICE_ASSIST_ALLOWED_USERS,
-                    default=self._value(CONF_VOICE_ASSIST_ALLOWED_USERS, []),
-                ): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
-                vol.Optional(
-                    CONF_VOICE_ASSIST_ALLOWED_ROOMS,
-                    default=self._value(CONF_VOICE_ASSIST_ALLOWED_ROOMS, []),
-                ): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
+                vol.Optional(CONF_VOICE_ASSIST_ENABLED, default=self._value(CONF_VOICE_ASSIST_ENABLED, False)): selector.BooleanSelector(),
+                vol.Optional(CONF_VOICE_ASSIST_STT_ENTITY, description={"suggested_value": self._value(CONF_VOICE_ASSIST_STT_ENTITY)}): selector.EntitySelector(selector.EntitySelectorConfig(domain="stt")),
+                vol.Optional(CONF_VOICE_ASSIST_LANGUAGE, description={"suggested_value": self._value(CONF_VOICE_ASSIST_LANGUAGE)}): selector.TextSelector(selector.TextSelectorConfig()),
+                vol.Optional(CONF_VOICE_ASSIST_CONVERSATION_AGENT, description={"suggested_value": self._value(CONF_VOICE_ASSIST_CONVERSATION_AGENT)}): selector.EntitySelector(selector.EntitySelectorConfig(domain="conversation")),
+                vol.Optional(CONF_VOICE_ASSIST_REPLY_MODE, default=self._value(CONF_VOICE_ASSIST_REPLY_MODE, "text")): selector.SelectSelector(selector.SelectSelectorConfig(options=["text", "voice", "both"], mode=selector.SelectSelectorMode.DROPDOWN)),
+                vol.Optional(CONF_VOICE_ASSIST_TTS_ENTITY, description={"suggested_value": self._value(CONF_VOICE_ASSIST_TTS_ENTITY)}): selector.EntitySelector(selector.EntitySelectorConfig(domain="tts")),
+                vol.Optional(CONF_VOICE_ASSIST_ALLOWED_USERS, default=self._value(CONF_VOICE_ASSIST_ALLOWED_USERS, [])): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
+                vol.Optional(CONF_VOICE_ASSIST_ALLOWED_ROOMS, default=self._value(CONF_VOICE_ASSIST_ALLOWED_ROOMS, [])): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
             }
         )
         return self.async_show_form(step_id="voice_assist", data_schema=schema)
 
-    async def async_step_control_panels(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_control_panels(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Show graphical native Matrix control-panel management."""
         self._reset_panel_editor()
         menu = ["panel_add", "panel_import"]
         if self._raw_panels():
-            menu.extend(
-                [
-                    "panel_edit",
-                    "panel_delete",
-                    "panel_repair",
-                    "panel_export_select",
-                ]
-            )
+            menu.extend(["panel_edit", "panel_delete", "panel_repair", "panel_export_select"])
         return self.async_show_menu(step_id="control_panels", menu_options=menu)
 
-    async def async_step_panel_add(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_add(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Create a new panel draft before adding actions and saving."""
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
-                draft = self._details_to_draft(
-                    user_input,
-                    existing=None,
-                    include_id=True,
-                )
+                draft = self._details_to_draft(user_input, existing=None, include_id=True)
                 self._validate_draft(draft)
             except ValueError:
                 errors["base"] = "invalid_panel"
@@ -830,15 +608,9 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             schema = self._panel_details_schema(None, include_id=True)
         except ValueError:
             return self.async_abort(reason="panel_runtime_unavailable")
-        return self.async_show_form(
-            step_id="panel_add",
-            data_schema=schema,
-            errors=errors,
-        )
+        return self.async_show_form(step_id="panel_add", data_schema=schema, errors=errors)
 
-    async def async_step_panel_edit(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_edit(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Choose a configured panel and open its graphical editor."""
         panels = self._raw_panels()
         if not panels:
@@ -848,31 +620,24 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             panel_id = str(user_input[CONF_PANEL_ID])
             if self._load_panel_draft(panel_id):
                 return await self.async_step_panel_manage()
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_PANEL_ID): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=panel_ids)
-                )
-            }
-        )
+        schema = vol.Schema({vol.Required(CONF_PANEL_ID): selector.SelectSelector(selector.SelectSelectorConfig(options=panel_ids))})
         return self.async_show_form(step_id="panel_edit", data_schema=schema)
 
-    async def async_step_panel_manage(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_manage(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Show draft details/actions without mutating config until Save."""
         draft = self._panel_draft
         if draft is None:
             return await self.async_step_control_panels()
-        menu = ["panel_edit_details", "panel_action_add"]
+        menu = ["panel_edit_details", "panel_widget"]
+        if draft.get(CONF_PANEL_ENTITIES):
+            menu.append("panel_widget_entity")
+        menu.append("panel_action_add")
         if draft.get(CONF_PANEL_ACTIONS):
             menu.extend(["panel_action_edit", "panel_action_delete"])
         menu.extend(["panel_save", "panel_cancel"])
         return self.async_show_menu(step_id="panel_manage", menu_options=menu)
 
-    async def async_step_panel_edit_details(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_edit_details(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Edit panel room, title, entities, allowlist and debounce."""
         draft = self._draft_base()
         if draft is None:
@@ -880,11 +645,7 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
-                updated = self._details_to_draft(
-                    user_input,
-                    existing=draft,
-                    include_id=False,
-                )
+                updated = self._details_to_draft(user_input, existing=draft, include_id=False)
                 self._validate_draft(updated)
             except ValueError:
                 errors["base"] = "invalid_panel"
@@ -902,9 +663,114 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             description_placeholders={"panel_id": str(draft[CONF_PANEL_ID])},
         )
 
-    async def async_step_panel_action_add(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def _widget_config_text(self, draft: dict[str, Any]) -> str:
+        url = str(draft.get(CONF_PANEL_WIDGET_URL) or "").strip()
+        if not bool(draft.get(CONF_PANEL_WIDGET_ENABLED)) or not url:
+            return ""
+        config = build_widget_config(
+            base_url=url,
+            panel_id=str(draft[CONF_PANEL_ID]),
+            title=str(draft.get(CONF_PANEL_TITLE) or draft[CONF_PANEL_ID]),
+            user_id=str(self._entry.data[CONF_USER_ID]),
+            device_id=str(self._entry.data[CONF_DEVICE_ID]),
+        )
+        return json.dumps(config, ensure_ascii=False, indent=2)
+
+    async def async_step_panel_widget(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Enable/configure the graphical Matrix Widget for this panel."""
+        draft = self._draft_base()
+        if draft is None:
+            return await self.async_step_control_panels()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            enabled = bool(user_input.get(CONF_PANEL_WIDGET_ENABLED, False))
+            url = str(user_input.get(CONF_PANEL_WIDGET_URL) or "").strip()
+            if enabled and not url:
+                errors[CONF_PANEL_WIDGET_URL] = "widget_url_required"
+            else:
+                updated = deepcopy(draft)
+                updated[CONF_PANEL_WIDGET_ENABLED] = enabled
+                updated[CONF_PANEL_WIDGET_URL] = url or None
+                try:
+                    self._validate_draft(updated)
+                except ValueError:
+                    errors["base"] = "invalid_widget"
+                else:
+                    self._panel_draft = updated
+                    return await self.async_step_panel_manage()
+        schema = vol.Schema(
+            {
+                vol.Optional(CONF_PANEL_WIDGET_ENABLED, default=bool(draft.get(CONF_PANEL_WIDGET_ENABLED, False))): selector.BooleanSelector(),
+                vol.Optional(CONF_PANEL_WIDGET_URL, default=str(draft.get(CONF_PANEL_WIDGET_URL) or "")): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.URL)),
+            }
+        )
+        return self.async_show_form(
+            step_id="panel_widget",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"widget_config": self._widget_config_text(draft)},
+        )
+
+    async def async_step_panel_widget_entity(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Choose bounded Widget controls for one displayed panel entity."""
+        draft = self._draft_base()
+        if draft is None:
+            return await self.async_step_control_panels()
+        entities = [item for item in draft.get(CONF_PANEL_ENTITIES, []) if isinstance(item, dict) and item.get(CONF_PANEL_ENTITY_ID)]
+        if not entities:
+            self._panel_widget_entity_id = None
+            return await self.async_step_panel_manage()
+
+        if self._panel_widget_entity_id is None:
+            if user_input is not None:
+                self._panel_widget_entity_id = str(user_input[CONF_PANEL_WIDGET_ENTITY_ID])
+                return await self.async_step_panel_widget_entity()
+            schema = vol.Schema(
+                {vol.Required(CONF_PANEL_WIDGET_ENTITY_ID): selector.SelectSelector(selector.SelectSelectorConfig(options=sorted(str(item[CONF_PANEL_ENTITY_ID]) for item in entities)))}
+            )
+            return self.async_show_form(step_id="panel_widget_entity", data_schema=schema)
+
+        current = next((item for item in entities if str(item.get(CONF_PANEL_ENTITY_ID)) == self._panel_widget_entity_id), None)
+        if current is None:
+            self._panel_widget_entity_id = None
+            return await self.async_step_panel_widget_entity()
+        domain = self._panel_widget_entity_id.split(".", 1)[0]
+        allowed_controls = sorted(_WIDGET_CONTROLS.get(domain, frozenset()))
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            controls = _list(user_input.get(CONF_PANEL_WIDGET_CONTROLS, []))
+            confirm = _list(user_input.get(CONF_PANEL_CONFIRM_CONTROLS, []))
+            if not set(confirm).issubset(controls):
+                errors[CONF_PANEL_CONFIRM_CONTROLS] = "confirm_controls_subset"
+            else:
+                updated = deepcopy(draft)
+                for entity in updated.get(CONF_PANEL_ENTITIES, []):
+                    if str(entity.get(CONF_PANEL_ENTITY_ID)) == self._panel_widget_entity_id:
+                        entity[CONF_PANEL_WIDGET_CONTROLS] = controls
+                        entity[CONF_PANEL_CONFIRM_CONTROLS] = confirm
+                        break
+                try:
+                    self._validate_draft(updated)
+                except ValueError:
+                    errors["base"] = "invalid_widget"
+                else:
+                    self._panel_draft = updated
+                    self._panel_widget_entity_id = None
+                    return await self.async_step_panel_manage()
+        schema = vol.Schema(
+            {
+                vol.Optional(CONF_PANEL_WIDGET_CONTROLS, default=_list(current.get(CONF_PANEL_WIDGET_CONTROLS, []))): selector.SelectSelector(selector.SelectSelectorConfig(options=allowed_controls, multiple=True, mode=selector.SelectSelectorMode.DROPDOWN)),
+                vol.Optional(CONF_PANEL_CONFIRM_CONTROLS, default=_list(current.get(CONF_PANEL_CONFIRM_CONTROLS, []))): selector.SelectSelector(selector.SelectSelectorConfig(options=allowed_controls, multiple=True, mode=selector.SelectSelectorMode.DROPDOWN)),
+            }
+        )
+        return self.async_show_form(
+            step_id="panel_widget_entity",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"entity_id": self._panel_widget_entity_id},
+        )
+
+    async def async_step_panel_action_add(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Add one locally-defined safe action to the current panel draft."""
         draft = self._draft_base()
         if draft is None:
@@ -921,54 +787,23 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             else:
                 self._panel_draft = updated
                 return await self.async_step_panel_manage()
-        return self.async_show_form(
-            step_id="panel_action_add",
-            data_schema=self._action_schema(),
-            errors=errors,
-        )
+        return self.async_show_form(step_id="panel_action_add", data_schema=self._action_schema(), errors=errors)
 
-    async def async_step_panel_action_edit(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_action_edit(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Choose then edit one safe action in the current panel draft."""
         draft = self._draft_base()
         if draft is None:
             return await self.async_step_control_panels()
-        actions = [
-            item
-            for item in draft.get(CONF_PANEL_ACTIONS, [])
-            if isinstance(item, dict) and item.get(CONF_PANEL_ACTION_ID)
-        ]
+        actions = [item for item in draft.get(CONF_PANEL_ACTIONS, []) if isinstance(item, dict) and item.get(CONF_PANEL_ACTION_ID)]
         if not actions:
             return await self.async_step_panel_manage()
         if self._panel_action_id is None:
             if user_input is not None:
                 self._panel_action_id = str(user_input[CONF_PANEL_ACTION_ID])
                 return await self.async_step_panel_action_edit()
-            schema = vol.Schema(
-                {
-                    vol.Required(CONF_PANEL_ACTION_ID): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=sorted(
-                                str(item[CONF_PANEL_ACTION_ID]) for item in actions
-                            )
-                        )
-                    )
-                }
-            )
-            return self.async_show_form(
-                step_id="panel_action_edit",
-                data_schema=schema,
-            )
-
-        current = next(
-            (
-                item
-                for item in actions
-                if str(item[CONF_PANEL_ACTION_ID]) == self._panel_action_id
-            ),
-            None,
-        )
+            schema = vol.Schema({vol.Required(CONF_PANEL_ACTION_ID): selector.SelectSelector(selector.SelectSelectorConfig(options=sorted(str(item[CONF_PANEL_ACTION_ID]) for item in actions)))})
+            return self.async_show_form(step_id="panel_action_edit", data_schema=schema)
+        current = next((item for item in actions if str(item[CONF_PANEL_ACTION_ID]) == self._panel_action_id), None)
         if current is None:
             self._panel_action_id = None
             return await self.async_step_panel_action_edit()
@@ -988,25 +823,14 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                 self._panel_draft = updated
                 self._panel_action_id = None
                 return await self.async_step_panel_manage()
-        return self.async_show_form(
-            step_id="panel_action_edit",
-            data_schema=self._action_schema(current),
-            errors=errors,
-            description_placeholders={"action_id": self._panel_action_id},
-        )
+        return self.async_show_form(step_id="panel_action_edit", data_schema=self._action_schema(current), errors=errors, description_placeholders={"action_id": self._panel_action_id})
 
-    async def async_step_panel_action_delete(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_action_delete(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Delete an action from the draft after explicit confirmation."""
         draft = self._draft_base()
         if draft is None:
             return await self.async_step_control_panels()
-        actions = [
-            item
-            for item in draft.get(CONF_PANEL_ACTIONS, [])
-            if isinstance(item, dict) and item.get(CONF_PANEL_ACTION_ID)
-        ]
+        actions = [item for item in draft.get(CONF_PANEL_ACTIONS, []) if isinstance(item, dict) and item.get(CONF_PANEL_ACTION_ID)]
         if not actions:
             return await self.async_step_panel_manage()
         errors: dict[str, str] = {}
@@ -1016,34 +840,18 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                 errors[CONF_PANEL_CONFIRM] = "confirm_delete"
             else:
                 updated = deepcopy(draft)
-                updated[CONF_PANEL_ACTIONS] = [
-                    item
-                    for item in updated.get(CONF_PANEL_ACTIONS, [])
-                    if str(item.get(CONF_PANEL_ACTION_ID, "")) != action_id
-                ]
+                updated[CONF_PANEL_ACTIONS] = [item for item in updated.get(CONF_PANEL_ACTIONS, []) if str(item.get(CONF_PANEL_ACTION_ID, "")) != action_id]
                 self._panel_draft = updated
                 return await self.async_step_panel_manage()
         schema = vol.Schema(
             {
-                vol.Required(CONF_PANEL_ACTION_ID): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=sorted(str(item[CONF_PANEL_ACTION_ID]) for item in actions)
-                    )
-                ),
-                vol.Required(
-                    CONF_PANEL_CONFIRM, default=False
-                ): selector.BooleanSelector(),
+                vol.Required(CONF_PANEL_ACTION_ID): selector.SelectSelector(selector.SelectSelectorConfig(options=sorted(str(item[CONF_PANEL_ACTION_ID]) for item in actions))),
+                vol.Required(CONF_PANEL_CONFIRM, default=False): selector.BooleanSelector(),
             }
         )
-        return self.async_show_form(
-            step_id="panel_action_delete",
-            data_schema=schema,
-            errors=errors,
-        )
+        return self.async_show_form(step_id="panel_action_delete", data_schema=schema, errors=errors)
 
-    async def async_step_panel_save(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_save(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Validate the complete draft then persist it atomically in options."""
         if self._panel_draft is None:
             return await self.async_step_control_panels()
@@ -1056,30 +864,15 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                     return self._save_draft()
                 except ValueError:
                     errors["base"] = "invalid_panel"
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_PANEL_CONFIRM, default=False
-                ): selector.BooleanSelector()
-            }
-        )
-        return self.async_show_form(
-            step_id="panel_save",
-            data_schema=schema,
-            errors=errors,
-            description_placeholders={"panel_id": str(self._panel_draft[CONF_PANEL_ID])},
-        )
+        schema = vol.Schema({vol.Required(CONF_PANEL_CONFIRM, default=False): selector.BooleanSelector()})
+        return self.async_show_form(step_id="panel_save", data_schema=schema, errors=errors, description_placeholders={"panel_id": str(self._panel_draft[CONF_PANEL_ID])})
 
-    async def async_step_panel_cancel(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_cancel(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Discard the in-memory draft and return to panel management."""
         self._reset_panel_editor()
         return await self.async_step_control_panels()
 
-    async def async_step_panel_delete(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_delete(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Delete a configured panel after explicit confirmation."""
         panels = self._raw_panels()
         if not panels:
@@ -1090,11 +883,7 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             if not bool(user_input[CONF_PANEL_CONFIRM]):
                 errors[CONF_PANEL_CONFIRM] = "confirm_delete"
             else:
-                remaining = [
-                    item
-                    for item in panels
-                    if str(item.get(CONF_PANEL_ID, "")) != panel_id
-                ]
+                remaining = [item for item in panels if str(item.get(CONF_PANEL_ID, "")) != panel_id]
                 try:
                     self._validate_panels(remaining)
                 except ValueError:
@@ -1103,27 +892,13 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                     return self._finish({CONF_CONTROL_PANELS: remaining})
         schema = vol.Schema(
             {
-                vol.Required(CONF_PANEL_ID): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=sorted(
-                            str(item.get(CONF_PANEL_ID, "")) for item in panels
-                        )
-                    )
-                ),
-                vol.Required(
-                    CONF_PANEL_CONFIRM, default=False
-                ): selector.BooleanSelector(),
+                vol.Required(CONF_PANEL_ID): selector.SelectSelector(selector.SelectSelectorConfig(options=sorted(str(item.get(CONF_PANEL_ID, "")) for item in panels))),
+                vol.Required(CONF_PANEL_CONFIRM, default=False): selector.BooleanSelector(),
             }
         )
-        return self.async_show_form(
-            step_id="panel_delete",
-            data_schema=schema,
-            errors=errors,
-        )
+        return self.async_show_form(step_id="panel_delete", data_schema=schema, errors=errors)
 
-    async def async_step_panel_repair(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_repair(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Explicitly repair a missing/redacted root without changing config."""
         panels = self._raw_panels()
         if not panels:
@@ -1143,26 +918,10 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                     errors["base"] = "panel_repair_failed"
                 else:
                     return await self.async_step_control_panels()
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_PANEL_ID): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=sorted(
-                            str(item.get(CONF_PANEL_ID, "")) for item in panels
-                        )
-                    )
-                )
-            }
-        )
-        return self.async_show_form(
-            step_id="panel_repair",
-            data_schema=schema,
-            errors=errors,
-        )
+        schema = vol.Schema({vol.Required(CONF_PANEL_ID): selector.SelectSelector(selector.SelectSelectorConfig(options=sorted(str(item.get(CONF_PANEL_ID, "")) for item in panels)))})
+        return self.async_show_form(step_id="panel_repair", data_schema=schema, errors=errors)
 
-    async def async_step_panel_import(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_import(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Import one panel through the same safe parser and validator."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -1175,14 +934,7 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                 )
                 raw = self._panel_from_yaml_definition(panel)
                 panels = self._raw_panels()
-                existing = next(
-                    (
-                        item
-                        for item in panels
-                        if str(item.get(CONF_PANEL_ID, "")) == panel.panel_id
-                    ),
-                    None,
-                )
+                existing = next((item for item in panels if str(item.get(CONF_PANEL_ID, "")) == panel.panel_id), None)
                 if existing is not None:
                     self._panel_import_pending = raw
                     return await self.async_step_panel_import_confirm()
@@ -1192,22 +944,10 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
                 errors["base"] = "invalid_panel_yaml"
             else:
                 return self._finish({CONF_CONTROL_PANELS: panels})
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_PANEL_YAML): selector.TextSelector(
-                    selector.TextSelectorConfig(multiline=True)
-                )
-            }
-        )
-        return self.async_show_form(
-            step_id="panel_import",
-            data_schema=schema,
-            errors=errors,
-        )
+        schema = vol.Schema({vol.Required(CONF_PANEL_YAML): selector.TextSelector(selector.TextSelectorConfig(multiline=True))})
+        return self.async_show_form(step_id="panel_import", data_schema=schema, errors=errors)
 
-    async def async_step_panel_import_confirm(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_import_confirm(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Require explicit confirmation before replacing an imported panel."""
         pending = self._panel_import_pending
         if pending is None:
@@ -1219,35 +959,17 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             else:
                 panel_id = str(pending[CONF_PANEL_ID])
                 panels = self._raw_panels()
-                panels = [
-                    deepcopy(pending)
-                    if str(item.get(CONF_PANEL_ID, "")) == panel_id
-                    else item
-                    for item in panels
-                ]
+                panels = [deepcopy(pending) if str(item.get(CONF_PANEL_ID, "")) == panel_id else item for item in panels]
                 try:
                     self._validate_panels(panels)
                 except ValueError:
                     errors["base"] = "invalid_panel_yaml"
                 else:
                     return self._finish({CONF_CONTROL_PANELS: panels})
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_PANEL_CONFIRM, default=False
-                ): selector.BooleanSelector()
-            }
-        )
-        return self.async_show_form(
-            step_id="panel_import_confirm",
-            data_schema=schema,
-            errors=errors,
-            description_placeholders={"panel_id": str(pending[CONF_PANEL_ID])},
-        )
+        schema = vol.Schema({vol.Required(CONF_PANEL_CONFIRM, default=False): selector.BooleanSelector()})
+        return self.async_show_form(step_id="panel_import_confirm", data_schema=schema, errors=errors, description_placeholders={"panel_id": str(pending[CONF_PANEL_ID])})
 
-    async def async_step_panel_export_select(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_export_select(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Choose a configured panel for YAML export."""
         panels = self._raw_panels()
         if not panels:
@@ -1255,25 +977,10 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             self._panel_id = str(user_input[CONF_PANEL_ID])
             return await self.async_step_panel_export()
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_PANEL_ID): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=sorted(
-                            str(item.get(CONF_PANEL_ID, "")) for item in panels
-                        )
-                    )
-                )
-            }
-        )
-        return self.async_show_form(
-            step_id="panel_export_select",
-            data_schema=schema,
-        )
+        schema = vol.Schema({vol.Required(CONF_PANEL_ID): selector.SelectSelector(selector.SelectSelectorConfig(options=sorted(str(item.get(CONF_PANEL_ID, "")) for item in panels)))})
+        return self.async_show_form(step_id="panel_export_select", data_schema=schema)
 
-    async def async_step_panel_export(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_panel_export(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Display validated YAML without mutating integration options."""
         panel_id = self._panel_id
         if panel_id is None:
@@ -1291,31 +998,17 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         yaml_text = dump_panel_yaml(panel)
         if user_input is not None:
             return await self.async_step_control_panels()
-        schema = vol.Schema(
-            {
-                vol.Optional(
-                    CONF_PANEL_YAML, default=yaml_text
-                ): selector.TextSelector(selector.TextSelectorConfig(multiline=True))
-            }
-        )
-        return self.async_show_form(
-            step_id="panel_export",
-            data_schema=schema,
-            description_placeholders={"panel_id": panel_id},
-        )
+        schema = vol.Schema({vol.Optional(CONF_PANEL_YAML, default=yaml_text): selector.TextSelector(selector.TextSelectorConfig(multiline=True))})
+        return self.async_show_form(step_id="panel_export", data_schema=schema, description_placeholders={"panel_id": panel_id})
 
-    async def async_step_routes(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_routes(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Show graphical notification-route management."""
         menu = ["route_add"]
         if self._routes():
             menu.extend(["route_edit", "route_delete"])
         return self.async_show_menu(step_id="routes", menu_options=menu)
 
-    async def async_step_route_add(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_route_add(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Add a named Matrix notification route."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -1331,24 +1024,15 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             if not errors:
                 routes[name] = rooms
                 return self._finish({CONF_ROUTING_PROFILES: routes})
-
         schema = vol.Schema(
             {
-                vol.Required(CONF_ROUTE_NAME): selector.TextSelector(
-                    selector.TextSelectorConfig()
-                ),
-                vol.Required(CONF_ROUTE_ROOMS): selector.TextSelector(
-                    selector.TextSelectorConfig(multiple=True)
-                ),
+                vol.Required(CONF_ROUTE_NAME): selector.TextSelector(selector.TextSelectorConfig()),
+                vol.Required(CONF_ROUTE_ROOMS): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
             }
         )
-        return self.async_show_form(
-            step_id="route_add", data_schema=schema, errors=errors
-        )
+        return self.async_show_form(step_id="route_add", data_schema=schema, errors=errors)
 
-    async def async_step_route_edit(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_route_edit(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Choose a route to edit."""
         routes = self._routes()
         if not routes:
@@ -1356,19 +1040,10 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             self._route_name = str(user_input[CONF_ROUTE_NAME])
             return await self.async_step_route_edit_details()
-
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_ROUTE_NAME): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=sorted(routes))
-                )
-            }
-        )
+        schema = vol.Schema({vol.Required(CONF_ROUTE_NAME): selector.SelectSelector(selector.SelectSelectorConfig(options=sorted(routes)))})
         return self.async_show_form(step_id="route_edit", data_schema=schema)
 
-    async def async_step_route_edit_details(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_route_edit_details(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Edit rooms in the selected route."""
         routes = self._routes()
         name = self._route_name
@@ -1382,24 +1057,10 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             else:
                 routes[name] = rooms
                 return self._finish({CONF_ROUTING_PROFILES: routes})
+        schema = vol.Schema({vol.Required(CONF_ROUTE_ROOMS, default=routes[name]): selector.TextSelector(selector.TextSelectorConfig(multiple=True))})
+        return self.async_show_form(step_id="route_edit_details", data_schema=schema, errors=errors, description_placeholders={"route_name": name})
 
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_ROUTE_ROOMS, default=routes[name]
-                ): selector.TextSelector(selector.TextSelectorConfig(multiple=True))
-            }
-        )
-        return self.async_show_form(
-            step_id="route_edit_details",
-            data_schema=schema,
-            errors=errors,
-            description_placeholders={"route_name": name},
-        )
-
-    async def async_step_route_delete(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def async_step_route_delete(self, user_input: dict[str, Any] | None = None) -> dict[str, Any]:
         """Delete a named route after explicit confirmation."""
         routes = self._routes()
         if not routes:
@@ -1412,17 +1073,10 @@ class MatrixExtendedOptionsFlow(config_entries.OptionsFlow):
             elif name in routes:
                 routes.pop(name)
                 return self._finish({CONF_ROUTING_PROFILES: routes})
-
         schema = vol.Schema(
             {
-                vol.Required(CONF_ROUTE_NAME): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=sorted(routes))
-                ),
-                vol.Required(
-                    CONF_ROUTE_CONFIRM, default=False
-                ): selector.BooleanSelector(),
+                vol.Required(CONF_ROUTE_NAME): selector.SelectSelector(selector.SelectSelectorConfig(options=sorted(routes))),
+                vol.Required(CONF_ROUTE_CONFIRM, default=False): selector.BooleanSelector(),
             }
         )
-        return self.async_show_form(
-            step_id="route_delete", data_schema=schema, errors=errors
-        )
+        return self.async_show_form(step_id="route_delete", data_schema=schema, errors=errors)

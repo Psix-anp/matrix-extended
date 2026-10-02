@@ -24,8 +24,6 @@ duration = 0.6
 frames = bytearray()
 for index in range(int(rate * duration)):
     sample = int(6_000 * math.sin(2 * math.pi * 440 * index / rate))
-    # HA 2026.9 demo STT advertises stereo input only. Generate two identical
-    # PCM16 channels so the real-stack fixture matches the provider contract.
     frames.extend(struct.pack("<hh", sample, sample))
 with wave.open(str(path), "wb") as output:
     output.setnchannels(2)
@@ -100,13 +98,10 @@ DOMAIN = "matrix_extended_test_image"
 
 
 async def async_get_media_source(hass: HomeAssistant) -> "MatrixExtendedTestImageSource":
-    """Return the disposable image Media Source."""
     return MatrixExtendedTestImageSource(hass)
 
 
 class MatrixExtendedTestImageSource(MediaSource):
-    """Resolve the fixture image entity to HA's streaming image proxy."""
-
     name = "Matrix Extended test image"
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -154,6 +149,31 @@ input_boolean:
   matrix_control_dangerous:
     name: Matrix control dangerous target
     initial: false
+
+template:
+  - switch:
+      - name: Matrix Widget Switch
+        unique_id: matrix_widget_switch
+        state: "{{ is_state('input_boolean.matrix_control_light', 'on') }}"
+        turn_on:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.matrix_control_light
+        turn_off:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.matrix_control_light
+      - name: Matrix Widget Dangerous
+        unique_id: matrix_widget_dangerous
+        state: "{{ is_state('input_boolean.matrix_control_dangerous', 'on') }}"
+        turn_on:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.matrix_control_dangerous
+        turn_off:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.matrix_control_dangerous
 
 logger:
   default: info

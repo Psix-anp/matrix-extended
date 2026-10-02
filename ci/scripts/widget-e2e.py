@@ -68,16 +68,32 @@ def _request_json(
         data = json.dumps(json_body).encode()
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    request = Request(base + path, data=data, headers=headers, method=method)
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            raw = response.read()
-    except HTTPError as err:
-        detail = err.read().decode(errors="replace")[:1200]
-        raise RuntimeError(f"HTTP {err.code} for {method} {path}: {detail}") from err
-    except (URLError, OSError) as err:
-        raise RuntimeError(f"request failed for {method} {path}: {type(err).__name__}") from err
-    return json.loads(raw or b"{}")
+
+    max_rate_limit_retries = 5
+    for attempt in range(max_rate_limit_retries + 1):
+        request = Request(base + path, data=data, headers=headers, method=method)
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                raw = response.read()
+        except HTTPError as err:
+            detail_raw = err.read()
+            detail = detail_raw.decode(errors="replace")[:1200]
+            if err.code == 429 and attempt < max_rate_limit_retries:
+                retry_after_ms = 1000
+                try:
+                    payload = json.loads(detail_raw or b"{}")
+                    value = payload.get("retry_after_ms") if isinstance(payload, dict) else None
+                    if isinstance(value, (int, float)) and value >= 0:
+                        retry_after_ms = value
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    pass
+                time.sleep(min(max(float(retry_after_ms) / 1000.0, 0.001), 30.0))
+                continue
+            raise RuntimeError(f"HTTP {err.code} for {method} {path}: {detail}") from err
+        except (URLError, OSError) as err:
+            raise RuntimeError(f"request failed for {method} {path}: {type(err).__name__}") from err
+        return json.loads(raw or b"{}")
+    raise RuntimeError(f"rate-limit retries exhausted for {method} {path}")
 
 
 def _ha(token: str, method: str, path: str, body: Any | None = None) -> Any:

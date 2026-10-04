@@ -18,3 +18,18 @@ def test_v051_real_stack_keeps_recovery_and_adds_command_voice_gate() -> None:
     assert text.index("Verify encrypted safe commands and automatic voice Assist") < text.index(
         "Stop Synapse while Home Assistant stays running"
     )
+
+
+def test_widget_browser_checks_do_not_reuse_the_e2ee_element_profile() -> None:
+    text = WORKFLOW.read_text()
+    assert "ELEMENT_PROFILE_DIR: .ci/element-widget-profile" in text
+    assert "ELEMENT_PROFILE_DIR: .ci/element-widget-restart-profile" in text
+    assert "Login dedicated Element session for Native Matrix Widget" in text
+    assert "Login fresh Element session for Widget restart verification" in text
+    assert "python ci/scripts/widget-e2e.py verify-restart" not in text
+    assert text.index("Login dedicated Element session for Native Matrix Widget") < text.index(
+        "Verify Native Matrix Widget in Element"
+    )
+    assert text.index("Login fresh Element session for Widget restart verification") < text.index(
+        "Verify Native Matrix Widget reconnects after Home Assistant restart"
+    )

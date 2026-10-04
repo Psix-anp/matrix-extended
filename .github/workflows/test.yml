@@ -153,7 +153,14 @@ jobs:
         run: python ci/scripts/element-e2e.py verify-message-rich
       - name: Configure Native Matrix Widget and verify backend transport security
         run: python ci/scripts/widget-e2e.py configure
+      - name: Login dedicated Element session for Native Matrix Widget
+        env:
+          ELEMENT_PROFILE_DIR: .ci/element-widget-profile
+          ELEMENT_SCREENSHOT_DIR: .ci/screenshots/widget-login
+        run: python ci/scripts/element-e2e.py login
       - name: Verify Native Matrix Widget in Element
+        env:
+          ELEMENT_PROFILE_DIR: .ci/element-widget-profile
         run: python ci/scripts/widget-e2e.py verify
       - name: Verify graphical send_media executes in real Home Assistant
         run: python ci/scripts/verify-runtime.py send-media
@@ -187,8 +194,16 @@ jobs:
         run: python ci/scripts/wait-http.py http://127.0.0.1:8123/api/onboarding 180
       - name: Verify config entry after Home Assistant restart
         run: python ci/scripts/ha-e2e.py verify-restart
-      - name: Verify Native Matrix Widget resubscribes after Home Assistant restart
-        run: python ci/scripts/widget-e2e.py verify-restart
+      - name: Login fresh Element session for Widget restart verification
+        env:
+          ELEMENT_PROFILE_DIR: .ci/element-widget-restart-profile
+          ELEMENT_SCREENSHOT_DIR: .ci/screenshots/widget-restart-login
+        run: python ci/scripts/element-e2e.py login
+      - name: Verify Native Matrix Widget reconnects after Home Assistant restart
+        env:
+          ELEMENT_PROFILE_DIR: .ci/element-widget-restart-profile
+          ELEMENT_SCREENSHOT_DIR: .ci/screenshots/widget-restart
+        run: python ci/scripts/widget-e2e.py verify
       - name: Verify rich last incoming event sensor after Matrix reaction
         run: python ci/scripts/verify-runtime.py last-receive
       - name: Verify Native Matrix Control root stability and explicit Repair after restart
@@ -202,7 +217,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: matrix-element-e2e-screenshots
-          path: .ci/screenshots/*.png
+          path: .ci/screenshots/**/*.png
           if-no-files-found: warn
           retention-days: 14
       - name: Stack diagnostics on failure

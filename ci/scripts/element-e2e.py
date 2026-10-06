@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from urllib.parse import quote
 
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
@@ -34,7 +35,22 @@ def _room_url(room_id: str) -> str:
 
 
 def _dismiss_optional_dialogs(page: Page) -> None:
+    try:
+        identity_prompt = page.get_by_role(
+            "heading", name="Confirm your digital identity"
+        ).first
+        if identity_prompt.is_visible(timeout=100):
+            skip_verification = page.get_by_role(
+                "button", name="Skip verification for now"
+            ).first
+            if skip_verification.is_visible(timeout=500):
+                skip_verification.click(timeout=2000)
+                return
+    except PlaywrightTimeoutError:
+        pass
+
     for label in (
+        "Skip verification for now",
         "Skip",
         "Not now",
         "I'll verify later",
@@ -64,6 +80,17 @@ def _prepare_showcase_screenshot(page: Page) -> None:
         content='.mx_EventTile [data-testid="e2e-padlock"] { display: none !important; }'
     )
     page.wait_for_timeout(500)
+
+
+def _wait_for_room_ready(page: Page, timeout_ms: int = 60000) -> None:
+    room = page.get_by_text(ROOM_NAME, exact=True).first
+    deadline = time.monotonic() + (timeout_ms / 1000)
+    while time.monotonic() < deadline:
+        _dismiss_optional_dialogs(page)
+        if room.is_visible():
+            return
+        page.wait_for_timeout(250)
+    room.wait_for(state="visible", timeout=1)
 
 
 def _username_input(page: Page):
@@ -98,7 +125,7 @@ def _login(page: Page, user_id: str, password: str) -> None:
     if not submit.is_visible(timeout=1000):
         submit = page.get_by_role("button", name=re.compile(r"sign in|log in", re.I)).first
     submit.click(timeout=5000)
-    page.get_by_text(ROOM_NAME, exact=True).first.wait_for(state="visible", timeout=60000)
+    _wait_for_room_ready(page)
     _dismiss_optional_dialogs(page)
 
 

@@ -1,0 +1,36 @@
+name: Matrix Extended Widget
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  widget:
+    name: Native Widget frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: widget
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: widget/package.json
+      - name: Install pinned frontend dependencies
+        run: npm install --no-audit --no-fund
+      - name: Type-check Widget
+        run: npx tsc --noEmit
+      - name: Run Widget tests
+        run: npm test
+      - name: Build static Widget
+        run: npm run build

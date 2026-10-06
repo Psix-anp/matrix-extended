@@ -17,7 +17,7 @@ jobs:
   release:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out the exact tested commit
         uses: actions/checkout@v4
@@ -27,6 +27,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
 
       - name: Validate version and bilingual changelog
         id: release
@@ -113,10 +117,10 @@ jobs:
               "## Русский\n\n"
               f"{ru_body}\n\n"
               "## Verification / Проверка\n\n"
-              "- Full Matrix Extended CI passed for this exact commit, including the real Home Assistant + Synapse + Element stack.\n"
-              "- Полный CI Matrix Extended прошёл на этом точном commit, включая реальный стек Home Assistant + Synapse + Element.\n"
-              "- Verified install ZIP gate passed before publication.\n"
-              "- Проверка install ZIP пройдена до публикации релиза.\n"
+              "- Full Matrix Extended CI passed for this exact commit, including real Home Assistant + Synapse + Element + Native Widget E2E.\n"
+              "- Полный CI Matrix Extended прошёл на этом точном commit, включая реальный Home Assistant + Synapse + Element + Native Widget E2E.\n"
+              "- Verified HA install ZIP and static Widget ZIP gates passed before publication.\n"
+              "- Проверены HA install ZIP и статический Widget ZIP до публикации релиза.\n"
               f"- Tested commit / Проверенный commit: `{os.environ['TESTED_SHA']}`\n"
               f"- CI run / Прогон CI: {run_url}\n"
           )
@@ -146,7 +150,18 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --notes-file dist/existing-release-notes.bilingual.md
 
-      - name: Build and verify install archive
+      - name: Build Native Matrix Widget
+        if: steps.existing.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd widget
+          npm install --no-audit --no-fund
+          npx tsc --noEmit
+          npm test
+          npm run build
+
+      - name: Build and verify release archives
         if: steps.existing.outputs.exists != 'true'
         shell: bash
         run: |
@@ -154,6 +169,7 @@ jobs:
           version="${{ steps.release.outputs.version }}"
           python ci/scripts/build-release.py
           sha256sum "dist/matrix_extended-ha-install-v${version}.zip" > "dist/matrix_extended-ha-install-v${version}.zip.sha256"
+          sha256sum "dist/matrix_extended-widget-v${version}.zip" > "dist/matrix_extended-widget-v${version}.zip.sha256"
 
       - name: Publish GitHub Release
         if: steps.existing.outputs.exists != 'true'
@@ -172,6 +188,8 @@ jobs:
             --notes-file dist/release-notes.md
             "dist/matrix_extended-ha-install-v${version}.zip"
             "dist/matrix_extended-ha-install-v${version}.zip.sha256"
+            "dist/matrix_extended-widget-v${version}.zip"
+            "dist/matrix_extended-widget-v${version}.zip.sha256"
           )
           if [[ "${{ steps.release.outputs.prerelease }}" == "true" ]]; then
             gh release create "${release_args[@]}" --prerelease

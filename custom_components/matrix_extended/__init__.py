@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from contextlib import suppress
 from functools import partial
 import logging
@@ -18,6 +19,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.storage import Store
+from nio.events import ToDeviceEvent
 
 from .actions import ReactionActionRegistry
 from .commands import CommandRegistry
@@ -102,6 +104,9 @@ from .safe_action_executor import SafeActionExecutor
 from .status import MatrixRuntimeStatus
 from .v05_services import install_v05_services
 from .v051_services import install_v051_services
+from .widget_manager import WidgetControlManager
+from .widget_protocol import WIDGET_EVENT_TYPE
+from .widget_transport import WidgetTransport
 
 PLATFORMS = [Platform.NOTIFY, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SELECT]
 _OUTBOX_RETRY_SECONDS = 5.0
@@ -765,6 +770,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         account_allowed_room_ids=allowed_rooms,
     )
     enabled_panels = any(panel.enabled for panel in panels.values())
+    widget_enabled = any(
+        panel.enabled and panel.widget_enabled for panel in panels.values()
+    )
     incoming_enabled = bool(_entry_value(entry, CONF_INCOMING_ENABLED, True))
 
     status.mark_connected(default_room_encrypted=default_room_encrypted)
@@ -806,6 +814,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         runtime_store=panel_runtime_store,
         safe_action_executor=safe_action_executor,
     )
+    widget_transport = WidgetTransport(client._client) if widget_enabled else None
+    widget_manager = (
+        WidgetControlManager(
+            hass=hass,
+            transport=widget_transport,
+            panels=panels,
+            runtime_store=panel_runtime_store,
+            safe_action_executor=safe_action_executor,
+            account_allowed_users=account_allowed_users,
+            account_allowed_room_ids=allowed_rooms,
+        )
+        if widget_transport is not None
+        else None
+    )
 
     rooms = client.rooms_snapshot()
     default_room_id = await client.async_resolve_room(data[CONF_DEFAULT_ROOM])
@@ -833,12 +855,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         default_room_id=default_room_id,
         safe_action_executor=safe_action_executor,
         panel_manager=panel_manager,
+        widget_manager=widget_manager,
     )
+    account.widget_manager = widget_manager
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = account
     account.outbox_task = hass.async_create_task(
         _async_outbox_worker(hass, account),
         f"matrix_extended_outbox_{entry.entry_id}",
     )
+
+    if widget_manager is not None and widget_transport is not None:
+        async def _handle_widget_to_device(event: ToDeviceEvent) -> None:
+            source = event.source if isinstance(getattr(event, "source", None), Mapping) else {}
+            if source.get("type") != WIDGET_EVENT_TYPE:
+                return
+            content = source.get("content")
+            if not isinstance(content, Mapping):
+                return
+            await widget_manager.async_handle(str(event.sender), content)
+
+        widget_transport.add_callback(_handle_widget_to_device, ToDeviceEvent)
+
+        async def _publish_widget_snapshots() -> None:
+            for panel_id, panel in panels.items():
+                if panel.enabled and panel.widget_enabled:
+                    await widget_manager.async_publish(panel_id)
+
+        panel_manager.add_listener(_publish_widget_snapshots)
 
     # The initial full-state Matrix sync happens before the inbound receiver is
     # registered. Apply its narrowly buffered redactions to the restored panel
@@ -854,7 +897,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await panel_manager.async_start()
 
-    if incoming_enabled or enabled_panels:
+    if incoming_enabled or enabled_panels or widget_enabled:
         incoming_dir = hass.config.path(DOMAIN, "incoming", entry.entry_id)
         await hass.async_add_executor_job(partial(Path(incoming_dir).mkdir, parents=True, exist_ok=True))
         receiver = MatrixInboundReceiver(
@@ -899,6 +942,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
     account: MatrixAccount | None = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     if account is not None:
+        if account.widget_manager is not None:
+            await account.widget_manager.async_close()
         if account.panel_manager is not None:
             await account.panel_manager.async_stop()
         if account.outbox_task is not None:

@@ -1,5 +1,30 @@
 # Журнал изменений
 
+## 0.6.0b2 — 2026-10-06
+
+Бета Native Matrix Widget для графического управления Home Assistant прямо внутри Element.
+
+- Добавлен компактный адаптивный Matrix Widget, связанный с существующей панелью Native Matrix Control; панель с реакциями остаётся полноценным fallback.
+- Widget показывает ограниченный снимок актуального состояния Home Assistant и только явно разрешённые элементы управления для света, switch, cover, climate и media_player; sensors остаются только для чтения.
+- Существующие настроенные действия панели доступны как кнопки Widget и используют тот же 30-секундный одноразовый механизм подтверждения опасных действий.
+- Добавлен версионированный Matrix to-device протокол с allowlist аккаунта/панели, проверкой текущего поколения панели, ограниченной дедупликацией запросов, TTL подписок и отклонением устаревших действий.
+- Запросы Widget -> Matrix Extended адресуются точному Matrix device интеграции. Widget запрашивает у Element зашифрованную to-device отправку; Matrix Extended -> Widget state/result через custom to-device matrix-nio содержит только ограниченные несекретные данные протокола.
+- Имена сервисов Home Assistant, target, service data и учётные данные остаются на стороне HA. В URL/конфигурации Widget нет Home Assistant или Matrix access token.
+- Добавлены русский и английский интерфейс Widget и отдельный версионированный статический bundle для self-hosting.
+- Усилен E2EE startup preflight: при отсутствующем/нерабочем crypto runtime интеграция fail-closed выдаёт понятную ошибку зависимости/runtime для Home Assistant вместо одного сырого matrix-nio ImportWarning.
+- Публикационный стенд обновлён до Home Assistant 2026.9.4 + Synapse 1.161.0 + Element Web 1.12.30; browser E2E учитывает новые Element prompts подтверждения устройства и разрешения на загрузку/capabilities Widget.
+
+### Примечания beta
+
+- Native Matrix Widget пока beta и в этом релизе проверяется с Element Web 1.12.30.
+- Matrix-клиент должен поддерживать необходимые Widget to-device capabilities. Если не поддерживает, используйте Native Matrix Control через реакции.
+- Widget поставляется отдельным архивом `matrix_extended-widget-v0.6.0b2.zip` для версионированного self-hosting.
+- Миграция существующих панелей Native Matrix Control из `0.6.0b1` не требуется.
+
+### Проверка
+
+- Для публикации точный release commit должен пройти regression suite, чистый Python 3.14 + E2EE, HACS, Hassfest, тесты/сборку Widget frontend, полный Home Assistant + Synapse + Element + Widget browser E2E, outage/recovery, перезапуск Home Assistant, проверку фоновых задач и verified HA/Widget ZIP gates.
+
 ## 0.6.0b1 — 2026-09-18
 
 Первая бета Native Matrix Control, предварительный релиз для тестирования.

@@ -11,6 +11,7 @@ import io
 from typing import Any
 
 from nio import AsyncClient, AsyncClientConfig
+from nio.crypto import ENCRYPTION_ENABLED
 from nio.responses import (
     ErrorResponse,
     LoginResponse,
@@ -43,6 +44,14 @@ class MatrixEncryptionError(MatrixExtendedError):
 
 class MatrixEncryptionRequiredError(MatrixEncryptionError):
     """The configured security policy requires an encrypted room."""
+
+
+def ensure_e2ee_runtime_available() -> None:
+    """Fail with a bounded actionable error before matrix-nio config construction."""
+    if not ENCRYPTION_ENABLED:
+        raise MatrixEncryptionError(
+            "E2EE dependencies are unavailable; install matrix-nio[e2e] with vodozemac"
+        )
 
 
 @dataclass(slots=True)
@@ -93,6 +102,7 @@ class MatrixAccount:
     default_room_id: str = ""
     safe_action_executor: Any = None
     panel_manager: Any = None
+    widget_manager: Any = None
 
 
 def _error_text(response: Any) -> str:
@@ -165,6 +175,7 @@ class MatrixClient:
         store_key: str,
         require_e2ee: bool = True,
     ) -> None:
+        ensure_e2ee_runtime_available()
         config = AsyncClientConfig(
             encryption_enabled=True,
             store_sync_tokens=True,
@@ -477,8 +488,6 @@ class MatrixClient:
         room_id = await self.async_resolve_room(room)
         nio_room = self._client.rooms.get(room_id)
         if nio_room is None:
-            # A stored incremental sync can omit a room that has not yet been
-            # materialized in this process. One full sync resolves that case.
             await self._async_sync(full_state=True)
             nio_room = self._client.rooms.get(room_id)
         if nio_room is None:

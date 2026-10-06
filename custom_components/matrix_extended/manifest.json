@@ -28,5 +28,5 @@
     "peewee~=3.14",
     "vodozemac>=0.9.0.post2"
   ],
-  "version": "0.6.0b1"
+  "version": "0.6.0b2"
 }

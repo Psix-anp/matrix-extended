@@ -337,6 +337,20 @@ def _open_widget(page: Page, room_id: str, *, approve_if_prompted: bool) -> Any:
     page.goto(_room_url(room_id), wait_until="domcontentloaded", timeout=60000)
     page.get_by_text(ROOM_NAME, exact=True).first.wait_for(state="visible", timeout=60000)
     _dismiss_optional_dialogs(page)
+
+    preload_permission = page.locator(".mx_AppPermission").first
+    try:
+        preload_permission.wait_for(state="visible", timeout=10000)
+    except PlaywrightTimeoutError:
+        pass
+    else:
+        preload_permission.get_by_role("button", name="Continue", exact=True).click(timeout=5000)
+
+    selector = 'iframe[src*="127.0.0.1:8090"]'
+    page.locator(selector).first.wait_for(state="attached", timeout=60000)
+    frame = page.frame_locator(selector).first
+    frame.locator(".widget-shell").wait_for(state="visible", timeout=60000)
+
     prompt = page.locator(".mx_WidgetCapabilitiesPromptDialog")
     try:
         prompt.wait_for(state="visible", timeout=10000 if approve_if_prompted else 2500)
@@ -346,10 +360,7 @@ def _open_widget(page: Page, room_id: str, *, approve_if_prompted: bool) -> Any:
         if not approve_if_prompted:
             raise RuntimeError("Widget capabilities were unexpectedly forgotten")
         prompt.get_by_role("button", name="Approve").click(timeout=5000)
-    selector = 'iframe[src*="127.0.0.1:8090"]'
-    page.locator(selector).first.wait_for(state="attached", timeout=60000)
-    frame = page.frame_locator(selector).first
-    frame.locator(".widget-shell").wait_for(state="visible", timeout=60000)
+
     frame.locator('.connection-status[data-state="connected"]').wait_for(state="visible", timeout=60000)
     frame.get_by_text(PANEL_TITLE, exact=True).wait_for(state="visible", timeout=30000)
     return frame

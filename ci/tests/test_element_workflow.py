@@ -38,6 +38,6 @@ def test_widget_browser_checks_do_not_reuse_the_e2ee_element_profile() -> None:
 def test_element_login_dismisses_new_device_identity_prompt_before_room_wait() -> None:
     source = (ROOT / "ci" / "scripts" / "element-e2e.py").read_text()
     assert "Confirm your digital identity" in source
-    assert ".mx_Dialog_cancelButton" in source
+    assert "Skip verification for now" in source
     login = source.split("def _login", 1)[1].split("def _open_room", 1)[0]
     assert "_wait_for_room_ready(page)" in login

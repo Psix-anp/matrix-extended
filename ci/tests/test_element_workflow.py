@@ -41,3 +41,11 @@ def test_element_login_dismisses_new_device_identity_prompt_before_room_wait() -
     assert "Skip verification for now" in source
     login = source.split("def _login", 1)[1].split("def _open_room", 1)[0]
     assert "_wait_for_room_ready(page)" in login
+
+
+def test_widget_browser_grants_element_preload_permission_before_waiting_for_iframe() -> None:
+    source = (ROOT / "ci" / "scripts" / "widget-e2e.py").read_text()
+    open_widget = source.split("def _open_widget", 1)[1].split("def _browser_session", 1)[0]
+    assert ".mx_AppPermission" in open_widget
+    assert 'get_by_role("button", name="Continue", exact=True)' in open_widget
+    assert open_widget.index(".mx_AppPermission") < open_widget.index('iframe[src*="127.0.0.1:8090"]')

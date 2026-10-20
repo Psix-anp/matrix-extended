@@ -40,6 +40,10 @@ class ErrorResponse(_Response):
     pass
 
 
+class SyncError(ErrorResponse):
+    pass
+
+
 class FakeRoom:
     def __init__(
         self,
@@ -82,6 +86,7 @@ class AsyncClient:
         self.sent_events = []
         self.redactions = []
         self.event_callbacks = []
+        self.response_callbacks = []
         self.sync_calls = []
         self.close_calls = 0
         self.resolve_calls = []
@@ -155,6 +160,9 @@ class AsyncClient:
     def add_event_callback(self, callback, event_filter):
         self.event_callbacks.append((callback, event_filter))
 
+    def add_response_callback(self, callback, response_filter=None):
+        self.response_callbacks.append((callback, response_filter))
+
     async def room_redact(self, room_id, event_id, reason=None):
         self.redactions.append((room_id, event_id, reason))
         return _Response()
@@ -198,6 +206,7 @@ def client_module(monkeypatch):
         "ErrorResponse": ErrorResponse,
         "LoginResponse": LoginResponse,
         "RoomResolveAliasResponse": RoomResolveAliasResponse,
+        "SyncError": SyncError,
         "SyncResponse": SyncResponse,
         "UploadResponse": UploadResponse,
         "WhoamiResponse": WhoamiResponse,

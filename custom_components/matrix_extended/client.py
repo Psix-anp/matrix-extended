@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 import inspect
 import io
+import logging
+import random
 from typing import Any
 
 from nio import AsyncClient, AsyncClientConfig
@@ -15,10 +17,70 @@ from nio.responses import (
     ErrorResponse,
     LoginResponse,
     RoomResolveAliasResponse,
+    SyncError,
     SyncResponse,
     UploadResponse,
     WhoamiResponse,
 )
+
+
+_LOGGER = logging.getLogger(__name__)
+
+SYNC_BACKOFF_BASE = 1.0
+SYNC_BACKOFF_MAX = 60.0
+SYNC_BACKOFF_JITTER = 0.2
+
+
+def sync_backoff_delay(failures: int, jitter: float = 1.0) -> float:
+    """Return the pause after the Nth consecutive failed sync (1-based).
+
+    The delay doubles from SYNC_BACKOFF_BASE, is scaled by ``jitter`` (a factor
+    around 1.0) and never exceeds SYNC_BACKOFF_MAX.
+    """
+    exponent = min(max(failures, 1) - 1, 16)
+    return min(SYNC_BACKOFF_MAX, SYNC_BACKOFF_BASE * 2**exponent * jitter)
+
+
+class SyncErrorBackoff:
+    """Throttle matrix-nio sync_forever when the homeserver answers with errors.
+
+    nio returns a SyncError instead of raising for HTTP errors and unparsable
+    bodies (for example a reverse proxy answering 502 while the homeserver is
+    down), and sync_forever immediately polls again. Response callbacks are
+    awaited inside that loop, so sleeping in one throttles it.
+    """
+
+    def __init__(
+        self,
+        *,
+        sleep: Callable[[float], Awaitable[Any]] | None = None,
+        uniform: Callable[[float, float], float] = random.uniform,
+    ) -> None:
+        self._sleep = sleep
+        self._uniform = uniform
+        self.failures = 0
+
+    def next_delay(self) -> float:
+        """Count one more failed sync and return how long to pause."""
+        self.failures += 1
+        jitter = self._uniform(1 - SYNC_BACKOFF_JITTER, 1 + SYNC_BACKOFF_JITTER)
+        return sync_backoff_delay(self.failures, jitter)
+
+    async def on_sync_error(self, response: Any) -> None:
+        delay = self.next_delay()
+        log = _LOGGER.warning if self.failures == 1 else _LOGGER.debug
+        log(
+            "Matrix sync failed (%s); retry %d in %.1fs",
+            _error_text(response),
+            self.failures,
+            delay,
+        )
+        await (self._sleep or asyncio.sleep)(delay)
+
+    async def on_sync_ok(self, response: Any) -> None:
+        if self.failures:
+            _LOGGER.info("Matrix sync recovered after %d failed attempts", self.failures)
+            self.failures = 0
 
 
 class MatrixExtendedError(Exception):
@@ -186,6 +248,9 @@ class MatrixClient:
         self._room_cache: dict[str, str] = {}
         self._require_e2ee = require_e2ee
         self._sync_task: asyncio.Task[Any] | None = None
+        self._sync_backoff = SyncErrorBackoff()
+        self._client.add_response_callback(self._sync_backoff.on_sync_error, SyncError)
+        self._client.add_response_callback(self._sync_backoff.on_sync_ok, SyncResponse)
         self._initial_redactions: list[tuple[str, str, str, str | None]] = []
         self._capture_initial_redactions = True
 

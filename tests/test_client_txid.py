@@ -32,6 +32,9 @@ class AsyncClient:
         self.rooms = {}
         self.sent: list[dict] = []
 
+    def add_response_callback(self, callback, response_filter=None) -> None:
+        pass
+
     async def room_send(self, **kwargs):
         self.sent.append(kwargs)
         response = _Response()
@@ -48,6 +51,7 @@ def load(monkeypatch):
         "ErrorResponse",
         "LoginResponse",
         "RoomResolveAliasResponse",
+        "SyncError",
         "SyncResponse",
         "UploadResponse",
         "WhoamiResponse",

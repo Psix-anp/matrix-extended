@@ -18,6 +18,8 @@
 
 <p align="center"><sub>AI-assisted development, testing and documentation with OpenAI / ChatGPT. Project decisions and maintenance remain with <a href="https://github.com/Psix-anp">Psix-anp</a>.</sub></p>
 
+Beta candidate: `0.5.10b1` (session recovery and reauthentication).
+
 ## Highlights
 
 - End-to-end encrypted text and media with persistent crypto state.

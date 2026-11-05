@@ -402,3 +402,8 @@ class MatrixInboundReceiver:
     async def async_listener_error(self, error: Exception) -> None:
         """Expose background sync failures without crashing the integration."""
         self._account.status.mark_error(f"Matrix sync: {error}")
+
+    async def async_listener_success(self) -> None:
+        """Restore connectivity after a successful background sync."""
+        if not self._account.status.connected:
+            self._account.status.mark_connected()

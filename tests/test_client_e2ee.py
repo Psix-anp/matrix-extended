@@ -40,6 +40,12 @@ class ErrorResponse(_Response):
     pass
 
 
+class SyncError(ErrorResponse):
+    def __init__(self, status_code):
+        self.status_code = status_code
+        self.message = status_code
+
+
 class FakeRoom:
     def __init__(
         self,
@@ -82,6 +88,7 @@ class AsyncClient:
         self.sent_events = []
         self.redactions = []
         self.event_callbacks = []
+        self.response_callbacks = []
         self.sync_calls = []
         self.close_calls = 0
         self.resolve_calls = []
@@ -155,6 +162,9 @@ class AsyncClient:
     def add_event_callback(self, callback, event_filter):
         self.event_callbacks.append((callback, event_filter))
 
+    def add_response_callback(self, callback, response_filter):
+        self.response_callbacks.append((callback, response_filter))
+
     async def room_redact(self, room_id, event_id, reason=None):
         self.redactions.append((room_id, event_id, reason))
         return _Response()
@@ -199,6 +209,7 @@ def client_module(monkeypatch):
         "LoginResponse": LoginResponse,
         "RoomResolveAliasResponse": RoomResolveAliasResponse,
         "SyncResponse": SyncResponse,
+        "SyncError": SyncError,
         "UploadResponse": UploadResponse,
         "WhoamiResponse": WhoamiResponse,
     }.items():
@@ -509,6 +520,7 @@ async def test_listener_starts_once_and_close_cancels_it(client_module) -> None:
     assert task is not None
     await client.async_start_listener()
     assert client._sync_task is task
+    assert len(AsyncClient.last_instance.response_callbacks) == 1
     assert AsyncClient.last_instance.sync_forever_calls == [
         {"timeout": 30000, "set_presence": "offline"}
     ]
@@ -594,3 +606,185 @@ async def test_listener_reports_transport_error_and_yields_immediately(client_mo
     finally:
         await client.async_close()
         client_module.asyncio.sleep = real_sleep
+
+@pytest.mark.asyncio
+async def test_listener_recovers_after_empty_sync_without_inventing_activity(client_module):
+    import asyncio
+
+    status_spec = importlib.util.spec_from_file_location(
+        "matrix_reconnect_status", ROOT / "custom_components" / "matrix_extended" / "status.py"
+    )
+    status_module = importlib.util.module_from_spec(status_spec)
+    status_spec.loader.exec_module(status_module)
+    status = status_module.MatrixRuntimeStatus()
+    status.mark_connected(default_room_encrypted=True)
+    changes = []
+    status.add_listener(lambda: changes.append(status.connected))
+    client = make_client(client_module)
+    nio_client = AsyncClient.last_instance
+    nio_client.sync_forever_error_once = RuntimeError("network down")
+    callbacks = []
+    nio_client.add_response_callback = lambda callback, filter: callbacks.append((callback, filter))
+    real_sleep = asyncio.sleep
+
+    async def fast_sleep(delay):
+        await real_sleep(0)
+
+    async def on_error(err):
+        status.mark_error(str(err))
+
+    async def on_success():
+        if not status.connected:
+            status.mark_connected()
+
+    client_module.asyncio.sleep = fast_sleep
+    try:
+        await client.async_start_listener(on_error, on_success)
+        for _ in range(3):
+            await real_sleep(0)
+        assert not status.connected
+        response = SyncResponse()
+        for callback, response_type in callbacks:
+            if isinstance(response, response_type):
+                await callback(response)
+        assert status.connected
+        assert status.default_room_encrypted is True
+        assert status.last_send is None and status.last_receive is None
+        assert status.last_error is None
+        assert changes == [False, True]
+        for callback, response_type in callbacks:
+            if isinstance(response, response_type):
+                await callback(response)
+        assert changes == [False, True]
+    finally:
+        await client.async_close()
+        client_module.asyncio.sleep = real_sleep
+
+@pytest.mark.asyncio
+async def test_sync_errors_back_off_and_success_resets_retry_delay(client_module):
+    import asyncio
+
+    client = make_client(client_module)
+    nio_client = AsyncClient.last_instance
+    callbacks = []
+    nio_client.add_response_callback = lambda callback, filter: callbacks.append((callback, filter))
+    outcomes = [SyncError("502"), SyncError("502"), SyncResponse(), SyncError("M_UNKNOWN_TOKEN")]
+    delays, errors = [], []
+    done = asyncio.Event()
+    real_sleep = asyncio.sleep
+
+    async def fake_forever(**kwargs):
+        while outcomes:
+            response = outcomes.pop(0)
+            for callback, response_type in callbacks:
+                if isinstance(response, response_type):
+                    await callback(response)
+        done.set()
+        await asyncio.Event().wait()
+
+    async def fast_sleep(delay):
+        if delay:
+            delays.append(delay)
+        await real_sleep(0)
+
+    nio_client.sync_forever = fake_forever
+    client_module.asyncio.sleep = fast_sleep
+    try:
+        await client.async_start_listener(lambda err: errors.append(str(err)))
+        await asyncio.wait_for(done.wait(), 2)
+        assert delays == [5, 10, 5]
+        assert len(errors) == 3 and "M_UNKNOWN_TOKEN" in errors[-1]
+    finally:
+        await client.async_close()
+        client_module.asyncio.sleep = real_sleep
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_callback_does_not_interrupt_nio_server_delay(client_module):
+    client = make_client(client_module)
+    callbacks, errors, successes = [], [], []
+    AsyncClient.last_instance.add_response_callback = lambda callback, filter: callbacks.append((callback, filter))
+    await client.async_start_listener(lambda err: errors.append(str(err)), lambda: successes.append(True))
+    try:
+        for response in (SyncError("M_LIMIT_EXCEEDED"), SyncError(None), SyncResponse()):
+            if getattr(response, "status_code", None) is None:
+                response.transport_response = types.SimpleNamespace(status=429)
+            for callback, response_type in callbacks:
+                if isinstance(response, response_type):
+                    await callback(response)
+        assert errors == []
+        assert successes == []
+    finally:
+        await client.async_close()
+
+@pytest.mark.asyncio
+async def test_sync_error_retry_delay_is_bounded(client_module):
+    import asyncio
+
+    client = make_client(client_module)
+    delays = []
+    real_sleep = asyncio.sleep
+
+    async def fast_sleep(delay):
+        delays.append(delay)
+        await real_sleep(0)
+
+    client_module.asyncio.sleep = fast_sleep
+    try:
+        for _ in range(7):
+            await client._async_sync_response(SyncError("502"))
+        assert delays == [5, 10, 20, 40, 60, 60, 60]
+    finally:
+        client_module.asyncio.sleep = real_sleep
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["send", "upload", "alias"])
+@pytest.mark.parametrize("status,expected", [(502, "MatrixConnectionError"), (403, "MatrixSendError"), (501, "MatrixSendError")])
+async def test_server_error_classification_preserves_retryable_delivery(client_module, operation, status, expected):
+    client = make_client(client_module)
+    nio_client = AsyncClient.last_instance
+    error = ErrorResponse()
+    error.message = "server error"
+    error.status_code = "M_UNKNOWN"
+    error.transport_response = types.SimpleNamespace(status=status)
+    if operation == "send":
+        nio_client.room_send_response = error
+        call = client.async_send_prepared([client_module.PreparedRoom("!room:example", True)], {})
+    elif operation == "upload":
+        async def upload(*args, **kwargs):
+            return error, None
+        nio_client.upload = upload
+        call = client.async_upload(b"content", filename="a", content_type="text/plain")
+    else:
+        nio_client.room_resolve_response = error
+        call = client.async_resolve_room("#room:example")
+    with pytest.raises(getattr(client_module, expected)):
+        await call
+
+@pytest.mark.asyncio
+async def test_listener_observer_exceptions_do_not_stop_sync(client_module):
+    import asyncio
+    client = make_client(client_module)
+    real_sleep = asyncio.sleep
+    async def fast_sleep(delay):
+        await real_sleep(0)
+    def broken(*args):
+        raise RuntimeError("observer failed")
+    client_module.asyncio.sleep = fast_sleep
+    try:
+        await client.async_start_listener(broken, broken)
+        await client._async_sync_response(SyncError("M_UNKNOWN"))
+        await client._async_sync_response(SyncResponse())
+        assert not client._sync_task.done()
+    finally:
+        await client.async_close()
+        client_module.asyncio.sleep = real_sleep
+
+@pytest.mark.asyncio
+async def test_sync_observer_cancellation_propagates(client_module):
+    import asyncio
+    client = make_client(client_module)
+    async def cancelled():
+        raise asyncio.CancelledError
+    with pytest.raises(asyncio.CancelledError):
+        await client._async_notify_sync_observer(cancelled)

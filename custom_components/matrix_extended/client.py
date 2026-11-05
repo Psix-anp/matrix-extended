@@ -7,6 +7,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 import inspect
 import io
+import logging
 from typing import Any
 
 from nio import AsyncClient, AsyncClientConfig
@@ -14,10 +15,13 @@ from nio.responses import (
     ErrorResponse,
     LoginResponse,
     RoomResolveAliasResponse,
+    SyncError,
     SyncResponse,
     UploadResponse,
     WhoamiResponse,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class MatrixExtendedError(Exception):
@@ -98,6 +102,16 @@ def _error_text(response: Any) -> str:
     return f"{status}: {message}" if status else message
 
 
+def _http_status(response: Any) -> Any:
+    return getattr(getattr(response, "transport_response", None), "status", None)
+
+
+def _raise_transient_server_error(response: Any, message: str) -> None:
+    """Keep server failures retryable for the persistent outbox."""
+    if _http_status(response) in (500, 502, 503, 504):
+        raise MatrixConnectionError(f"{message}: {_error_text(response)}")
+
+
 async def async_password_login(
     homeserver: str,
     user_id: str,
@@ -162,6 +176,10 @@ class MatrixClient:
         self._room_cache: dict[str, str] = {}
         self._require_e2ee = require_e2ee
         self._sync_task: asyncio.Task[Any] | None = None
+        self._sync_callbacks_registered = False
+        self._sync_on_error: Any = None
+        self._sync_on_success: Any = None
+        self._sync_retry_delay = 5
 
     async def _async_sync(self, *, full_state: bool = False) -> None:
         try:
@@ -267,10 +285,20 @@ class MatrixClient:
         """Register a matrix-nio room event callback."""
         self._client.add_event_callback(callback, event_filter)
 
-    async def async_start_listener(self, on_error: Any = None) -> None:
+    async def async_start_listener(
+        self, on_error: Any = None, on_success: Any = None
+    ) -> None:
         """Start resilient long-poll sync for inbound events and E2EE key traffic."""
         if self._sync_task is not None and not self._sync_task.done():
             return
+
+        self._sync_on_error = on_error
+        self._sync_on_success = on_success
+        if not self._sync_callbacks_registered:
+            self._client.add_response_callback(
+                self._async_sync_response, (SyncResponse, SyncError)
+            )
+            self._sync_callbacks_registered = True
 
         async def runner() -> None:
             while True:
@@ -282,16 +310,44 @@ class MatrixClient:
                 except asyncio.CancelledError:
                     raise
                 except Exception as err:  # pragma: no cover - transport dependent
-                    if on_error is not None:
-                        result = on_error(err)
-                        if inspect.isawaitable(result):
-                            await result
-                    await asyncio.sleep(5)
+                    await self._async_sync_failure(err)
 
         self._sync_task = asyncio.create_task(
             runner(), name="matrix_extended_sync"
         )
         await asyncio.sleep(0)
+
+    async def _async_sync_response(self, response: Any) -> None:
+        """Observe background sync responses; let nio handle rate limits."""
+        if _http_status(response) == 429:
+            return
+        if isinstance(response, SyncError):
+            if getattr(response, "status_code", None) in (429, "M_LIMIT_EXCEEDED"):
+                return
+            await self._async_sync_failure(
+                MatrixConnectionError(f"Matrix sync failed: {_error_text(response)}")
+            )
+            return
+        if isinstance(response, SyncResponse):
+            self._sync_retry_delay = 5
+            await self._async_notify_sync_observer(self._sync_on_success)
+
+    async def _async_notify_sync_observer(self, callback: Any, *args: Any) -> None:
+        if callback is None:
+            return
+        try:
+            result = callback(*args)
+            if inspect.isawaitable(result):
+                await result
+        except Exception:
+            _LOGGER.exception("Matrix sync status observer failed")
+
+    async def _async_sync_failure(self, error: Exception) -> None:
+        """Report a sync failure and limit retry frequency."""
+        await self._async_notify_sync_observer(self._sync_on_error, error)
+        delay = self._sync_retry_delay
+        self._sync_retry_delay = min(delay * 2, 60)
+        await asyncio.sleep(delay)
 
     async def async_close(self) -> None:
         """Stop sync and close the nio HTTP session."""
@@ -318,6 +374,7 @@ class MatrixClient:
         except Exception as err:
             raise MatrixConnectionError(str(err)) from err
         if not isinstance(response, RoomResolveAliasResponse):
+            _raise_transient_server_error(response, f"Unable to resolve room {room}")
             raise MatrixSendError(f"Unable to resolve room {room}: {_error_text(response)}")
         self._room_cache[room] = response.room_id
         return response.room_id
@@ -380,6 +437,7 @@ class MatrixClient:
         except Exception as err:
             raise MatrixConnectionError(str(err)) from err
         if not isinstance(response, UploadResponse):
+            _raise_transient_server_error(response, "Matrix media upload failed")
             raise MatrixSendError(f"Matrix media upload failed: {_error_text(response)}")
 
         if not encrypt:
@@ -421,6 +479,7 @@ class MatrixClient:
             except Exception as err:
                 raise MatrixConnectionError(str(err)) from err
             if isinstance(response, ErrorResponse):
+                _raise_transient_server_error(response, f"Matrix send failed for {room.room_id}")
                 raise MatrixSendError(
                     f"Matrix send failed for {room.room_id}: {_error_text(response)}"
                 )

@@ -387,3 +387,24 @@ async def test_response_filename_does_not_replace_explicit_matrix_filename(tmp_p
     event = make_event(source={"content": {"msgtype": "m.file", "url": "mxc://ex/file", "filename": "matrix-name.bin"}})
     await receiver.async_handle_media(make_room(), event)
     assert hass.bus.events[-1][1]["filename"] == "matrix-name.bin"
+
+@pytest.mark.asyncio
+async def test_listener_success_only_restores_offline_status(tmp_path):
+    mod, _, _ = load_receiver()
+    spec = importlib.util.spec_from_file_location("receiver_runtime_status", COMP / "status.py")
+    status_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(status_module)
+    account = make_account()
+    account.status = status_module.MatrixRuntimeStatus()
+    account.status.mark_connected(default_room_encrypted=True)
+    changes = []
+    account.status.add_listener(lambda: changes.append(account.status.connected))
+    receiver = mod.MatrixInboundReceiver(FakeHass(), entry_id="entry", account=account, incoming_dir=str(tmp_path), download_media=False)
+    await receiver.async_listener_success()
+    assert changes == []
+    await receiver.async_listener_error(RuntimeError("offline"))
+    await receiver.async_listener_success()
+    await receiver.async_listener_success()
+    assert changes == [False, True]
+    assert account.status.default_room_encrypted is True
+    assert account.status.last_send is None and account.status.last_receive is None

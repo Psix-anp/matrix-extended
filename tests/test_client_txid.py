@@ -48,6 +48,7 @@ def load(monkeypatch):
         "ErrorResponse",
         "LoginResponse",
         "RoomResolveAliasResponse",
+        "SyncError",
         "SyncResponse",
         "UploadResponse",
         "WhoamiResponse",

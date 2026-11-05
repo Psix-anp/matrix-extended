@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.9 — 2026-11-05
+
+- Restore connection status after a successful background sync and retry sync failures with bounded backoff.
+- Retry transient Matrix server failures for room resolution, media uploads, and sends through the persistent outbox.
+- Allow Pillow 12.3.0 and newer.
+
 ## 0.5.8 — 2026-09-15
 
 Resolved Home Assistant image proxy-stream fallback hotfix.

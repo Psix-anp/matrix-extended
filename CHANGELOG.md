@@ -4,7 +4,7 @@
 
 - Restore connection status after a successful background sync and retry sync failures with bounded backoff.
 - Retry transient Matrix server failures for room resolution, media uploads, and sends through the persistent outbox.
-- Allow Pillow 12.3.0 and newer.
+- Use Home Assistant Core’s Pillow dependency and allow compatible matrix-nio E2EE versions from 0.26.0 onward.
 
 ## 0.5.8 — 2026-09-15
 

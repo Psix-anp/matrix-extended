@@ -94,10 +94,6 @@ def load_media():
         get_url_calls=[],
     )
 
-    aiohttp = types.ModuleType("aiohttp")
-    aiohttp.ClientResponse = object
-    sys.modules["aiohttp"] = aiohttp
-
     ha = types.ModuleType("homeassistant")
     components = types.ModuleType("homeassistant.components")
     camera = types.ModuleType("homeassistant.components.camera")

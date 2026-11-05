@@ -7,6 +7,7 @@ from contextlib import suppress
 from functools import partial
 import logging
 from pathlib import Path
+import re
 import secrets
 from typing import Any
 
@@ -57,8 +58,10 @@ from .const import (
     CONF_INCOMING_ENABLED,
     CONF_INCOMING_MEDIA_MAX_MB,
     CONF_INCOMING_MEDIA_RETENTION_DAYS,
+    CONF_REFRESH_TOKEN,
     CONF_REQUIRE_E2EE,
     CONF_ROUTING_PROFILES,
+    CONF_STORE_GENERATION,
     CONF_STORE_KEY,
     CONF_USER_ID,
     CONF_VERIFY_SSL,
@@ -88,6 +91,7 @@ from .content import (
     validate_media_item_shape,
 )
 from .delivery import delivery_event_record, delivery_lifecycle_payload
+from .entry_session import EntrySession
 from .incoming import IncomingPolicy
 from .media import MediaResolver
 from .notifications import NotificationKeyRegistry
@@ -534,8 +538,9 @@ async def _async_outbox_worker(hass: HomeAssistant, account: MatrixAccount) -> N
             )
         except asyncio.CancelledError:
             raise
-        except MatrixConnectionError as err:
-            account.status.mark_error(str(err))
+        except (MatrixConnectionError, MatrixAuthenticationError) as err:
+            if account.status.connected or account.status.last_error != str(err):
+                account.status.mark_error(str(err))
             await asyncio.sleep(_OUTBOX_RETRY_SECONDS)
         except MatrixEncryptionRequiredError as err:
             account.status.mark_error(str(err), connected=True)
@@ -584,7 +589,7 @@ async def _async_handle_send(hass: HomeAssistant, call: ServiceCall) -> dict[str
         account.status.mark_error(str(err), connected=True)
         _fire_delivery(hass, account, delivery_id, "failed", error=str(err))
         raise
-    except MatrixConnectionError as err:
+    except (MatrixConnectionError, MatrixAuthenticationError) as err:
         account.status.mark_error(str(err))
         if account.outbox is None:
             _fire_delivery(hass, account, delivery_id, "failed", error=str(err))
@@ -700,8 +705,20 @@ def _entry_value(entry: ConfigEntry, key: str, default: Any = None) -> Any:
     return entry.options.get(key, entry.data.get(key, default))
 
 
-async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    await hass.config_entries.async_reload(entry.entry_id)
+def _entry_session(hass: HomeAssistant, entry: ConfigEntry) -> EntrySession:
+    return EntrySession(
+        entry,
+        Store(hass, 1, f"{DOMAIN}.session_{entry.entry_id}", private=True, atomic_writes=True),
+        hass.config_entries.async_update_entry,
+        can_save=lambda: (
+            not hass.is_stopping and hass.config_entries.async_get_entry(entry.entry_id) is entry
+        ),
+    )
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove the saved Matrix session with its config entry."""
+    await _entry_session(hass, entry).async_remove()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -724,10 +741,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if changed:
         hass.config_entries.async_update_entry(entry, data=data)
 
+    session = _entry_session(hass, entry)
+    await session.async_restore()
+    data = entry.data
+    generation = data.get(CONF_STORE_GENERATION)
     store_path = hass.config.path(".storage", DOMAIN, entry.entry_id)
+    if generation is not None:
+        if not isinstance(generation, str) or not re.fullmatch(r"[0-9a-f]{32}", generation):
+            raise ConfigEntryNotReady("Invalid Matrix encryption store generation")
+        store_path = str(Path(store_path) / generation)
     await hass.async_add_executor_job(partial(Path(store_path).mkdir, parents=True, exist_ok=True))
 
     status = MatrixRuntimeStatus()
+
+    async def async_auth_failed(error: MatrixAuthenticationError) -> None:
+        if status.connected or status.last_error != str(error):
+            status.mark_error(str(error))
+        entry.async_start_reauth(hass, context={"matrix_soft_logout": error.soft_logout})
+
+    async def async_entry_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+        if not session.is_internal_update():
+            await hass.config_entries.async_reload(entry.entry_id)
+
     client = MatrixClient(
         homeserver=data[CONF_HOMESERVER],
         user_id=data[CONF_USER_ID],
@@ -737,6 +772,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         store_path=store_path,
         store_key=data[CONF_STORE_KEY],
         require_e2ee=_entry_value(entry, CONF_REQUIRE_E2EE, True),
+        refresh_token=data.get(CONF_REFRESH_TOKEN),
+        on_credentials_updated=session.async_save,
+        on_auth_failed=async_auth_failed,
     )
     try:
         default_room_encrypted = await client.async_connect(data[CONF_DEFAULT_ROOM])
@@ -746,6 +784,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         }
     except MatrixAuthenticationError as err:
         await client.async_close()
+        await async_auth_failed(err)
         raise ConfigEntryAuthFailed(str(err)) from err
     except (MatrixConnectionError, MatrixExtendedError) as err:
         await client.async_close()
@@ -835,7 +874,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             receiver.async_listener_error, receiver.async_listener_success
         )
 
-    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+    entry.async_on_unload(entry.add_update_listener(async_entry_updated))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

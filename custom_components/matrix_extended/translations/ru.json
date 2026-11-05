@@ -22,9 +22,12 @@
           "allowed_users": "Закрытый allowlist отправителей входящих событий.",
           "allowed_rooms": "Закрытый allowlist комнат. Для обработки должны совпасть и пользователь, и комната."
         }
-      }
+      },
+      "reauth_confirm": {"title": "Повторное подключение Matrix", "description": "Введите пароль для {user_id} на сервере {homeserver}. Пароль не сохраняется.", "data": {"password": "Пароль"}}
     },
     "error": {
+      "wrong_account": "Выполнен вход в другую учётную запись Matrix.",
+      "wrong_device": "Сервер вернул неверное устройство Matrix. Повторите попытку.",
       "cannot_connect": "Не удалось подключиться к Matrix homeserver",
       "invalid_auth": "Неверные данные авторизации Matrix",
       "invalid_room": "Некорректный alias или ID комнаты"

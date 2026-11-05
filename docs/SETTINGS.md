@@ -25,7 +25,7 @@ The initial form contains these fields:
 | --- | --- | --- | --- |
 | Homeserver | `homeserver` | — | Matrix Client API base URL such as `https://matrix.example.org` |
 | Matrix user ID | `user_id` | — | Full Matrix ID such as `@homeassistant:example.org` |
-| Password | `password` | — | Used only to perform the initial Matrix login; the integration does not store this password |
+| Password | `password` | — | Used for Matrix login or reauthentication. The integration does not store it. |
 | Default room | `default_room` | — | Room ID (`!...`) or alias (`#...`) used when an action does not provide a target/route |
 | Verify TLS certificate | `verify_ssl` | `true` | Validate the homeserver TLS certificate |
 | Require E2EE | `require_e2ee` | `true` | Refuse outbound delivery to plaintext rooms |
@@ -37,7 +37,7 @@ The initial form contains these fields:
 ### What happens when you submit
 
 1. Matrix Extended logs in with the supplied Matrix ID and password.
-2. The password is exchanged for a Matrix access token and device ID. The password itself is not persisted by the integration.
+2. Matrix returns an access token, a device ID, and, when supported, a refresh token. The integration does not store the password.
 3. `default_room` is validated. A Room ID beginning with `!` is accepted directly; an alias beginning with `#` is resolved through the homeserver.
 4. A duplicate `homeserver + user_id` config entry is rejected.
 5. If the initial user/room allowlists were left empty, they are initialized to the logged-in user and default room respectively.
@@ -45,6 +45,12 @@ The initial form contains these fields:
 7. Matrix Extended initializes its persistent E2EE state and runtime connection.
 
 If login fails, Home Assistant reports an authentication error. If the homeserver cannot be reached, it reports a connection error. An invalid room/alias is shown on the room field.
+
+## Restore an expired session
+
+When Matrix issues a refresh token, Matrix Extended can renew an expired access token automatically. A server or network outage is retried as a connection problem.
+
+If Matrix rejects the session and it cannot be renewed, open the reauthentication repair in Home Assistant and enter the password for the existing Matrix account. A soft logout reuses the same device and its encryption keys. A full logout creates a new device with separate encryption storage. Room settings, permissions, and queued messages remain associated with the existing config entry.
 
 ## Where to configure it later
 

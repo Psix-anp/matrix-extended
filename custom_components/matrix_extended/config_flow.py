@@ -25,6 +25,9 @@ from .const import (
     CONF_INCOMING_MEDIA_MAX_MB,
     CONF_INCOMING_MEDIA_RETENTION_DAYS,
     CONF_REQUIRE_E2EE,
+    CONF_REFRESH_TOKEN,
+    CONF_SESSION_ID,
+    CONF_STORE_GENERATION,
     CONF_ROUTE_CONFIRM,
     CONF_ROUTE_NAME,
     CONF_ROUTE_ROOMS,
@@ -93,6 +96,69 @@ class MatrixExtendedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.OptionsFlow:
         return MatrixExtendedOptionsFlow(config_entry)
 
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> dict[str, Any]:
+        """Request credentials for the existing account."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Restore a soft-logged-out device or create a fresh device."""
+        entry = self._get_reauth_entry()
+        data = entry.data
+        soft_logout = self.context.get("matrix_soft_logout") is True
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                details = await async_password_login(
+                    data[CONF_HOMESERVER],
+                    data[CONF_USER_ID],
+                    user_input[CONF_PASSWORD],
+                    data.get(CONF_VERIFY_SSL, True),
+                    device_id=data[CONF_DEVICE_ID] if soft_logout else None,
+                )
+                if details.user_id != data[CONF_USER_ID]:
+                    errors["base"] = "wrong_account"
+                elif soft_logout and details.device_id != data[CONF_DEVICE_ID]:
+                    errors["base"] = "wrong_device"
+                elif not soft_logout and details.device_id == data[CONF_DEVICE_ID]:
+                    errors["base"] = "wrong_device"
+                else:
+                    updated = dict(data)
+                    updated[CONF_ACCESS_TOKEN] = details.access_token
+                    updated[CONF_DEVICE_ID] = details.device_id
+                    updated[CONF_SESSION_ID] = secrets.token_hex(16)
+                    updated.pop(CONF_REFRESH_TOKEN, None)
+                    if details.refresh_token:
+                        updated[CONF_REFRESH_TOKEN] = details.refresh_token
+                    if not soft_logout:
+                        updated[CONF_STORE_KEY] = secrets.token_urlsafe(32)
+                        updated[CONF_STORE_GENERATION] = secrets.token_hex(16)
+                    if entry.update_listeners:
+                        return self.async_update_and_abort(entry, data=updated)
+                    return self.async_update_reload_and_abort(entry, data=updated)
+            except MatrixAuthenticationError:
+                errors["base"] = "invalid_auth"
+            except MatrixConnectionError:
+                errors["base"] = "cannot_connect"
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_PASSWORD): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                )
+            }
+        )
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "user_id": data[CONF_USER_ID],
+                "homeserver": data[CONF_HOMESERVER],
+            },
+        )
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
@@ -133,25 +199,26 @@ class MatrixExtendedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 allowed_rooms = _list(user_input.get(CONF_ALLOWED_ROOMS)) or [
                     user_input[CONF_DEFAULT_ROOM]
                 ]
-                return self.async_create_entry(
-                    title=details.user_id,
-                    data={
-                        CONF_HOMESERVER: homeserver,
-                        CONF_USER_ID: details.user_id,
-                        CONF_ACCESS_TOKEN: details.access_token,
-                        CONF_DEVICE_ID: details.device_id,
-                        CONF_DEFAULT_ROOM: user_input[CONF_DEFAULT_ROOM],
-                        CONF_VERIFY_SSL: verify_ssl,
-                        CONF_REQUIRE_E2EE: user_input[CONF_REQUIRE_E2EE],
-                        CONF_STORE_KEY: secrets.token_urlsafe(32),
-                        CONF_INCOMING_ENABLED: user_input[CONF_INCOMING_ENABLED],
-                        CONF_ALLOWED_USERS: allowed_users,
-                        CONF_ALLOWED_ROOMS: allowed_rooms,
-                        CONF_DOWNLOAD_INCOMING_MEDIA: user_input[
-                            CONF_DOWNLOAD_INCOMING_MEDIA
-                        ],
-                    },
-                )
+                data = {
+                    CONF_HOMESERVER: homeserver,
+                    CONF_USER_ID: details.user_id,
+                    CONF_ACCESS_TOKEN: details.access_token,
+                    CONF_DEVICE_ID: details.device_id,
+                    CONF_DEFAULT_ROOM: user_input[CONF_DEFAULT_ROOM],
+                    CONF_VERIFY_SSL: verify_ssl,
+                    CONF_REQUIRE_E2EE: user_input[CONF_REQUIRE_E2EE],
+                    CONF_STORE_KEY: secrets.token_urlsafe(32),
+                    CONF_SESSION_ID: secrets.token_hex(16),
+                    CONF_INCOMING_ENABLED: user_input[CONF_INCOMING_ENABLED],
+                    CONF_ALLOWED_USERS: allowed_users,
+                    CONF_ALLOWED_ROOMS: allowed_rooms,
+                    CONF_DOWNLOAD_INCOMING_MEDIA: user_input[
+                        CONF_DOWNLOAD_INCOMING_MEDIA
+                    ],
+                    }
+                if details.refresh_token:
+                    data[CONF_REFRESH_TOKEN] = details.refresh_token
+                return self.async_create_entry(title=details.user_id, data=data)
 
         schema = vol.Schema(
             {

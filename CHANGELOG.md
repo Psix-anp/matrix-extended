@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.10b1 — 2026-11-05
+
+- Recover expired Matrix sessions and request reauthentication when credentials need renewal.
+- Preserve queued messages during authentication recovery and retry when a session is restored.
+
 ## 0.5.9 — 2026-11-05
 
 - Restore connection status after a successful background sync and retry sync failures with bounded backoff.

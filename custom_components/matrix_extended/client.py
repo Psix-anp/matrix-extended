@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
-from dataclasses import dataclass
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 import inspect
 import io
+import json
 import logging
 from typing import Any
+
+from aiohttp import ClientSession, ClientTimeout
 
 from nio import AsyncClient, AsyncClientConfig
 from nio.responses import (
@@ -30,6 +34,10 @@ class MatrixExtendedError(Exception):
 
 class MatrixAuthenticationError(MatrixExtendedError):
     """Authentication failed."""
+
+    def __init__(self, message: str, *, soft_logout: bool = False) -> None:
+        super().__init__(message)
+        self.soft_logout = soft_logout
 
 
 class MatrixConnectionError(MatrixExtendedError):
@@ -53,8 +61,9 @@ class LoginDetails:
     """Persistable Matrix login details."""
 
     user_id: str
-    access_token: str
+    access_token: str = field(repr=False)
     device_id: str
+    refresh_token: str | None = field(default=None, repr=False)
 
 
 @dataclass(slots=True, frozen=True)
@@ -117,25 +126,68 @@ async def async_password_login(
     user_id: str,
     password: str,
     verify_ssl: bool,
+    *,
+    device_id: str | None = None,
 ) -> LoginDetails:
     """Log in once and return token/device details without retaining password."""
     client = AsyncClient(homeserver, user_id, ssl=verify_ssl)
     try:
-        response = await client.login(
-            password=password,
-            device_name="Home Assistant Matrix Extended",
-        )
+        body = {
+            "type": "m.login.password",
+            "identifier": {"type": "m.id.user", "user": user_id},
+            "password": password,
+            "initial_device_display_name": "Home Assistant Matrix Extended",
+            "refresh_token": True,
+        }
+        if device_id:
+            body["device_id"] = device_id
+        if hasattr(client, "client_session"):
+            async with ClientSession(timeout=ClientTimeout(total=60)) as session:
+                async with session.post(
+                    homeserver.rstrip("/") + "/_matrix/client/v3/login",
+                    json=body, ssl=verify_ssl, allow_redirects=False,
+                ) as http:
+                    if http.status == 429 or http.status >= 500 or 300 <= http.status < 400:
+                        raise MatrixConnectionError("Matrix login unavailable")
+                    try:
+                        payload = await http.json()
+                    except Exception:
+                        raise MatrixConnectionError("Invalid Matrix login response") from None
+                    if not isinstance(payload, dict):
+                        raise MatrixConnectionError("Invalid Matrix login response")
+                    if http.status < 200 or http.status >= 300:
+                        if payload.get("errcode") in ("M_FORBIDDEN", "M_UNAUTHORIZED", "M_USER_DEACTIVATED"):
+                            raise MatrixAuthenticationError("Matrix login rejected")
+                        raise MatrixConnectionError("Matrix login unavailable")
+                    if not all(isinstance(payload.get(key), str) and payload[key] for key in ("user_id", "device_id", "access_token")):
+                        raise MatrixConnectionError("Invalid Matrix login response")
+                    refresh_token = payload.get("refresh_token")
+                    if refresh_token is not None and (not isinstance(refresh_token, str) or not refresh_token):
+                        raise MatrixConnectionError("Invalid Matrix login response")
+                    return LoginDetails(
+                        user_id=payload["user_id"], device_id=payload["device_id"],
+                        access_token=payload["access_token"], refresh_token=refresh_token,
+                    )
+        if hasattr(client, "login_raw"):
+            response = await client.login_raw(body)
+        else:
+            response = await client.login(password=password, device_name="Home Assistant Matrix Extended")
         if not isinstance(response, LoginResponse):
-            raise MatrixAuthenticationError(_error_text(response))
+            if _http_status(response) in (429, 500, 502, 503, 504):
+                raise MatrixConnectionError("Matrix login unavailable")
+            raise MatrixAuthenticationError("Matrix login rejected")
+        transport = getattr(response, "transport_response", None)
+        payload = await transport.json() if transport is not None else {}
         return LoginDetails(
             user_id=response.user_id,
             access_token=response.access_token,
             device_id=response.device_id,
+            refresh_token=payload.get("refresh_token"),
         )
-    except MatrixAuthenticationError:
+    except MatrixExtendedError:
         raise
-    except Exception as err:
-        raise MatrixConnectionError(str(err)) from err
+    except Exception:
+        raise MatrixConnectionError("Matrix login unavailable") from None
     finally:
         await client.close()
 
@@ -154,6 +206,9 @@ class MatrixClient:
         store_path: str,
         store_key: str,
         require_e2ee: bool = True,
+        refresh_token: str | None = None,
+        on_credentials_updated: Any = None,
+        on_auth_failed: Any = None,
     ) -> None:
         config = AsyncClientConfig(
             encryption_enabled=True,
@@ -173,6 +228,12 @@ class MatrixClient:
         self._login_device_id = device_id
         self._login_access_token = access_token
         self._login_restored = False
+        self._refresh_token = refresh_token
+        self._on_credentials_updated = on_credentials_updated
+        self._on_auth_failed = on_auth_failed
+        self._refresh_lock = asyncio.Lock()
+        self._credentials_pending = False
+        self._definitive_auth_error: MatrixAuthenticationError | None = None
         self._room_cache: dict[str, str] = {}
         self._require_e2ee = require_e2ee
         self._sync_task: asyncio.Task[Any] | None = None
@@ -180,14 +241,169 @@ class MatrixClient:
         self._sync_on_error: Any = None
         self._sync_on_success: Any = None
         self._sync_retry_delay = 5
+        self._listener_auth_failed = False
+        self._send_failures: ContextVar[Any] = ContextVar("matrix_send_failures", default=None)
+        # Intercept nio's individual requests, including key distribution inside
+        # room_send and concurrent background sync requests.
+        nio_send = getattr(self._client, "_send", None)
+        if callable(nio_send):
+            async def authenticated_send(*args: Any, **kwargs: Any) -> Any:
+                failures = self._send_failures.get()
+                if failures:
+                    raise failures[0]
+                try:
+                    if kwargs.get("data_provider") is not None:
+                        return await nio_send(*args, **kwargs)
+                    result = await self._request(nio_send, *args, **kwargs)
+                    response_type = getattr(args[0], "__name__", "") if args else ""
+                    if failures is not None and response_type in {
+                        "ShareGroupSessionResponse", "KeysClaimResponse", "KeysQueryResponse", "JoinedMembersResponse"
+                    } and isinstance(result, ErrorResponse):
+                        error = MatrixConnectionError("Matrix key distribution failed")
+                        failures.append(error)
+                        raise error
+                    return result
+                except Exception as err:
+                    if failures is not None and not failures:
+                        failures.append(err if isinstance(err, MatrixExtendedError) else MatrixConnectionError("Matrix request failed"))
+                    raise
+            self._client._send = authenticated_send
+
+        nio_share = getattr(self._client, "share_group_session", None)
+        if callable(nio_share):
+            async def safe_share(room_id: str, *args: Any, **kwargs: Any) -> Any:
+                sharing = self._client.sharing_session
+                previous = sharing.get(room_id)
+                try:
+                    return await nio_share(room_id, *args, **kwargs)
+                except BaseException:
+                    # nio 0.26 creates this event synchronously before its first
+                    # await, but its keys_claim await precedes nio's finally.
+                    # A pre-existing event belongs to another invocation.
+                    event = sharing.get(room_id)
+                    if previous is None and event is not None:
+                        if sharing.get(room_id) is event:
+                            sharing.pop(room_id)
+                            event.set()
+                    raise
+            self._client.share_group_session = safe_share
+
+    @staticmethod
+    def _is_expired(response: Any) -> bool:
+        return getattr(response, "status_code", None) in ("M_UNKNOWN_TOKEN", 401)
+
+    async def _async_recover_auth(self, response: Any, used_token: str) -> None:
+        async with self._refresh_lock:
+            if self._definitive_auth_error is not None:
+                raise self._definitive_auth_error
+            if self._credentials_pending:
+                await self._persist_credentials()
+            if self._login_access_token != used_token:
+                self._client.access_token = self._login_access_token
+                return
+            if not self._refresh_token:
+                await self._auth_failed(response)
+            try:
+                http = await self._credential_request(
+                    "/_matrix/client/v3/refresh", {"refresh_token": self._refresh_token}
+                )
+                try:
+                    if http.status == 429 or http.status >= 500:
+                        raise MatrixConnectionError("Matrix token refresh unavailable")
+                    try:
+                        payload = await http.json()
+                    except Exception:
+                        raise MatrixConnectionError("Invalid Matrix token refresh response") from None
+                finally:
+                    release = getattr(http, "release", None)
+                    if callable(release):
+                        release()
+                if not isinstance(payload, dict):
+                    raise MatrixConnectionError("Invalid Matrix token refresh response")
+                if payload.get("errcode") in ("M_UNKNOWN_TOKEN", "M_MISSING_TOKEN", "M_FORBIDDEN"):
+                    await self._auth_failed(response, soft_logout=payload.get("soft_logout") is True)
+                if http.status < 200 or http.status >= 300:
+                    raise MatrixConnectionError("Matrix token refresh unavailable")
+                access = payload.get("access_token")
+                refresh = payload.get("refresh_token", self._refresh_token)
+                if not isinstance(access, str) or not access or not isinstance(refresh, str) or not refresh:
+                    raise MatrixConnectionError("Invalid Matrix token refresh response")
+                self._login_access_token = access
+                self._refresh_token = refresh
+                self._credentials_pending = True
+                await self._persist_credentials()
+            except MatrixAuthenticationError:
+                raise
+            except Exception:
+                self._client.access_token = used_token if self._credentials_pending else self._login_access_token
+                raise MatrixConnectionError("Matrix token refresh unavailable") from None
+
+    async def _credential_request(self, path: str, payload: dict[str, Any]) -> Any:
+        session = getattr(self._client, "client_session", None)
+        if session is not None:
+            return await session.request(
+                "POST", self._client.homeserver + path, json=payload,
+                ssl=self._client.ssl, allow_redirects=False,
+                timeout=self._client.config.request_timeout,
+            )
+        return await self._client.send(
+            "POST", path, json.dumps(payload), {"Content-Type": "application/json"}
+        )
+
+    async def _persist_credentials(self) -> None:
+        try:
+            if self._on_credentials_updated is not None:
+                await self._on_credentials_updated(self._login_access_token, self._refresh_token)
+        except Exception:
+            raise MatrixConnectionError("Unable to persist Matrix credentials") from None
+        self._client.access_token = self._login_access_token
+        self._credentials_pending = False
+
+    async def _auth_failed(self, response: Any, *, soft_logout: bool | None = None) -> None:
+        if self._definitive_auth_error is None:
+            code = getattr(response, "status_code", None)
+            detail = "bad token" if code == 401 else "M_UNKNOWN_TOKEN"
+            if soft_logout is None:
+                soft_logout = getattr(response, "soft_logout", False) is True
+            self._definitive_auth_error = MatrixAuthenticationError(
+                f"Matrix session expired: {detail}", soft_logout=soft_logout
+            )
+            if self._on_auth_failed is not None:
+                await self._on_auth_failed(self._definitive_auth_error)
+        raise self._definitive_auth_error
+
+    async def _request(self, operation: Any, *args: Any, **kwargs: Any) -> Any:
+        if self._definitive_auth_error is not None:
+            raise self._definitive_auth_error
+        if self._credentials_pending:
+            async with self._refresh_lock:
+                if self._credentials_pending:
+                    await self._persist_credentials()
+        used_token = self._login_access_token
+        if not getattr(self._client, "access_token", used_token):
+            self._client.access_token = used_token
+        response = await operation(*args, **kwargs)
+        actual = response[0] if isinstance(response, tuple) else response
+        if self._is_expired(actual):
+            await self._async_recover_auth(actual, used_token)
+            for arg in args:
+                if isinstance(arg, io.BytesIO):
+                    arg.seek(0)
+            response = await operation(*args, **kwargs)
+            actual = response[0] if isinstance(response, tuple) else response
+            if self._is_expired(actual):
+                await self._auth_failed(actual)
+        return response
 
     async def _async_sync(self, *, full_state: bool = False) -> None:
         try:
-            response = await self._client.sync(
+            response = await self._request(self._client.sync,
                 timeout=0,
                 full_state=full_state,
                 set_presence="offline",
             )
+        except MatrixExtendedError:
+            raise
         except Exception as err:
             raise MatrixConnectionError(str(err)) from err
         if not isinstance(response, SyncResponse):
@@ -197,7 +413,9 @@ class MatrixClient:
         """Run the key maintenance normally performed by sync_forever."""
         if self._client.should_upload_keys:
             try:
-                response = await self._client.keys_upload()
+                response = await self._request(self._client.keys_upload, )
+            except MatrixExtendedError:
+                raise
             except Exception as err:
                 raise MatrixEncryptionError(
                     f"Unable to upload E2EE device keys: {err}"
@@ -209,7 +427,9 @@ class MatrixClient:
 
         if self._client.should_query_keys:
             try:
-                response = await self._client.keys_query()
+                response = await self._request(self._client.keys_query, )
+            except MatrixExtendedError:
+                raise
             except Exception as err:
                 raise MatrixEncryptionError(
                     f"Unable to query Matrix device keys: {err}"
@@ -221,9 +441,11 @@ class MatrixClient:
 
         if self._client.should_claim_keys:
             try:
-                response = await self._client.keys_claim(
+                response = await self._request(self._client.keys_claim,
                     self._client.get_users_for_key_claiming()
                 )
+            except MatrixExtendedError:
+                raise
             except Exception as err:
                 raise MatrixEncryptionError(
                     f"Unable to claim Matrix one-time keys: {err}"
@@ -244,12 +466,14 @@ class MatrixClient:
             )
             self._login_restored = True
         try:
-            response = await self._client.whoami()
+            response = await self._request(self._client.whoami)
+        except MatrixExtendedError:
+            raise
         except Exception as err:
             raise MatrixConnectionError(str(err)) from err
         if not isinstance(response, WhoamiResponse):
             status = getattr(response, "status_code", None)
-            if status in (401, 403):
+            if status == 401:
                 raise MatrixAuthenticationError(_error_text(response))
             raise MatrixConnectionError(_error_text(response))
 
@@ -292,6 +516,7 @@ class MatrixClient:
         if self._sync_task is not None and not self._sync_task.done():
             return
 
+        self._listener_auth_failed = False
         self._sync_on_error = on_error
         self._sync_on_success = on_success
         if not self._sync_callbacks_registered:
@@ -307,8 +532,14 @@ class MatrixClient:
                         timeout=30000,
                         set_presence="offline",
                     )
+                    if self._listener_auth_failed:
+                        return
                 except asyncio.CancelledError:
                     raise
+                except MatrixAuthenticationError as err:
+                    self._listener_auth_failed = True
+                    await self._async_notify_sync_observer(self._sync_on_error, err)
+                    return
                 except Exception as err:  # pragma: no cover - transport dependent
                     await self._async_sync_failure(err)
 
@@ -322,6 +553,21 @@ class MatrixClient:
         if _http_status(response) == 429:
             return
         if isinstance(response, SyncError):
+            if self._is_expired(response):
+                try:
+                    transport = getattr(response, "transport_response", None)
+                    request_info = getattr(transport, "request_info", None)
+                    headers = getattr(request_info, "headers", {})
+                    authorization = headers.get("Authorization", "")
+                    used_token = authorization[7:] if authorization.startswith("Bearer ") else self._login_access_token
+                    await self._async_recover_auth(response, used_token)
+                except MatrixAuthenticationError as err:
+                    self._listener_auth_failed = True
+                    await self._async_sync_failure(err)
+                    self._client.stop_sync_forever()
+                except MatrixConnectionError as err:
+                    await self._async_sync_failure(err)
+                return
             if getattr(response, "status_code", None) in (429, "M_LIMIT_EXCEEDED"):
                 return
             await self._async_sync_failure(
@@ -370,7 +616,9 @@ class MatrixClient:
         if cached := self._room_cache.get(room):
             return cached
         try:
-            response = await self._client.room_resolve_alias(room)
+            response = await self._request(self._client.room_resolve_alias, room)
+        except MatrixExtendedError:
+            raise
         except Exception as err:
             raise MatrixConnectionError(str(err)) from err
         if not isinstance(response, RoomResolveAliasResponse):
@@ -427,13 +675,15 @@ class MatrixClient:
     ) -> UploadedMedia:
         """Upload bytes, optionally encrypted for use in an E2EE room."""
         try:
-            response, decryption_info = await self._client.upload(
+            response, decryption_info = await self._request(self._client.upload,
                 io.BytesIO(data),
                 content_type=content_type,
                 filename=filename,
                 filesize=len(data),
                 encrypt=encrypt,
             )
+        except MatrixExtendedError:
+            raise
         except Exception as err:
             raise MatrixConnectionError(str(err)) from err
         if not isinstance(response, UploadResponse):
@@ -474,10 +724,21 @@ class MatrixClient:
             }
             if tx_ids is not None:
                 send_kwargs["tx_id"] = tx_ids[index]
+            failures: list[Exception] = []
+            context_token = self._send_failures.set(failures)
             try:
-                response = await self._client.room_send(**send_kwargs)
+                response = await self._request(self._client.room_send, **send_kwargs)
+                if failures:
+                    raise failures[0]
             except Exception as err:
-                raise MatrixConnectionError(str(err)) from err
+                invalidate = getattr(self._client, "invalidate_outbound_session", None)
+                if room.encrypted and callable(invalidate):
+                    invalidate(room.room_id)
+                if isinstance(err, MatrixExtendedError):
+                    raise
+                raise MatrixConnectionError("Matrix send failed") from None
+            finally:
+                self._send_failures.reset(context_token)
             if isinstance(response, ErrorResponse):
                 _raise_transient_server_error(response, f"Matrix send failed for {room.room_id}")
                 raise MatrixSendError(
@@ -512,9 +773,11 @@ class MatrixClient:
         prepared = await self.async_prepare_rooms([room])
         room_id = prepared[0].room_id
         try:
-            response = await self._client.room_redact(
+            response = await self._request(self._client.room_redact,
                 room_id, event_id, reason=reason
             )
+        except MatrixExtendedError:
+            raise
         except Exception as err:
             raise MatrixConnectionError(str(err)) from err
         if isinstance(response, ErrorResponse):
@@ -530,7 +793,9 @@ class MatrixClient:
     ) -> tuple[bytes, str | None, str | None]:
         """Download a Matrix media object and decrypt it locally when needed."""
         try:
-            response = await self._client.download(mxc=mxc_uri)
+            response = await self._request(self._client.download, mxc=mxc_uri)
+        except MatrixExtendedError:
+            raise
         except Exception as err:
             raise MatrixConnectionError(str(err)) from err
         if isinstance(response, ErrorResponse) or not hasattr(response, "body"):
@@ -548,6 +813,8 @@ class MatrixClient:
                     encrypted_file["hashes"]["sha256"],
                     encrypted_file["iv"],
                 )
+            except MatrixExtendedError:
+                raise
             except Exception as err:
                 raise MatrixEncryptionError(
                     f"Unable to decrypt Matrix attachment: {err}"
